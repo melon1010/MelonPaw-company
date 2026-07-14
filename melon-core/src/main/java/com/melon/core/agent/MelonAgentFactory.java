@@ -1,0 +1,462 @@
+package com.melon.core.agent;
+
+import io.agentscope.core.middleware.MiddlewareBase;
+import io.agentscope.core.model.ExecutionConfig;
+import io.agentscope.core.permission.PermissionBehavior;
+import io.agentscope.core.permission.PermissionContextState;
+import io.agentscope.core.permission.PermissionMode;
+import io.agentscope.core.permission.PermissionRule;
+import io.agentscope.core.tool.Toolkit;
+import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import io.agentscope.harness.agent.memory.compaction.ToolResultEvictionConfig;
+import io.agentscope.harness.agent.memory.MemoryConfig;
+import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
+import io.agentscope.harness.agent.tool.SkillManageConfig;
+import io.agentscope.harness.agent.tools.ToolsConfig;
+import io.agentscope.harness.agent.workspace.LocalFsMode;
+import io.agentscope.core.state.AgentStateStore;
+import com.melon.core.config.AgentConfig;
+import com.melon.core.config.ContextCompactConfig;
+import com.melon.core.config.LightContextConfig;
+import com.melon.core.config.ToolResultPruningConfig;
+import com.melon.core.middleware.*;
+import com.melon.core.provider.ProviderManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.Constructor;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * HarnessAgent 构建工厂. 对应 Python react_agent.py 的 MelonAgent.__init__ + _create_toolkit + _build_sys_prompt + _register_hooks.
+ * 构建配置完整的 HarnessAgent 单例, 而非每请求新建.
+ */
+public class MelonAgentFactory {
+
+    private static final Logger log = LoggerFactory.getLogger(MelonAgentFactory.class);
+    private final TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback;
+    private final List<ToolkitContributor> toolkitContributors;
+    private final ProviderManager providerManager;
+
+    public MelonAgentFactory() {
+        this(null, List.of(), null);
+    }
+
+    public MelonAgentFactory(TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback) {
+        this(tokenUsageCallback, List.of(), null);
+    }
+
+    public MelonAgentFactory(TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback,
+                             List<ToolkitContributor> toolkitContributors) {
+        this(tokenUsageCallback, toolkitContributors, null);
+    }
+
+    public MelonAgentFactory(TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback,
+                             List<ToolkitContributor> toolkitContributors,
+                             ProviderManager providerManager) {
+        this.tokenUsageCallback = tokenUsageCallback;
+        this.toolkitContributors = toolkitContributors != null ? List.copyOf(toolkitContributors) : List.of();
+        this.providerManager = providerManager;
+    }
+
+    public MelonAgentFactory(MultiAgentManager ignoredAgentManager,
+                             TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback,
+                             List<ToolkitContributor> toolkitContributors,
+                             ProviderManager providerManager) {
+        this(tokenUsageCallback, toolkitContributors, providerManager);
+    }
+
+    /**
+     * 构建一个配置完整的 HarnessAgent 实例.
+     */
+    public HarnessAgent create(String agentId, AgentConfig agentConfig, Path workspaceDir,
+                                AgentStateStore stateStore) {
+        String activeModel = agentConfig.getActiveModel();
+        if (activeModel == null || activeModel.isBlank()) {
+            throw new IllegalStateException("Model not configured");
+        }
+        log.info("Building HarnessAgent: name={}, model={}, workspace={}",
+                agentConfig.getName(), activeModel, workspaceDir);
+
+        // 1. 构建中间件链 (对应 Python Mixin + hooks)
+        List<MiddlewareBase> middlewares = buildMiddlewares(agentId, agentConfig);
+
+        // 2. 构建压缩配置
+        CompactionConfig compaction = buildCompactionConfig(agentConfig.getContextCompact());
+        ToolResultEvictionConfig toolResultEviction = buildToolResultEvictionConfig(agentConfig);
+
+        // 3. 构建记忆配置
+        MemoryConfig memoryConfig = buildMemoryConfig(agentConfig);
+
+        // 4. 注册 melonPaw 命名工具，避免 Harness 默认 execute/grep_files/glob_files 名称进入前端历史。
+        Toolkit toolkit = buildToolkit(agentId, agentConfig, workspaceDir);
+
+        // 4. 构建 HarnessAgent
+        HarnessAgent.Builder builder = HarnessAgent.builder()
+                .name(agentConfig.getName())
+                .agentId(agentId)
+                .toolkit(toolkit)
+                .workspace(workspaceDir)
+                .filesystem(new LocalFilesystemSpec()
+                        .project(workspaceDir)
+                        .projectWritable(true)
+                        .mode(LocalFsMode.SANDBOXED)
+                        .inheritEnv(false)
+                        .executeTimeoutSeconds(shellTimeoutSeconds(agentConfig)))
+                .toolsConfig(buildHarnessToolsConfig(agentConfig))
+                .middlewares(middlewares)
+                .compaction(compaction)
+                .toolResultEviction(toolResultEviction)
+                .memory(memoryConfig)
+                .stateStore(stateStore)
+                .maxIters(agentConfig.getRunning().getMaxIters())
+                .maxRetries(agentConfig.getRunning().isLlmRetryEnabled() ? agentConfig.getRunning().getLlmMaxRetries() : 0)
+                .modelExecutionConfig(modelExecutionConfig(agentConfig))
+                .toolExecutionConfig(toolExecutionConfig(agentConfig))
+                .permissionContext(buildPermissionContext(agentConfig))
+                .enableMetaTool(true)
+                .enableSkillManageTool(SkillManageConfig.builder()
+                        .autoPromote(true)
+                        .securityScan(true)
+                        .draftsDir("skills/_drafts")
+                        .mainDir("skills")
+                        .build())
+                .enableTaskList(agentConfig.getRunning().isTaskListEnabled())
+                .disableShellTool()
+                .disableSubagents();
+        addContextFiles(builder, agentConfig);
+        if (providerManager != null) {
+            builder.model(providerManager.createModel(activeModel));
+        } else {
+            builder.model(activeModel);
+        }
+
+        if (agentConfig.getPlanMode().isEnabled()) {
+            builder.enablePlanMode(true);
+        }
+
+        if (agentConfig.getRunning().getFallbackModel() != null) {
+            builder.fallbackModel(agentConfig.getRunning().getFallbackModel());
+        }
+
+        return builder.build();
+    }
+
+    private Toolkit buildToolkit(String agentId, AgentConfig config, Path workspaceDir) {
+        Toolkit toolkit = new Toolkit();
+        registerIfEnabled(toolkit, config, "execute_shell_command", "com.melon.tools.shell.ExecuteShellCommandTool",
+                workspaceDir.toString(),
+                config.getRunning().getShellCommandTimeout(),
+                config.getRunning().getShellCommandExecutable(),
+                toolGuardConfig(config));
+        registerIfEnabled(toolkit, config, "browser_use", "com.melon.tools.browser.BrowserUseTool");
+        registerIfEnabled(toolkit, config, "view_image", "com.melon.tools.media.ViewImageTool", workspaceDir);
+        registerIfEnabled(toolkit, config, "view_video", "com.melon.tools.media.ViewVideoTool", workspaceDir);
+        registerIfEnabled(toolkit, config, "get_current_time", "com.melon.tools.util.GetCurrentTimeTool");
+        registerIfEnabled(toolkit, config, "set_user_timezone", "com.melon.tools.util.SetUserTimezoneTool");
+        registerIfEnabled(toolkit, config, "get_token_usage", "com.melon.tools.util.GetTokenUsageTool");
+        registerIfEnabled(toolkit, config, "send_file_to_user", "com.melon.tools.util.SendFileToUserTool", workspaceDir.toString());
+        registerIfEnabled(toolkit, config, "create_cron_job", "com.melon.tools.cron.CreateCronJobTool", workspaceDir);
+        for (ToolkitContributor contributor : toolkitContributors) {
+            try {
+                contributor.contribute(agentId, config, workspaceDir, toolkit);
+            } catch (Exception e) {
+                log.warn("Toolkit contributor {} failed for agent {}", contributor.getClass().getName(), agentId, e);
+            }
+        }
+        log.info("melonPaw toolkit registered tools: {}", toolkit.getToolNames());
+        return toolkit;
+    }
+
+    private void registerIfEnabled(Toolkit toolkit, AgentConfig config, String toolName, String className, Object... args) {
+        if (!isEnabled(config, toolName)) return;
+        try {
+            Class<?> type = Class.forName(className);
+            Object tool = newInstance(type, args);
+            toolkit.registerTool(tool);
+        } catch (ClassNotFoundException e) {
+            log.debug("Tool implementation not on classpath: {}", className);
+        } catch (Exception e) {
+            log.warn("Failed to register tool {} ({})", toolName, className, e);
+        }
+    }
+
+    private Object newInstance(Class<?> type, Object... args) throws Exception {
+        for (Constructor<?> ctor : type.getConstructors()) {
+            Class<?>[] parameterTypes = ctor.getParameterTypes();
+            if (parameterTypes.length != args.length) continue;
+            boolean matches = true;
+            for (int i = 0; i < parameterTypes.length; i++) {
+                if (args[i] != null && !wrap(parameterTypes[i]).isInstance(args[i])) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) return ctor.newInstance(args);
+        }
+        return type.getDeclaredConstructor().newInstance();
+    }
+
+    private Class<?> wrap(Class<?> type) {
+        if (!type.isPrimitive()) return type;
+        if (type == int.class) return Integer.class;
+        if (type == long.class) return Long.class;
+        if (type == double.class) return Double.class;
+        if (type == boolean.class) return Boolean.class;
+        return type;
+    }
+
+    private boolean isEnabled(AgentConfig config, String toolName) {
+        if (config.getTools() == null || config.getTools().getBuiltinTools() == null) return true;
+        var tool = config.getTools().getBuiltinTools().get(toolName);
+        return tool == null || tool.isEnabled();
+    }
+
+    private Map<String, Object> toolGuardConfig(AgentConfig config) {
+        if (config == null || config.getFrontendRunningConfig() == null) return Map.of();
+        Object guard = config.getFrontendRunningConfig().get("tool_guard_config");
+        if (!(guard instanceof Map<?, ?> guardMap)) return Map.of();
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        guardMap.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
+    }
+
+    private ToolsConfig buildHarnessToolsConfig(AgentConfig config) {
+        ToolsConfig tools = new ToolsConfig();
+        List<String> denied = new ArrayList<>();
+        denyOfficialToolWhenDisabled(config, denied, "read_file", "read_file");
+        denyOfficialToolWhenDisabled(config, denied, "write_file", "write_file");
+        denyOfficialToolWhenDisabled(config, denied, "edit_file", "edit_file");
+        denyOfficialToolWhenDisabled(config, denied, "grep_search", "grep_files");
+        denyOfficialToolWhenDisabled(config, denied, "glob_search", "glob_files");
+        if (!isEnabled(config, "read_file")) {
+            denied.add("list_files");
+        }
+        tools.setDeny(List.copyOf(new LinkedHashSet<>(denied)));
+        return tools;
+    }
+
+    private void denyOfficialToolWhenDisabled(
+            AgentConfig config, List<String> denied, String configuredName, String officialName) {
+        if (!isEnabled(config, configuredName)) {
+            denied.add(officialName);
+        }
+    }
+
+    private void addContextFiles(HarnessAgent.Builder builder, AgentConfig config) {
+        if (config.getSystemPromptFiles() == null) return;
+        for (String fileName : config.getSystemPromptFiles()) {
+            if (fileName == null || fileName.isBlank()
+                    || "AGENTS.md".equalsIgnoreCase(fileName)
+                    || "MEMORY.md".equalsIgnoreCase(fileName)) {
+                continue;
+            }
+            Path relative = Path.of(fileName).normalize();
+            if (relative.isAbsolute() || relative.getNameCount() != 1 || "..".equals(relative.toString())) {
+                log.warn("Ignoring unsafe workspace context file: {}", fileName);
+                continue;
+            }
+            builder.additionalContextFile(relative.toString().replace('\\', '/'));
+        }
+    }
+
+    /**
+     * 构建中间件链. 对应 Python 的 Mixin 继承链 + LightContextManager hooks.
+     */
+    private List<MiddlewareBase> buildMiddlewares(String agentId, AgentConfig config) {
+        List<MiddlewareBase> list = new ArrayList<>();
+
+        // Workspace context, memory and skills are provided by HarnessAgent.
+        list.add(new MediaFilterMiddleware());
+
+        if (config.getRunning().isAutoContinueOnTextOnly()) {
+            list.add(new AutoContinueMiddleware());
+        }
+
+        list.add(new TokenRecordingMiddleware((ignoredAgentName, sessionId, modelName, usage, latencyMs) -> {
+            if (tokenUsageCallback != null) {
+                String modelId = config.getActiveModel() != null && !config.getActiveModel().isBlank()
+                        ? config.getActiveModel()
+                        : modelName;
+                tokenUsageCallback.record(agentId, sessionId, modelId, usage, latencyMs);
+            }
+        }));
+
+        // HarnessAgent 会注册官方 file-backed memory_search/memory_get/session_search 工具。
+        // Java 侧尚未接入 Python 的 ReMeLight/ADBPG 语义记忆后端，所以这里不再注入自定义假 memory_search。
+
+        return list;
+    }
+
+    private ExecutionConfig modelExecutionConfig(AgentConfig config) {
+        int attempts = config.getRunning().isLlmRetryEnabled()
+                ? Math.max(1, config.getRunning().getLlmMaxRetries() + 1)
+                : 1;
+        return ExecutionConfig.builder()
+                .timeout(Duration.ofMinutes(5))
+                .maxAttempts(attempts)
+                .initialBackoff(Duration.ofMillis(Math.max(100, Math.round(config.getRunning().getLlmBackoffBase() * 1000))))
+                .maxBackoff(Duration.ofMillis(Math.max(500, Math.round(config.getRunning().getLlmBackoffCap() * 1000))))
+                .backoffMultiplier(2.0)
+                .retryOn(config.getRunning().isLlmRetryEnabled() ? ExecutionConfig.RETRYABLE_ERRORS : ignored -> false)
+                .build();
+    }
+
+    private ExecutionConfig toolExecutionConfig(AgentConfig config) {
+        return ExecutionConfig.builder()
+                .timeout(Duration.ofMillis(Math.max(1000, Math.round(config.getRunning().getShellCommandTimeout() * 1000))))
+                .maxAttempts(1)
+                .build();
+    }
+
+    private PermissionContextState buildPermissionContext(AgentConfig config) {
+        String level = config.getApproval() != null ? config.getApproval().getLevel() : "AUTO";
+        if ("OFF".equalsIgnoreCase(level)) {
+            return PermissionContextState.builder().mode(PermissionMode.BYPASS).build();
+        }
+        boolean strict = "STRICT".equalsIgnoreCase(level);
+        boolean smart = "SMART".equalsIgnoreCase(level);
+        PermissionContextState.Builder builder = PermissionContextState.builder()
+                .mode(strict ? PermissionMode.DEFAULT : PermissionMode.BYPASS);
+        builder.addDenyRule("execute_shell_command", new PermissionRule("execute_shell_command",
+                "qwenpaw-auto-deny-shell", PermissionBehavior.DENY, "melonpaw-java"));
+        if (strict) {
+            for (String tool : strictApprovalTools()) {
+                builder.addAskRule(tool, new PermissionRule(tool, null, PermissionBehavior.ASK, "melonpaw-java"));
+            }
+        } else {
+            builder.addAskRule("execute_shell_command", new PermissionRule("execute_shell_command",
+                    "delete", PermissionBehavior.ASK, "melonpaw-java"));
+            builder.addAskRule("execute_shell_command", new PermissionRule("execute_shell_command",
+                    "qwenpaw-dangerous-shell", PermissionBehavior.ASK, "melonpaw-java"));
+            for (String tool : lifecycleApprovalTools()) {
+                builder.addAskRule(tool, new PermissionRule(tool, null, PermissionBehavior.ASK, "melonpaw-java"));
+            }
+            if (smart) {
+                for (String tool : smartApprovalTools()) {
+                    builder.addAskRule(tool, new PermissionRule(tool, null, PermissionBehavior.ASK, "melonpaw-java"));
+                }
+            }
+        }
+        return builder.build();
+    }
+
+    private List<String> lifecycleApprovalTools() {
+        return List.of(
+                "create_cron_job",
+                "skill_manage",
+                "propose_skill",
+                "task_cancel",
+                "plan_exit"
+        );
+    }
+
+    private List<String> smartApprovalTools() {
+        return List.of(
+                "execute_shell_command",
+                "write_file",
+                "edit_file",
+                "browser_use"
+        );
+    }
+
+    private List<String> strictApprovalTools() {
+        java.util.LinkedHashSet<String> tools = new java.util.LinkedHashSet<>();
+        tools.addAll(List.of("execute_shell_command", "write_file", "edit_file", "read_file",
+                "grep_files", "glob_files", "list_files"));
+        tools.addAll(lifecycleApprovalTools());
+        tools.addAll(smartApprovalTools());
+        tools.addAll(List.of("memory_search", "memory_get", "session_search"));
+        return List.copyOf(tools);
+    }
+
+    /**
+     * 构建压缩配置. 对应 Python ContextCompactConfig.
+     */
+    private CompactionConfig buildCompactionConfig(ContextCompactConfig py) {
+        if (!py.isEnabled()) {
+            return CompactionConfig.builder().triggerMessages(0).triggerTokens(0).build();
+        }
+        int maxInputTokens = 128 * 1024;
+        int triggerTokens = (int) Math.max(1, Math.round(maxInputTokens * py.getCompactThresholdRatio()));
+        int keepTokens = (int) Math.max(1, Math.round(maxInputTokens * py.getReserveThresholdRatio()));
+        CompactionConfig.Builder builder = CompactionConfig.builder()
+                .triggerMessages(py.getTriggerMessages())
+                .triggerTokens(triggerTokens)
+                .keepMessages(py.getKeepMessages())
+                .keepTokens(keepTokens)
+                .flushBeforeCompact(true)
+                .offloadBeforeCompact(true);
+
+        if (py.getSummaryModel() != null) {
+            builder.model(py.getSummaryModel());
+        }
+
+        // 参数预截断 (Java 独有增强)
+        builder.truncateArgs(CompactionConfig.TruncateArgsConfig.builder()
+                .maxArgLength(2000)
+                .truncationText("... [truncated] ...")
+                .build());
+
+        return builder.build();
+    }
+
+    /**
+     * 构建单条工具结果驱逐配置. 对应 AgentScope 2.0 官方 ToolResultEvictionMiddleware.
+     */
+    private ToolResultEvictionConfig buildToolResultEvictionConfig(AgentConfig config) {
+        ToolResultEvictionConfig.Builder builder = ToolResultEvictionConfig.builder();
+
+        LightContextConfig light = config.getLightContextConfig();
+        ToolResultPruningConfig pruning = light != null ? light.getToolResultPruningConfig() : null;
+        if (pruning != null && pruning.isEnabled()) {
+            int maxChars = firstPositive(pruning.getPruningOldMsgMaxBytes(), pruning.getPruningRecentMsgMaxBytes());
+            if (maxChars > 0) {
+                builder.maxResultChars(maxChars);
+                builder.previewChars(Math.min(ToolResultEvictionConfig.DEFAULT_PREVIEW_CHARS,
+                        Math.max(500, maxChars / 10)));
+            }
+        }
+
+        Set<String> excluded = new LinkedHashSet<>(ToolResultEvictionConfig.DEFAULT_EXCLUDED_TOOLS);
+        excluded.add("grep_search");
+        excluded.add("glob_search");
+        if (pruning != null && pruning.getExemptToolNames() != null) {
+            excluded.addAll(pruning.getExemptToolNames());
+        }
+        builder.excludedToolNames(excluded);
+        return builder.build();
+    }
+
+    private int firstPositive(int first, int second) {
+        if (first > 0) return first;
+        if (second > 0) return second;
+        return 0;
+    }
+
+    /**
+     * 构建记忆配置.
+     */
+    private MemoryConfig buildMemoryConfig(AgentConfig config) {
+        return MemoryConfig.builder()
+                .flushTrigger(MemoryConfig.FlushTrigger.always())
+                .consolidationMaxTokens(4000)
+                .consolidationMinGap(java.time.Duration.ofMinutes(30))
+                .dailyFileRetentionDays(90)
+                .sessionRetentionDays(180)
+                .build();
+    }
+
+    private int shellTimeoutSeconds(AgentConfig config) {
+        int seconds = (int) Math.ceil(config.getRunning().getShellCommandTimeout());
+        return Math.max(1, seconds);
+    }
+
+}

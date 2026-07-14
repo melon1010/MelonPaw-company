@@ -1,0 +1,90 @@
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f3f5f7;
+  color: #202326;
+}
+
+.pageDark {
+  background: #111416;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.loginPanel {
+  width: min(420px, 100%);
+  padding: 32px;
+  background: #fff;
+  border: 1px solid #e2e6e9;
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(20, 27, 31, 0.08);
+}
+
+.pageDark .loginPanel {
+  background: #1b1f22;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.brandMark {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  border-radius: 8px;
+  background: #1677ff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.brandName {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 650;
+}
+
+.brandEdition {
+  font-size: 12px;
+  line-height: 18px;
+  color: #69737a;
+}
+
+.heading {
+  margin-bottom: 24px;
+}
+
+.heading :global(.qwenpaw-typography) {
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+
+.submit {
+  height: 44px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+@media (max-width: 520px) {
+  .page {
+    padding: 0;
+    place-items: stretch;
+  }
+
+  .loginPanel {
+    width: 100%;
+    min-height: 100vh;
+    border: 0;
+    border-radius: 0;
+    padding: 28px 20px;
+  }
+}

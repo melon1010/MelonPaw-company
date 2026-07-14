@@ -1,0 +1,399 @@
+// ImportHubModal.module.less
+// Styles for the upload-via-URL modal
+
+// ============================================
+// Modal Container
+// ============================================
+.importHubModal {
+  width: 560px !important;
+  max-height: 85vh;
+
+  :global(.ant-modal-content) {
+    border-radius: 12px;
+  }
+
+  :global(.ant-modal-header) {
+    border-bottom: none;
+    padding: 24px 24px 0;
+  }
+
+  :global(.ant-modal-body) {
+    padding: 24px;
+  }
+
+  :global(.ant-modal-footer) {
+    border-top: 1px solid #f0f0f0;
+    padding: 16px 24px;
+  }
+}
+
+// ============================================
+// Hint Text
+// ============================================
+.hintText {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #666;
+}
+
+// ============================================
+// URL Input Section
+// ============================================
+.urlInputSection {
+  margin-bottom: 12px;
+}
+
+.inputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 1px solid #d9d9d9;
+  border-radius: 10px;
+  background: #fff;
+  transition: all 0.2s ease;
+  padding: 0 12px;
+  height: 48px;
+
+  &:hover {
+    border-color: #615ced;
+  }
+
+  &:focus-within {
+    border-color: #615ced;
+    box-shadow: 0 0 0 3px rgba(97, 92, 237, 0.1);
+  }
+
+  // State variants
+  &.valid {
+    border-color: #52c41a;
+    background: rgba(82, 196, 26, 0.02);
+  }
+
+  &.invalid {
+    border-color: #ff4d4f;
+    background: rgba(255, 77, 79, 0.02);
+  }
+
+  &.validating {
+    border-color: #615ced;
+  }
+}
+
+.urlInputIcon {
+  color: #999;
+  font-size: 16px;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.urlInput {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  color: #1a1a1a;
+
+  &::placeholder {
+    color: #bfbfbf;
+  }
+}
+
+.iconButton {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-left: 8px;
+
+  &:hover {
+    background: rgba(97, 92, 237, 0.08);
+    color: #615ced;
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+// ============================================
+// Validation Status
+// ============================================
+.validationStatus {
+  margin-top: 8px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  &.valid {
+    color: #52c41a;
+  }
+
+  &.invalid {
+    color: #ff4d4f;
+  }
+
+  &.validating {
+    color: #615ced;
+  }
+}
+
+// ============================================
+// Supported Sources (name | example URL list)
+// ============================================
+.sourcesSection {
+  margin-top: 4px;
+}
+
+.sourcesHeader {
+  font-size: 13px;
+  color: #999;
+  margin-bottom: 8px;
+}
+
+.sourcesList {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sourceRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  font-size: 13px;
+
+  & + .sourceRow {
+    border-top: 1px solid #f0f0f0;
+  }
+
+  &:hover:not(.disabled) {
+    background: rgba(97, 92, 237, 0.04);
+
+    .sourceExample {
+      color: #615ced;
+    }
+  }
+
+  &.disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.sourceName {
+  flex-shrink: 0;
+  width: 120px;
+  font-weight: 500;
+  color: #333;
+  text-decoration: none;
+
+  &:hover {
+    color: #615ced;
+    text-decoration: underline;
+  }
+}
+
+.sourceExample {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-size: 12px;
+  color: #999;
+}
+
+// ============================================
+// Footer
+// ============================================
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.cancelButton {
+  min-width: 88px;
+}
+
+.importButton {
+  min-width: 120px;
+}
+
+// ============================================
+// Dark Mode
+// ============================================
+:global(.dark-mode) {
+  .hintText {
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .importHubModal {
+    :global(.ant-modal-content) {
+      background: #1f1f1f;
+    }
+
+    :global(.ant-modal-header) {
+      background: transparent;
+
+      :global(.ant-modal-title) {
+        color: rgba(255, 255, 255, 0.9);
+      }
+    }
+
+    :global(.ant-modal-footer) {
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+  }
+
+  .inputWrapper {
+    background: #2a2a2a;
+    border-color: rgba(255, 255, 255, 0.15);
+
+    &:hover,
+    &:focus-within {
+      border-color: #615ced;
+    }
+
+    &.valid {
+      border-color: #4ade80;
+      background: rgba(82, 196, 26, 0.05);
+    }
+
+    &.invalid {
+      border-color: #ff6b6b;
+      background: rgba(255, 77, 79, 0.05);
+    }
+  }
+
+  .urlInputIcon {
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .urlInput {
+    color: rgba(255, 255, 255, 0.9);
+
+    &::placeholder {
+      color: rgba(255, 255, 255, 0.3);
+    }
+  }
+
+  .iconButton {
+    color: rgba(255, 255, 255, 0.4);
+
+    &:hover {
+      background: rgba(97, 92, 237, 0.15);
+      color: #8b87f0;
+    }
+  }
+
+  .validationStatus {
+    &.valid {
+      color: #4ade80;
+    }
+
+    &.invalid {
+      color: #ff6b6b;
+    }
+
+    &.validating {
+      color: #8b87f0;
+    }
+  }
+
+  .sourcesHeader {
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .sourcesList {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .sourceRow {
+    & + .sourceRow {
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    &:hover:not(.disabled) {
+      background: rgba(97, 92, 237, 0.12);
+
+      .sourceExample {
+        color: #8b87f0;
+      }
+    }
+  }
+
+  .sourceName {
+    color: rgba(255, 255, 255, 0.85);
+
+    &:hover {
+      color: #8b87f0;
+    }
+  }
+
+  .sourceExample {
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .modalFooter {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+// ============================================
+// Responsive
+// ============================================
+@media (max-width: 640px) {
+  .importHubModal {
+    width: 100% !important;
+    max-width: 100%;
+    margin: 0;
+    top: 0;
+    border-radius: 0;
+    height: 100vh;
+
+    :global(.ant-modal-content) {
+      border-radius: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    :global(.ant-modal-body) {
+      flex: 1;
+      overflow-y: auto;
+    }
+  }
+
+  .sourceRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .sourceName {
+    width: auto;
+  }
+
+  .sourceExample {
+    text-align: left;
+    width: 100%;
+  }
+}
