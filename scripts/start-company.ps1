@@ -2,6 +2,9 @@ param(
     [int]$Port = 8088,
     [string]$StateDir = "",
     [string]$JarPath = "",
+    [string]$SandboxImage = "melonpaw-company-sandbox:latest",
+    [string]$SandboxNetwork = "bridge",
+    [switch]$SkipSandboxCheck,
     [int]$ReadyTimeoutSeconds = 30
 )
 
@@ -24,6 +27,12 @@ if ([string]::IsNullOrWhiteSpace($StateDir)) {
 }
 $StateDir = [System.IO.Path]::GetFullPath($StateDir)
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
+
+$bootstrapTokenFile = if ([string]::IsNullOrWhiteSpace($env:MELON_BOOTSTRAP_TOKEN)) {
+    Join-Path $StateDir "bootstrap.token"
+} else {
+    $null
+}
 
 $java = ""
 if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
@@ -54,6 +63,21 @@ if ([int]$Matches.major -lt 17) {
     throw "Java 17 or newer is required. Current runtime: $($Matches.major). Set JAVA_HOME to a supported JDK."
 }
 
+if (-not $SkipSandboxCheck) {
+    $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
+    if ($null -eq $dockerCommand) {
+        throw "Docker is required for Agent file and command execution. Install Docker or use -SkipSandboxCheck for UI-only configuration."
+    }
+    & $dockerCommand.Source version --format '{{.Server.Version}}' | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker daemon is not available. Start Docker before launching MelonPaw-Company."
+    }
+    & $dockerCommand.Source image inspect $SandboxImage | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Sandbox image not found: $SandboxImage. Run scripts\build-sandbox.ps1 first."
+    }
+}
+
 $pidFile = Join-Path $StateDir "melonpaw-company.pid"
 if (Test-Path -LiteralPath $pidFile) {
     $existingPid = Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -68,6 +92,9 @@ $env:SERVER_ADDRESS = "127.0.0.1"
 $env:SERVER_PORT = [string]$Port
 $env:MELON_HOME = $StateDir
 $env:MELON_ENTERPRISE_DATABASE_PATH = $database
+$env:MELON_EXECUTION_SANDBOX = "docker"
+$env:MELON_SANDBOX_IMAGE = $SandboxImage
+$env:MELON_SANDBOX_NETWORK = $SandboxNetwork
 $env:LOGGING_FILE_NAME = $applicationLog
 $arguments = @("-Dlogging.file.name=$applicationLog", "-jar", $JarPath)
 
@@ -117,4 +144,7 @@ if (-not $ready) {
     Health = $healthUrl
     StateDir = $StateDir
     Log = $applicationLog
+    SandboxImage = $SandboxImage
+    SandboxNetwork = $SandboxNetwork
+    BootstrapTokenFile = $bootstrapTokenFile
 }

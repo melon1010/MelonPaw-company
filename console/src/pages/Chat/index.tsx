@@ -24,6 +24,8 @@ import { providerApi } from "../../api/modules/provider";
 import type { ProviderInfo, ModelInfo, SkillSpec } from "../../api/types";
 import ModelSelector from "./ModelSelector";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { hasPermission } from "../../auth/authorization";
 import { useAgentStore } from "../../stores/agentStore";
 import { useLoopStore, fetchAvailableLoopSkills } from "../../stores/loopStore";
 import { LoopCommandChip } from "../../components/LoopInput";
@@ -1025,6 +1027,8 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isDark } = useTheme();
+  const { user } = useAuth();
+  const canManageModels = hasPermission(user, "system:manage");
   const loopSelectedSkill = useLoopStore((s) => s.selectedSkill);
 
   // Wide mode toggle: expand chat content to full available width
@@ -2626,7 +2630,7 @@ export default function ChatPage() {
             />
             <ChatHeaderTitle />
             <span style={{ flex: 1 }} />
-            <ModelSelector />
+            {canManageModels && <ModelSelector />}
             <ChatActionGroup
               onToggleHistory={
                 effectiveIsFullMode ? toggleHistoryPanel : undefined
@@ -2642,7 +2646,7 @@ export default function ChatPage() {
       welcome: {
         ...i18nConfig.welcome,
         nick: extNick ?? "MelonPaw-Company",
-        avatar: extAvatar ?? "/online.svg",
+        avatar: extAvatar ?? "/company-mark.svg",
         ...(extGreeting !== undefined ? { greeting: extGreeting } : {}),
         ...(extDescription !== undefined
           ? { description: extDescription }
@@ -2961,32 +2965,37 @@ export default function ChatPage() {
               {t("chat.rateLimitMessage")}
             </span>
             <div className={styles.rateLimitActions}>
-              {rateLimitAlternatives.slice(0, 3).map((alt) => (
-                <Button
-                  key={`${alt.provider_id}/${alt.model_id}`}
-                  size="small"
-                  type="default"
-                  onClick={async () => {
-                    try {
-                      await providerApi.setActiveLlm({
-                        provider_id: alt.provider_id,
-                        model: alt.model_id,
-                        scope: "agent",
-                        agent_id: selectedAgent,
-                      });
-                      window.dispatchEvent(new CustomEvent("model-switched"));
-                      message.success(
-                        t("chat.rateLimitSwitched", { model: alt.model_name }),
-                      );
-                      setRateLimitAlternatives([]);
-                    } catch {
-                      message.error(t("modelSelector.switchFailed"));
-                    }
-                  }}
-                >
-                  {alt.model_name}
-                </Button>
-              ))}
+              {canManageModels &&
+                rateLimitAlternatives.slice(0, 3).map((alt) => (
+                  <Button
+                    key={`${alt.provider_id}/${alt.model_id}`}
+                    size="small"
+                    type="default"
+                    onClick={async () => {
+                      try {
+                        await providerApi.setActiveLlm({
+                          provider_id: alt.provider_id,
+                          model: alt.model_id,
+                          scope: "agent",
+                          agent_id: selectedAgent,
+                        });
+                        window.dispatchEvent(
+                          new CustomEvent("model-switched"),
+                        );
+                        message.success(
+                          t("chat.rateLimitSwitched", {
+                            model: alt.model_name,
+                          }),
+                        );
+                        setRateLimitAlternatives([]);
+                      } catch {
+                        message.error(t("modelSelector.switchFailed"));
+                      }
+                    }}
+                  >
+                    {alt.model_name}
+                  </Button>
+                ))}
               <Button
                 size="small"
                 type="link"
@@ -3093,22 +3102,26 @@ export default function ChatPage() {
                 {t("modelConfig.promptMessage")}
               </span>
             }
-            extra={[
-              <Button key="skip" onClick={() => setShowModelPrompt(false)}>
-                {t("modelConfig.skipButton")}
-              </Button>,
-              <Button
-                key="configure"
-                type="primary"
-                icon={<SettingOutlined />}
-                onClick={() => {
-                  setShowModelPrompt(false);
-                  navigate("/models");
-                }}
-              >
-                {t("modelConfig.configureButton")}
-              </Button>,
-            ]}
+            extra={
+              <>
+                <Button key="skip" onClick={() => setShowModelPrompt(false)}>
+                  {t("modelConfig.skipButton")}
+                </Button>
+                {canManageModels && (
+                  <Button
+                    key="configure"
+                    type="primary"
+                    icon={<SettingOutlined />}
+                    onClick={() => {
+                      setShowModelPrompt(false);
+                      navigate("/models");
+                    }}
+                  >
+                    {t("modelConfig.configureButton")}
+                  </Button>
+                )}
+              </>
+            }
           />
         </Modal>
       </div>

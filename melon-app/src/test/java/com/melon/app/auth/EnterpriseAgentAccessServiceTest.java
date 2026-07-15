@@ -2,6 +2,7 @@ package com.melon.app.auth;
 
 import com.melon.app.service.SecuritySettingsService;
 import com.melon.app.service.SkillService;
+import com.melon.app.service.AuditLogService;
 import com.melon.core.agent.WorkspaceManager;
 import com.melon.core.config.ConfigManager;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class EnterpriseAgentAccessServiceTest {
 
@@ -59,7 +65,7 @@ class EnterpriseAgentAccessServiceTest {
                 "chat_with_agent", "submit_to_agent", "check_agent_task", "spawn_subagent")) {
             assertFalse(personalTools.containsKey(retired), "retired tool remains configurable: " + retired);
         }
-        assertFalse(configManager.getConfig().getAgent(firstAgent)
+        assertTrue(configManager.getConfig().getAgent(firstAgent)
                 .getTools().getBuiltinTools().get("execute_shell_command").isEnabled());
     }
 
@@ -88,6 +94,49 @@ class EnterpriseAgentAccessServiceTest {
                 () -> skillService.createSkill(personalAgent, "../outside", "# unsafe"));
         assertFalse(Files.exists(configManager.resolveWorkspaceDir(personalAgent)
                 .resolve("outside").resolve("SKILL.md")));
+    }
+
+    @Test
+    void operatorsCannotEnterAnotherUsersPersonalAgent() throws Exception {
+        EnterpriseIdentityStore store = new EnterpriseIdentityStore(tempDir.resolve("operator-scope.db"));
+        AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
+        EnterprisePrincipal systemAdministrator = auth.bootstrap(
+                "admin", "Administrator", "StrongPassword123");
+        EnterprisePrincipal operator = auth.createUser(
+                "operator", "Service Operator", "OperatorPassword123", true, Set.of("SERVICE_OPERATOR"));
+        EnterprisePrincipal employee = auth.createUser(
+                "employee", "Employee", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+
+        ConfigManager configManager = configManager();
+        AuditLogService auditLogService = mock(AuditLogService.class);
+        EnterpriseAgentAccessService access = new EnterpriseAgentAccessService(
+                store, configManager, new WorkspaceManager(), null, auditLogService);
+        String employeeAgent = access.ensurePersonalAgent(employee);
+        String operatorAgent = access.ensurePersonalAgent(operator);
+
+        assertThrows(SecurityException.class, () -> access.resolve(operator, employeeAgent));
+        assertFalse(access.canAccess(operator, employeeAgent));
+        assertTrue(access.canAccess(operator, operatorAgent));
+        assertTrue(access.canAccess(operator, "default"));
+        assertFalse(access.accessibleAgentIds(operator).contains(employeeAgent));
+        assertTrue(access.accessibleAgentIds(operator).contains(operatorAgent));
+        assertThrows(SecurityException.class,
+                () -> access.resolve(systemAdministrator, employeeAgent));
+        assertFalse(access.canAccess(systemAdministrator, employeeAgent));
+
+        EnterprisePrincipal breakGlassAdministrator = new EnterprisePrincipal(
+                systemAdministrator.id(),
+                systemAdministrator.username(),
+                systemAdministrator.displayName(),
+                systemAdministrator.enabled(),
+                systemAdministrator.roles(),
+                Set.of(EnterprisePermissions.DATA_BREAKGLASS),
+                systemAdministrator.createdAt(),
+                systemAdministrator.updatedAt());
+        assertEquals(employeeAgent, access.resolve(breakGlassAdministrator, employeeAgent));
+        assertTrue(access.canAccess(breakGlassAdministrator, employeeAgent));
+        verify(auditLogService).recordApproval(
+                anyString(), anyString(), anyString(), any(), anyBoolean(), anyString(), any());
     }
 
     private ConfigManager configManager() {

@@ -38,15 +38,14 @@ export function parseFrontmatter(
 const CHANNEL_OPTIONS = [
   { label: "all", value: "all" },
   { label: "console", value: "console" },
-  { label: "discord", value: "discord" },
-  { label: "telegram", value: "telegram" },
   { label: "dingtalk", value: "dingtalk" },
   { label: "feishu", value: "feishu" },
-  { label: "imessage", value: "imessage" },
   { label: "qq", value: "qq" },
-  { label: "mattermost", value: "mattermost" },
+  { label: "wechat", value: "wechat" },
   { label: "wecom", value: "wecom" },
-  { label: "mqtt", value: "mqtt" },
+  { label: "yuanbao", value: "yuanbao" },
+  { label: "xiaoyi", value: "xiaoyi" },
+  { label: "onebot", value: "onebot" },
 ];
 
 export const MAX_TAGS = 8;

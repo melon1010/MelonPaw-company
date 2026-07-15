@@ -20,16 +20,15 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { hasPermission } from "../../../auth/authorization";
 import styles from "./index.module.less";
 
-type FilterType = "all" | "builtin" | "custom";
-
 function ChannelsPage() {
   const { t } = useTranslation();
   const { message } = useAppMessage();
   const { user } = useAuth();
-  const canManageAccess = hasPermission(user, "agents:manage");
+  const canManageAccess =
+    hasPermission(user, "channels:personal") ||
+    hasPermission(user, "agents:manage");
   const { channels, orderedKeys, isBuiltin, loading, fetchChannels } =
     useChannels();
-  const [filter, setFilter] = useState<FilterType>("all");
   const [saving, setSaving] = useState(false);
   const [activeKey, setActiveKey] = useState<ChannelKey | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -64,9 +63,6 @@ function ChannelsPage() {
 
     orderedKeys.forEach((key) => {
       const config = channels[key] || { enabled: false, bot_prefix: "" };
-      const builtin = isBuiltin(key);
-      if (filter === "builtin" && !builtin) return;
-      if (filter === "custom" && builtin) return;
       if (config.enabled) {
         enabledCards.push({ key, config });
       } else {
@@ -75,7 +71,7 @@ function ChannelsPage() {
     });
 
     return { enabledCards, disabledCards };
-  }, [channels, orderedKeys, filter, isBuiltin]);
+  }, [channels, orderedKeys]);
 
   const handleCardClick = useCallback(
     (key: ChannelKey) => {
@@ -139,12 +135,6 @@ function ChannelsPage() {
 
   const activeLabel = activeKey ? getChannelLabel(activeKey, t) : "";
 
-  const FILTER_TABS: { key: FilterType; label: string }[] = [
-    { key: "all", label: t("channels.filterAll") },
-    { key: "builtin", label: t("channels.builtin") },
-    { key: "custom", label: t("channels.custom") },
-  ];
-
   return (
     <div className={styles.channelsPage}>
       <PageHeader
@@ -157,21 +147,6 @@ function ChannelsPage() {
           },
           { title: t("channels.title") },
         ]}
-        center={
-          <div className={styles.filterTabs}>
-            {FILTER_TABS.map(({ key, label }) => (
-              <button
-                key={key}
-                className={`${styles.filterTab} ${
-                  filter === key ? styles.filterTabActive : ""
-                }`}
-                onClick={() => setFilter(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        }
         extra={canManageAccess ? (
           <Space size={8}>
             <Badge dot={pendingCount > 0} offset={[-4, 4]}>

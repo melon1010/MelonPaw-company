@@ -81,4 +81,48 @@ class EnterpriseAuthServiceTest {
                 () -> service.updateUser(administrator.id(), null, false, null));
         assertFalse(service.login("admin", "incorrect-password").success());
     }
+
+    @Test
+    void separatesPersonalCapabilitiesFromOrganizationAdministration() {
+        Path database = tempDir.resolve("roles.db");
+        EnterpriseIdentityStore store = new EnterpriseIdentityStore(database);
+        AuthService service = new AuthService(store, Duration.ofHours(1), new SecureRandom());
+        service.bootstrap("admin", "Administrator", "StrongPassword123");
+
+        EnterprisePrincipal employee = service.createUser(
+                "employee", "Employee", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+        EnterprisePrincipal organizationAdministrator = service.createUser(
+                "org-admin", "Organization Administrator", "OrgAdminPassword123", true, Set.of("ORG_ADMIN"));
+
+        assertTrue(employee.permissions().containsAll(EnterprisePermissions.PERSONAL_CAPABILITIES));
+        assertTrue(organizationAdministrator.hasPermission("users:manage"));
+        assertTrue(organizationAdministrator.hasPermission("roles:manage"));
+        assertTrue(organizationAdministrator.hasPermission("projects:manage"));
+        assertTrue(organizationAdministrator.hasPermission("audit:read"));
+        assertFalse(organizationAdministrator.hasPermission("agents:use"));
+        assertFalse(organizationAdministrator.hasPermission("agents:manage"));
+        assertFalse(organizationAdministrator.hasPermission("system:manage"));
+        assertTrue(EnterprisePermissions.PERSONAL_CAPABILITIES.stream()
+                .noneMatch(organizationAdministrator::hasPermission));
+    }
+
+    @Test
+    void migratesLegacyAgentUseRolesToExplicitPersonalCapabilities() {
+        Path database = tempDir.resolve("legacy-role.db");
+        EnterpriseIdentityStore first = new EnterpriseIdentityStore(database);
+        first.saveCustomRole(
+                "LEGACY_AGENT_USER",
+                "Legacy Agent User",
+                "Role created before personal permissions were split",
+                Set.of("agents:use"));
+
+        EnterpriseIdentityStore migrated = new EnterpriseIdentityStore(database);
+        EnterpriseIdentityStore.RoleRecord role = migrated.listRoles().stream()
+                .filter(candidate -> "LEGACY_AGENT_USER".equals(candidate.code()))
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(role.permissions().contains("agents:use"));
+        assertTrue(role.permissions().containsAll(EnterprisePermissions.PERSONAL_CAPABILITIES));
+    }
 }

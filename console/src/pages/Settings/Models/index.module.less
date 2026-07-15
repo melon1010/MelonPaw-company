@@ -350,8 +350,8 @@
   font-size: 11px;
   font-weight: 500;
   background-color: rgba(255, 247, 230, 0.8);
-  color: #ff7f16;
-  border: 1px solid rgba(255, 127, 22, 0.2);
+  color: var(--mp-primary);
+  border: 1px solid color-mix(in srgb, var(--mp-primary) 20%, transparent);
 }
 
 .freeTag {
@@ -763,8 +763,8 @@
     box-shadow 0.2s ease;
 
   &:focus-within {
-    border-color: #ff7f16;
-    box-shadow: 0 0 0 2px rgba(97, 92, 237, 0.12);
+    border-color: var(--mp-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--mp-primary) 12%, transparent);
   }
 }
 
@@ -1554,7 +1554,7 @@
   align-items: stretch;
   gap: 10px;
   background: linear-gradient(180deg, #fffaf3 0%, #fffdf8 100%);
-  border-left: 3px solid rgba(255, 127, 22, 0.35);
+  border-left: 3px solid color-mix(in srgb, var(--mp-primary) 35%, transparent);
 }
 
 .customModelHeader {
@@ -1726,7 +1726,7 @@
   }
 
   :global(.ant-progress-inner) {
-    background: rgba(255, 127, 22, 0.14);
+    background: color-mix(in srgb, var(--mp-primary) 14%, transparent);
     border-radius: 999px;
   }
 
@@ -1896,7 +1896,7 @@
 
   .localRuntimeProgress {
     :global(.ant-progress-inner) {
-      background: rgba(255, 127, 22, 0.18);
+      background: color-mix(in srgb, var(--mp-primary) 18%, transparent);
     }
   }
 
@@ -1931,9 +1931,9 @@
   }
 
   .customTag {
-    background-color: rgba(255, 127, 22, 0.15);
-    color: #ff9d4d;
-    border-color: rgba(255, 127, 22, 0.25);
+    background-color: color-mix(in srgb, var(--mp-primary) 15%, transparent);
+    color: var(--mp-primary);
+    border-color: color-mix(in srgb, var(--mp-primary) 25%, transparent);
   }
 
   .freeTag {
@@ -2088,7 +2088,7 @@
     color: rgba(255, 255, 255, 0.65) !important;
 
     &:hover {
-      color: #ff7f16 !important;
+      color: var(--mp-primary) !important;
     }
   }
 
@@ -2228,7 +2228,7 @@
     background: #1a1a1a;
 
     &:focus-within {
-      border-color: #ff7f16;
+      border-color: var(--mp-primary);
     }
   }
 
@@ -2268,16 +2268,16 @@
   .customModelListItem {
     background: linear-gradient(
       180deg,
-      rgba(255, 127, 22, 0.1) 0%,
-      rgba(255, 127, 22, 0.04) 100%
+      color-mix(in srgb, var(--mp-primary) 10%, transparent) 0%,
+      color-mix(in srgb, var(--mp-primary) 4%, transparent) 100%
     );
-    border-left-color: rgba(255, 127, 22, 0.55);
+    border-left-color: color-mix(in srgb, var(--mp-primary) 55%, transparent);
 
     &:hover {
       background: linear-gradient(
         180deg,
-        rgba(255, 127, 22, 0.14) 0%,
-        rgba(255, 127, 22, 0.06) 100%
+        color-mix(in srgb, var(--mp-primary) 14%, transparent) 0%,
+        color-mix(in srgb, var(--mp-primary) 6%, transparent) 100%
       );
     }
   }

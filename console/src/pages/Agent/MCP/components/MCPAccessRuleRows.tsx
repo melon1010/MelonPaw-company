@@ -105,17 +105,10 @@ const CHANNEL_SOURCE_FALLBACK_LABELS: Record<string, string> = {
   feishu: "Feishu",
   wechat: "WeChat",
   wecom: "WeCom",
-  discord: "Discord",
-  telegram: "Telegram",
   qq: "QQ",
-  imessage: "iMessage",
-  mattermost: "Mattermost",
-  matrix: "Matrix",
   onebot: "OneBot",
-  mqtt: "MQTT",
-  voice: "Voice",
-  sip: "SIP",
   xiaoyi: "XiaoYi",
+  yuanbao: "Yuanbao",
 };
 
 function channelSourceOptions(

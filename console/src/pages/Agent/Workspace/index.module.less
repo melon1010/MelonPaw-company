@@ -372,7 +372,7 @@
   }
 
   &.selected {
-    border: 1px solid #ff7f16;
+    border: 1px solid var(--mp-primary);
   }
 }
 
@@ -412,13 +412,13 @@
   }
 
   &:hover {
-    color: #ff7f16;
+    color: var(--mp-primary);
   }
 }
 
 .dragging {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  border-color: #ff7f16 !important;
+  border-color: var(--mp-primary) !important;
 }
 
 .enabledBadge {
@@ -476,7 +476,7 @@
   }
 
   &.selected {
-    border: 1px solid #ff7f16;
+    border: 1px solid var(--mp-primary);
   }
 }
 
@@ -567,8 +567,8 @@
     }
 
     &.selected {
-      border-color: #ff7f16;
-      background-color: rgba(97, 92, 237, 0.15);
+      border-color: var(--mp-primary);
+      background-color: color-mix(in srgb, var(--mp-primary) 15%, transparent);
     }
   }
 
@@ -588,14 +588,14 @@
     color: rgba(255, 255, 255, 0.2);
 
     &:hover {
-      color: #ff7f16;
+      color: var(--mp-primary);
     }
   }
 
   .dragging {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    border-color: #ff7f16 !important;
-    background-color: rgba(97, 92, 237, 0.15) !important;
+    border-color: var(--mp-primary) !important;
+    background-color: color-mix(in srgb, var(--mp-primary) 15%, transparent) !important;
   }
 
   /* Daily memory items */
@@ -609,8 +609,8 @@
     }
 
     &.selected {
-      border-color: #ff7f16;
-      background-color: rgba(97, 92, 237, 0.15);
+      border-color: var(--mp-primary);
+      background-color: color-mix(in srgb, var(--mp-primary) 15%, transparent);
     }
   }
 

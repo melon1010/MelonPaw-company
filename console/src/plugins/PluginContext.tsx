@@ -9,13 +9,19 @@
  */
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { pluginSystem } from "./hostExternals";
-import { loadAllPlugins } from "./usePluginLoader";
-import type { PluginRouteDeclaration } from "./hostExternals";
+import { toolRenderRegistry } from "./toolRenderRegistry";
 import {
   routeRegistry,
   subscribe as registrySubscribe,
 } from "./registry/store";
+
+export interface PluginRouteDeclaration {
+  path: string;
+  component: React.ComponentType;
+  label: string;
+  icon?: string;
+  priority?: number;
+}
 
 /** Derive the legacy PluginRouteDeclaration[] shape from routeRegistry. */
 function derivePluginRoutes(): PluginRouteDeclaration[] {
@@ -50,7 +56,7 @@ export interface PluginContextValue {
 const PluginContext = createContext<PluginContextValue>({
   toolRenderConfig: {},
   pluginRoutes: [],
-  loading: true,
+  loading: false,
   error: null,
 });
 
@@ -66,30 +72,23 @@ const PluginContext = createContext<PluginContextValue>({
 export function PluginProvider({ children }: { children: React.ReactNode }) {
   const [toolRenderConfig, setToolRenderConfig] = useState<
     Record<string, React.FC<any>>
-  >(pluginSystem.getToolRenderConfig());
+  >(toolRenderRegistry.snapshot());
   const [pluginRoutes, setPluginRoutes] = useState<PluginRouteDeclaration[]>(
     derivePluginRoutes(),
   );
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Re-sync state whenever any plugin registers new capabilities — both
     // the legacy pluginSystem (toolRenderers) and the new registry
     // (routes via shim + direct route.add) notify on change.
-    const unsubA = pluginSystem.subscribe(() => {
-      setToolRenderConfig(pluginSystem.getToolRenderConfig());
+    const unsubA = toolRenderRegistry.subscribe(() => {
+      setToolRenderConfig(toolRenderRegistry.snapshot());
     });
     const unsubB = registrySubscribe(() => {
       setPluginRoutes(derivePluginRoutes());
     });
 
     // Load all installed plugins (non-fatal: one bad plugin won’t block others)
-    loadAllPlugins().then(({ failed }) => {
-      if (failed.length > 0) setError(failed.join("; "));
-      setLoading(false);
-    });
-
     return () => {
       unsubA();
       unsubB();
@@ -98,7 +97,7 @@ export function PluginProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <PluginContext.Provider
-      value={{ toolRenderConfig, pluginRoutes, loading, error }}
+      value={{ toolRenderConfig, pluginRoutes, loading: false, error: null }}
     >
       {children}
     </PluginContext.Provider>

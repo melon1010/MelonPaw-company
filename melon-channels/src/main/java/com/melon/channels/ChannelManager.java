@@ -121,16 +121,14 @@ public class ChannelManager {
     private boolean isGroup(Map<String, Object> meta) {
         if (meta == null || meta.isEmpty()) return false;
         if (booleanValue(meta.get("is_group"), false)) return true;
-        for (String key : List.of("group_id", "chatid", "wecom_chatid", "group_openid", "guild_id")) {
+        for (String key : List.of("group_id", "chatid", "wecom_chatid", "group_openid")) {
             if (!stringValue(meta.get(key)).isBlank()) return true;
         }
         String chatType = stringValue(meta.get("chat_type"),
                 stringValue(meta.get("wecom_chat_type"),
                         stringValue(meta.get("feishu_chat_type"),
                                 stringValue(meta.get("channel_type")))));
-        if ("group".equalsIgnoreCase(chatType) || "channel".equalsIgnoreCase(chatType)) return true;
-        String slackChannel = stringValue(meta.get("channel"), stringValue(meta.get("slack_channel_id")));
-        return !slackChannel.isBlank() && !slackChannel.startsWith("D");
+        return "group".equalsIgnoreCase(chatType) || "channel".equalsIgnoreCase(chatType);
     }
 
     private ChannelOutboundMessage denied(ChannelInboundMessage message, Map<String, Object> config, String reason) {

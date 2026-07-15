@@ -51,13 +51,14 @@ Web 请求进入 Agent 前，由 `AgentRunner` 创建 `RuntimeContext`：
 
 ## Workspace 与文件工具
 
-`MelonAgentFactory` 使用 Harness Workspace，并对本地文件系统应用以下约束：
+`MelonAgentFactory` 使用 Harness Workspace，并对生产文件系统应用以下约束：
 
-- `LocalFilesystemSpec.project` 指向当前授权工作区。
-- `projectWritable(true)` 允许 Agent 修改当前已隔离的用户或项目工作区；该 project 并非应用源码目录。
-- `LocalFsMode.SANDBOXED` 把文件操作锚定在该工作区。
-- `inheritEnv(false)` 避免把宿主进程环境直接传给工作区工具。
-- Harness Shell 工具保持关闭；项目保留的受控 Shell 工具继续经过企业工具开关和审批策略。
+- 使用官方 `DockerFilesystemSpec` 与 `IsolationScope.USER`，不在宿主机直接执行模型生成的命令。
+- 只把 `ConfigManager` 已校验位于受控根目录下、且不包含符号链接的当前 Agent 工作区，以读写 bind mount 映射到容器 `/workspace`。
+- 使用 Harness 官方文件工具和官方 `execute`；前端的 `execute_shell_command` 只是兼容展示名，不再对应自制 `ProcessBuilder` Shell 工具。
+- 容器丢弃 Linux capabilities、启用 `no-new-privileges`、限制进程数、CPU 和内存，并以镜像内非 root 用户运行。
+- 默认使用 Docker `bridge` 以支持技能脚本获取外部资料；企业可通过 `MELON_SANDBOX_NETWORK` 指向受限出口网络或设为 `none`。
+- 本地文件系统模式只允许显式设置 `MELON_EXECUTION_SANDBOX=local` 的开发环境使用，不能作为企业部署方式。
 
 `AGENTS.md` 与 `MEMORY.md` 由 Harness Workspace 管理。其他允许的单层上下文文件使用 `additionalContextFile` 注入，并拒绝绝对路径、父目录跳转和多层任意路径。
 

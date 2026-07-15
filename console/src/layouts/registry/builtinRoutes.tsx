@@ -2,65 +2,49 @@
  * builtinRoutes.ts — host's built-in routes as data.
  *
  * Importing self-registers all builtins into routeRegistry. MainLayout's
- * `useRoutes()` snapshot returns them. Plugin routes are registered via
- * `QwenPaw.route.add(...)` into the same registry and treated uniformly.
+ * `useRoutes()` snapshot returns them. Reviewed local extensions can register
+ * routes into the same registry and are treated uniformly.
  *
- * Lazy components use `lazyImportWithRetry` inline; Chat is passed as a
- * ComponentType directly. The `/` redirect is a
+ * Route components use `lazyWithRetry`. The `/` redirect is a
  * named route with a tiny DefaultRedirect component so routeRegistry has a
  * single uniform shape.
  *
  * Naming convention mirrors builtinMenu: `core.<key>`.
  */
-import { Suspense } from "react";
 import { Navigate } from "react-router-dom";
-import { lazyImportWithRetry } from "../../utils/lazyWithRetry";
+import { lazyWithRetry } from "../../utils/lazyWithRetry";
 import { routeRegistry } from "../../plugins/registry/store";
 import type { Route } from "../../plugins/registry/types";
 
-// Eager pages
-import Chat from "../../pages/Chat";
-
 // Lazy pages
-const ChannelsPage = lazyImportWithRetry("../../pages/Control/Channels");
-const SessionsPage = lazyImportWithRetry("../../pages/Control/Sessions");
-const InboxPage = lazyImportWithRetry("../../pages/Inbox");
-const CronJobsPage = lazyImportWithRetry("../../pages/Control/CronJobs");
-const HeartbeatPage = lazyImportWithRetry("../../pages/Control/Heartbeat");
-const AgentConfigPage = lazyImportWithRetry("../../pages/Agent/Config");
-const SkillsPage = lazyImportWithRetry("../../pages/Agent/Skills");
-const SkillPoolPage = lazyImportWithRetry("../../pages/Settings/SkillPool");
-const ToolsPage = lazyImportWithRetry("../../pages/Agent/Tools");
-const WorkspacePage = lazyImportWithRetry("../../pages/Agent/Workspace");
-const MCPPage = lazyImportWithRetry("../../pages/Agent/MCP");
-const ModelsPage = lazyImportWithRetry("../../pages/Settings/Models");
-const EnvironmentsPage = lazyImportWithRetry(
-  "../../pages/Settings/Environments",
-);
-const SecurityPage = lazyImportWithRetry("../../pages/Settings/Security");
-const TokenUsagePage = lazyImportWithRetry("../../pages/Settings/TokenUsage");
-const AgentStatsPage = lazyImportWithRetry("../../pages/Settings/AgentStats");
-const VoiceTranscriptionPage = lazyImportWithRetry(
-  "../../pages/Settings/VoiceTranscription",
-);
-const AgentsPage = lazyImportWithRetry("../../pages/Settings/Agents");
-const DebugPage = lazyImportWithRetry("../../pages/Settings/Debug");
-const BackupsPage = lazyImportWithRetry("../../pages/Settings/Backups");
-const PluginManagerPage = lazyImportWithRetry(
-  "../../pages/Settings/PluginManager",
-);
-const CompanyWorkbenchPage = lazyImportWithRetry(
-  "../../pages/Company/Workbench",
-);
-const ProjectSpacesPage = lazyImportWithRetry("../../pages/Company/Projects");
-const ProjectWorkspacePage = lazyImportWithRetry(
-  "../../pages/Company/ProjectWorkspace",
-);
-const EnterpriseMembersPage = lazyImportWithRetry(
-  "../../pages/Company/Members",
-);
-const TaskCenterPage = lazyImportWithRetry("../../pages/Company/TaskCenter");
-const TaskResultPage = lazyImportWithRetry("../../pages/Company/TaskResult");
+const Chat = lazyWithRetry(() => import("../../pages/Chat"));
+const ChannelsPage = lazyWithRetry(() => import("../../pages/Control/Channels"));
+const SessionsPage = lazyWithRetry(() => import("../../pages/Control/Sessions"));
+const InboxPage = lazyWithRetry(() => import("../../pages/Inbox"));
+const CronJobsPage = lazyWithRetry(() => import("../../pages/Control/CronJobs"));
+const HeartbeatPage = lazyWithRetry(() => import("../../pages/Control/Heartbeat"));
+const AgentConfigPage = lazyWithRetry(() => import("../../pages/Agent/Config"));
+const SkillsPage = lazyWithRetry(() => import("../../pages/Agent/Skills"));
+const SkillPoolPage = lazyWithRetry(() => import("../../pages/Settings/SkillPool"));
+const ToolsPage = lazyWithRetry(() => import("../../pages/Agent/Tools"));
+const WorkspacePage = lazyWithRetry(() => import("../../pages/Agent/Workspace"));
+const MCPPage = lazyWithRetry(() => import("../../pages/Agent/MCP"));
+const ModelsPage = lazyWithRetry(() => import("../../pages/Settings/Models"));
+const EnvironmentsPage = lazyWithRetry(() => import("../../pages/Settings/Environments"));
+const SecurityPage = lazyWithRetry(() => import("../../pages/Settings/Security"));
+const TokenUsagePage = lazyWithRetry(() => import("../../pages/Settings/TokenUsage"));
+const AgentStatsPage = lazyWithRetry(() => import("../../pages/Settings/AgentStats"));
+const VoiceTranscriptionPage = lazyWithRetry(() => import("../../pages/Settings/VoiceTranscription"));
+const AgentsPage = lazyWithRetry(() => import("../../pages/Settings/Agents"));
+const DebugPage = lazyWithRetry(() => import("../../pages/Settings/Debug"));
+const BackupsPage = lazyWithRetry(() => import("../../pages/Settings/Backups"));
+const PluginManagerPage = lazyWithRetry(() => import("../../pages/Settings/PluginManager"));
+const CompanyWorkbenchPage = lazyWithRetry(() => import("../../pages/Company/Workbench"));
+const ProjectSpacesPage = lazyWithRetry(() => import("../../pages/Company/Projects"));
+const ProjectWorkspacePage = lazyWithRetry(() => import("../../pages/Company/ProjectWorkspace"));
+const EnterpriseMembersPage = lazyWithRetry(() => import("../../pages/Company/Members"));
+const TaskCenterPage = lazyWithRetry(() => import("../../pages/Company/TaskCenter"));
+const TaskResultPage = lazyWithRetry(() => import("../../pages/Company/TaskResult"));
 
 /** The company workbench is the default authenticated landing page. */
 function DefaultRedirect() {
@@ -136,7 +120,3 @@ export const BUILTIN_ROUTES: Route[] = [
 ];
 
 routeRegistry.addBuiltin(BUILTIN_ROUTES);
-
-// Suspense imported above is used by lazyImportWithRetry consumers; ref keeps
-// TS from tree-shaking the import in older bundler configs.
-void Suspense;

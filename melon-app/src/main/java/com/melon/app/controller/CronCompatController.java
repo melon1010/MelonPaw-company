@@ -1,5 +1,7 @@
 package com.melon.app.controller;
 
+import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.auth.EnterpriseIdentityStore;
 import com.melon.app.cron.CronExecutor;
 import com.melon.app.cron.CronManager;
 import com.melon.app.service.InboxStore;
@@ -9,6 +11,7 @@ import com.melon.core.cron.CronJobStore;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -31,17 +34,20 @@ public class CronCompatController {
     private final CronExecutor cronExecutor;
     private final ChannelConfigService channelConfigService;
     private final InboxStore inboxStore;
+    private final EnterpriseIdentityStore identityStore;
 
     public CronCompatController(ConfigManager configManager,
                                 CronManager cronManager,
-                                CronExecutor cronExecutor,
-                                ChannelConfigService channelConfigService,
-                                InboxStore inboxStore) {
+                                 CronExecutor cronExecutor,
+                                 ChannelConfigService channelConfigService,
+                                 InboxStore inboxStore,
+                                 EnterpriseIdentityStore identityStore) {
         this.configManager = configManager;
         this.cronManager = cronManager;
         this.cronExecutor = cronExecutor;
         this.channelConfigService = channelConfigService;
         this.inboxStore = inboxStore;
+        this.identityStore = identityStore;
     }
 
     @GetMapping("/jobs")
@@ -55,10 +61,13 @@ public class CronCompatController {
 
     @PostMapping("/jobs")
     public Mono<ResponseEntity<?>> createJob(@RequestBody Map<String, Object> body,
-                                             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
+                                             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
+                                             @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
             List<Map<String, Object>> jobs = loadJobs(agentId);
             Map<String, Object> job = CronJobStore.normalize(body, UUID.randomUUID().toString());
+            job.put("agent_id", AgentRequestSupport.agentId(agentId));
+            stampOwner(job, principal);
             jobs.add(job);
             saveJobs(agentId, jobs);
             syncScheduledJob(agentId, job, true);
@@ -83,13 +92,17 @@ public class CronCompatController {
 
     @PutMapping("/jobs/{id}")
     public Mono<ResponseEntity<?>> replaceJob(@PathVariable String id, @RequestBody Map<String, Object> body,
-                                              @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
+                                               @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
+                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
             List<Map<String, Object>> jobs = loadJobs(agentId);
             for (int i = 0; i < jobs.size(); i++) {
                 if (CronJobStore.matches(jobs.get(i), id)) {
                     Map<String, Object> updated = CronJobStore.normalize(body, id);
+                    updated.put("agent_id", AgentRequestSupport.agentId(agentId));
                     updated.put("created_at", jobs.get(i).get("created_at"));
+                    updated.put("owner_user_id", ownerOf(jobs.get(i), principal));
+                    normalizeDispatchOwner(updated, ownerOf(jobs.get(i), principal));
                     jobs.set(i, updated);
                     saveJobs(agentId, jobs);
                     syncScheduledJob(agentId, updated, true);
@@ -282,7 +295,7 @@ public class CronCompatController {
         cronJob.setId(runtimeId(agentId, String.valueOf(job.get("id"))));
         cronJob.setSourceId(String.valueOf(job.get("id")));
         cronJob.setName(stringValue(job.get("name"), "Cron job"));
-        cronJob.setAgentId(AgentRequestSupport.agentId(stringValue(job.get("agent_id"), agentId)));
+        cronJob.setAgentId(AgentRequestSupport.agentId(agentId));
         cronJob.setMessage(promptValue(job));
         cronJob.setEnabled(booleanValue(job.getOrDefault("enabled", true), true));
         cronJob.setSaveResultToInbox(booleanValue(job.getOrDefault("save_result_to_inbox", true), true));
@@ -309,9 +322,59 @@ public class CronCompatController {
         if (raw instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();
             map.forEach((key, value) -> copy.put(String.valueOf(key), value));
+            Map<String, Object> meta = mapCopy(copy.get("meta"));
+            meta.put("execution_user_id", ownerOf(job, null));
+            copy.put("meta", meta);
             return copy;
         }
-        return Map.of("type", "channel", "channel", "console", "target", Map.of("user_id", "default", "session_id", "cron_job"), "mode", "final", "meta", Map.of());
+        String owner = ownerOf(job, null);
+        return Map.of("type", "channel", "channel", "console",
+                "target", Map.of("user_id", owner, "session_id", "cron_job"),
+                "mode", "final", "meta", Map.of("execution_user_id", owner));
+    }
+
+    private void stampOwner(Map<String, Object> job, EnterprisePrincipal principal) {
+        String owner = principal != null && principal.id() != null && !principal.id().isBlank()
+                ? principal.id() : "default";
+        job.put("owner_user_id", owner);
+        normalizeDispatchOwner(job, owner);
+    }
+
+    private String ownerOf(Map<String, Object> job, EnterprisePrincipal fallback) {
+        String owner = stringValue(job.get("owner_user_id"), "");
+        if (!owner.isBlank()) return owner;
+        return fallback != null && fallback.id() != null && !fallback.id().isBlank()
+                ? fallback.id() : "default";
+    }
+
+    private void normalizeDispatchOwner(Map<String, Object> job, String owner) {
+        Object raw = job.get("dispatch");
+        Map<String, Object> dispatch = raw instanceof Map<?, ?> map ? mapCopy(map) : new LinkedHashMap<>();
+        if (dispatch.isEmpty()) {
+            dispatch.put("type", "channel");
+            dispatch.put("channel", "console");
+            dispatch.put("mode", "final");
+        }
+        Map<String, Object> target = mapCopy(dispatch.get("target"));
+        if ("console".equalsIgnoreCase(stringValue(dispatch.get("channel"), "console"))) {
+            target.put("user_id", owner);
+        } else {
+            target.putIfAbsent("user_id", owner);
+        }
+        target.putIfAbsent("session_id", "cron_job");
+        dispatch.put("target", target);
+        Map<String, Object> meta = mapCopy(dispatch.get("meta"));
+        meta.put("execution_user_id", owner);
+        dispatch.put("meta", meta);
+        job.put("dispatch", dispatch);
+    }
+
+    private Map<String, Object> mapCopy(Object raw) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (raw instanceof Map<?, ?> map) {
+            map.forEach((key, value) -> result.put(String.valueOf(key), value));
+        }
+        return result;
     }
 
     private String normalizeCronExpression(String cron) {
@@ -425,7 +488,20 @@ public class CronCompatController {
     }
 
     private List<Map<String, Object>> loadJobs(String agentId) {
-        return CronJobStore.load(workspaceDir(agentId));
+        String effectiveAgent = AgentRequestSupport.agentId(agentId);
+        List<Map<String, Object>> jobs = CronJobStore.load(workspaceDir(effectiveAgent));
+        String boundOwner = identityStore.findAgentBinding(effectiveAgent)
+                .map(EnterpriseIdentityStore.AgentBindingRecord::ownerUserId)
+                .filter(value -> value != null && !value.isBlank())
+                .orElse("");
+        for (Map<String, Object> job : jobs) {
+            job.put("agent_id", effectiveAgent);
+            if (!boundOwner.isBlank()) {
+                job.put("owner_user_id", boundOwner);
+                normalizeDispatchOwner(job, boundOwner);
+            }
+        }
+        return jobs;
     }
 
     private void saveJobs(String agentId, List<Map<String, Object>> jobs) {
@@ -437,7 +513,10 @@ public class CronCompatController {
     }
 
     private Map<String, Object> findJob(String agentId, String id) {
-        return CronJobStore.find(workspaceDir(agentId), id);
+        return loadJobs(agentId).stream()
+                .filter(job -> CronJobStore.matches(job, id))
+                .findFirst()
+                .orElse(null);
     }
 
     private void appendManualInboxEvent(String agentId, Map<String, Object> job, String runId, String text, Throwable err) {

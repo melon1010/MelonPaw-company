@@ -99,7 +99,7 @@
     width: min(330px, 85vw);
     z-index: 1000;
     box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
-    border-radius: 12px 0 0 12px;
+    border-radius: 6px 0 0 6px;
   }
   .historyPanelMask {
     position: fixed;
@@ -126,7 +126,7 @@
 .suggestionCommand {
   flex: 0 0 88px;
   min-width: 0;
-  color: #ff7f16;
+  color: var(--mp-primary);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -163,7 +163,7 @@
 
 :global(.dark-mode) {
   .suggestionCommand {
-    color: #ff7f16;
+    color: var(--mp-primary);
   }
 
   .suggestionDescription {
@@ -176,7 +176,7 @@
   .chat-anywhere-prompt-icon,
   [class*="prompt-icon"],
   [class*="PromptIcon"] {
-    color: #ff7f16 !important;
+    color: var(--mp-primary) !important;
   }
 }
 

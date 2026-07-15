@@ -13,6 +13,48 @@
   margin-bottom: 12px;
 }
 
+.agentSelectorHeader {
+  width: 210px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+
+  .agentSelector {
+    width: 100%;
+
+    :global {
+      .qwenpaw-select-selector,
+      .ant-select-selector {
+        height: 36px !important;
+        padding: 0 11px !important;
+        background: var(--mp-surface-subtle) !important;
+        border: 1px solid var(--mp-border) !important;
+        border-radius: 6px !important;
+      }
+
+      .qwenpaw-select-selection-item,
+      .ant-select-selection-item {
+        line-height: 34px !important;
+      }
+
+      .qwenpaw-select-arrow,
+      .ant-select-arrow {
+        right: 10px;
+        color: var(--mp-text-tertiary);
+      }
+    }
+
+    &:hover :global(.qwenpaw-select-selector),
+    &:hover :global(.ant-select-selector) {
+      background: var(--mp-surface) !important;
+      border-color: var(--mp-primary) !important;
+    }
+  }
+}
+
 // ─── Collapsed (icon only) ────────────────────────────────────────────────────
 .agentSelectorCollapsed {
   width: 40px;
@@ -20,7 +62,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(43, 18, 0, 0.04);
+  background: color-mix(in srgb, var(--mp-primary) 4%, transparent);
   border: 1px solid rgba(26, 23, 22, 0.08);
   border-radius: 8px;
   color: #f07e26;
@@ -29,7 +71,7 @@
   transition: all 0.2s ease;
 
   &:hover {
-    background: rgba(43, 18, 0, 0.08);
+    background: color-mix(in srgb, var(--mp-primary) 8%, transparent);
     border-color: rgba(240, 126, 38, 0.3);
   }
 }
@@ -63,7 +105,7 @@
   gap: 2px;
   font-size: 12px;
   font-weight: 500;
-  color: #f07e26;
+  color: var(--mp-primary);
   background: none;
   border: none;
   padding: 0;
@@ -72,7 +114,7 @@
   flex-shrink: 0;
 
   &:hover {
-    color: #d96c18;
+    color: var(--mp-primary-hover);
   }
 }
 
@@ -134,11 +176,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: rgba(0, 0, 0, 0.85);
+  color: var(--mp-text);
 
   svg {
     flex-shrink: 0;
-    color: #f07e26;
+    color: var(--mp-primary);
     opacity: 0.85;
   }
 
@@ -169,15 +211,11 @@
 
 // ─── Dropdown ─────────────────────────────────────────────────────────────────
 .agentSelectorDropdown {
-  border-radius: 12px !important;
+  border-radius: 8px !important;
   overflow: hidden;
-  min-width: 242px !important;
-  left: 15px !important;
-  top: 140px !important;
-  border: 1px solid rgba(26, 23, 22, 0.06) !important;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.12),
-    0 2px 8px rgba(0, 0, 0, 0.06) !important;
+  min-width: 280px !important;
+  border: 1px solid var(--mp-border) !important;
+  box-shadow: var(--mp-shadow-popover) !important;
   :global {
     .qwenpaw-select-item {
       padding: 0 !important;
@@ -186,17 +224,17 @@
       transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 
       &:hover {
-        background: rgba(43, 18, 0, 0.06) !important;
+        background: var(--mp-primary-soft) !important;
       }
 
       &.qwenpaw-select-item-option-selected {
-        background: rgba(43, 18, 0, 0.06) !important;
+        background: var(--mp-primary-soft) !important;
 
         .agentOptionIcon {
-          background: linear-gradient(135deg, #f07e26 0%, #f5a05a 100%);
+          background: var(--mp-primary);
           border-color: transparent;
           color: #ffffff;
-          box-shadow: 0 2px 8px rgba(240, 126, 38, 0.4);
+          box-shadow: none;
         }
       }
     }
@@ -208,17 +246,17 @@
       transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 
       &:hover {
-        background: rgba(43, 18, 0, 0.06) !important;
+        background: var(--mp-primary-soft) !important;
       }
 
       &.ant-select-item-option-selected {
-        background: rgba(43, 18, 0, 0.06) !important;
+        background: var(--mp-primary-soft) !important;
 
         .agentOptionIcon {
-          background: linear-gradient(135deg, #f07e26 0%, #f5a05a 100%);
+          background: var(--mp-primary);
           border-color: transparent;
           color: #ffffff;
-          box-shadow: 0 2px 8px rgba(240, 126, 38, 0.4);
+          box-shadow: none;
         }
       }
     }
@@ -250,17 +288,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #fff8f2 0%, #fff0e5 100%);
-  border: 1px solid rgba(240, 126, 38, 0.15);
+  background: var(--mp-primary-soft);
+  border: 1px solid color-mix(in srgb, var(--mp-primary) 22%, var(--mp-border));
   border-radius: 8px;
-  color: #f07e26;
+  color: var(--mp-primary);
   transition: all 0.2s ease;
 
   .agentOption:hover & {
-    background: linear-gradient(135deg, #ffe9d4 0%, #fff0e5 100%);
-    border-color: rgba(240, 126, 38, 0.3);
-    color: #f07e26;
-    box-shadow: 0 2px 6px rgba(240, 126, 38, 0.15);
+    background: color-mix(in srgb, var(--mp-primary) 16%, var(--mp-surface));
+    border-color: var(--mp-primary);
+    color: var(--mp-primary);
+    box-shadow: none;
   }
 }
 
@@ -279,7 +317,7 @@
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--mp-text);
   line-height: 1.4;
 
   .agentOptionNameText {
@@ -292,7 +330,7 @@
 
 .activeIndicator {
   flex-shrink: 0;
-  color: #f07e26;
+  color: var(--mp-primary);
   animation: fadeIn 0.3s ease;
 }
 
@@ -319,10 +357,10 @@
 .agentOptionId {
   font-size: 10px;
   font-family: "SF Mono", "Consolas", "Monaco", monospace;
-  color: rgba(240, 126, 38, 0.45);
+  color: var(--mp-text-tertiary);
   letter-spacing: 0.3px;
   padding-top: 4px;
-  border-top: 1px solid rgba(240, 126, 38, 0.08);
+  border-top: 1px solid var(--mp-border);
 }
 
 // ─── Dark mode overrides ───────────────────────────────────────────────────────
@@ -468,5 +506,18 @@
   .agentOptionId {
     color: rgba(245, 160, 90, 0.5);
     border-top-color: rgba(245, 160, 90, 0.12);
+  }
+}
+
+@media (max-width: 768px) {
+  .agentSelectorHeader {
+    width: min(150px, 42vw);
+
+    .selectedAgentLabel span {
+      max-width: 92px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
 }

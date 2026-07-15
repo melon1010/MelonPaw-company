@@ -1,20 +1,10 @@
-import { Layout, Menu, Button, Tooltip, Badge, Popover } from "antd";
+import { Layout, Menu, Tooltip, Badge } from "antd";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import AgentSelector from "../components/AgentSelector";
-import {
-  SparkExitFullscreenLine,
-  SparkMenuExpandLine,
-  SparkMenuFoldLine,
-  SparkEmailLine,
-  SparkSettingLine,
-} from "@agentscope-ai/icons";
+import { SparkEmailLine } from "@agentscope-ai/icons";
 import { MessageSquareText } from "lucide-react";
 import SidebarSessionList from "./SidebarSessionList";
-import SidebarSettingsPanel from "./SidebarSettingsPanel";
-import { clearAuthToken } from "../api/config";
-import { authApi } from "../api/modules/auth";
 import api from "../api";
 import {
   syncSessionsGlobal,
@@ -27,9 +17,9 @@ import styles from "./index.module.less";
 import { useTheme } from "../contexts/ThemeContext";
 import { useAuth } from "../contexts/AuthContext";
 import {
+  canAccessRoute,
   filterMenuForUser,
   hasPermission,
-  primaryRole,
 } from "../auth/authorization";
 import { useMenuItems, useRoutes } from "../plugins/registry/hooks";
 import { Slot } from "../plugins/registry/Slot";
@@ -103,23 +93,23 @@ function flattenMenuForSimpleMode(items: MenuItem[]): MenuItem[] {
 interface SidebarProps {
   /** Route id of the currently active page (e.g. "core.workspace"). */
   selectedKey: string;
+  collapsed: boolean;
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 
-export default function Sidebar({ selectedKey }: SidebarProps) {
+export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
   const { isDark } = useTheme();
-  const { user, status: authStatus, clearSession } = useAuth();
-  const canManageAgents = hasPermission(user, "agents:manage");
+  const { user } = useAuth();
+  const canUseAgents = hasPermission(user, "agents:use");
+  const canUseInbox = canAccessRoute("core.inbox", user);
   const currentSessionId = getSessionIdFromPath(location.pathname);
   const chatPath = buildSessionPath(currentSessionId);
   // Start collapsed on mobile so the first paint does not overlay/obscure
   // the main content on narrow viewports.
-  const [collapsed, setCollapsed] = useState(isMobileSidebarViewport);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(isMobileSidebarViewport);
   const [hasInboxUnread, setHasInboxUnread] = useState(false);
 
@@ -191,9 +181,6 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
     const mediaQuery = window.matchMedia(MOBILE_SIDEBAR_QUERY);
     const syncMobileSidebar = () => {
       setIsMobile(mediaQuery.matches);
-      // Collapse on mobile to avoid covering the main content; expand again
-      // when the viewport returns to desktop width.
-      setCollapsed(mediaQuery.matches);
     };
 
     syncMobileSidebar();
@@ -204,6 +191,10 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
     };
   }, []);
   useEffect(() => {
+    if (!canUseInbox) {
+      setHasInboxUnread(false);
+      return;
+    }
     const loadUnreadState = async () => {
       try {
         const [inboxRes, pushRes] = await Promise.all([
@@ -226,7 +217,7 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
       void loadUnreadState();
     }, INBOX_BADGE_POLLING_MS);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [canUseInbox]);
 
   // ── Pre-fetch sessions on mount ───────────────────────────────────────────
   // On mobile the sidebar starts collapsed so SidebarSessionList is unmounted
@@ -239,6 +230,7 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
   // the same data processing pipeline (dedup, realId, generating state) as
   // the desktop ChatSessionDrawer.
   useEffect(() => {
+    if (!canUseAgents) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -253,7 +245,7 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canUseAgents]);
 
   // ── Adapter: convert MenuItem trees to antd, with inbox badge decoration.
 
@@ -261,7 +253,7 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
   const decorateLabel = (item: MenuItem, label: ReactNode): ReactNode => {
     if (item.id !== "core.inbox" || label == null) return label;
     return (
-      <Badge dot={hasInboxUnread} color="rgba(255, 157, 77, 1)" offset={[5, 7]}>
+      <Badge dot={hasInboxUnread} color="var(--mp-accent)" offset={[5, 7]}>
         <span>{label}</span>
       </Badge>
     );
@@ -306,14 +298,14 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
               width: 6,
               height: 6,
               borderRadius: "50%",
-              background: "rgba(255, 157, 77, 1)",
+              background: "var(--mp-accent)",
             }}
           />
         )}
       </span>
     );
     const flat = [
-      stickyChat,
+      ...(canUseAgents ? [stickyChat] : []),
       ...flattenMenu(agentMenu, routes, 18),
       ...flattenMenu(settingsMenu, routes, 18),
     ];
@@ -322,7 +314,7 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
         ? { ...entry, icon: decorateInboxIcon(entry.icon) }
         : entry,
     );
-  }, [agentMenu, settingsMenu, routes, chatPath, t, hasInboxUnread]);
+  }, [agentMenu, settingsMenu, routes, chatPath, t, hasInboxUnread, canUseAgents]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -367,7 +359,7 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const siderWidth = collapsed ? (isMobile ? 56 : 72) : 240;
+  const siderWidth = collapsed ? (isMobile ? 56 : 68) : 252;
   const isChatActive = selectedKey === "core.chat";
   // `renderIcon` retained for tree-shaking awareness.
   void renderIcon;
@@ -425,11 +417,6 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
         <>
           {/* Simple mode: flat nav items + session list */}
           <div className={styles.agentScopedSection}>
-            {canManageAgents && (
-              <div className={styles.agentSelectorContainer}>
-                <AgentSelector collapsed={collapsed} />
-              </div>
-            )}
             {/* Flat nav items (no groups) */}
             <div className={styles.simpleNavItems}>
               {simpleFlatNav.map((entry) => {
@@ -468,7 +455,7 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
                               width: 6,
                               height: 6,
                               borderRadius: "50%",
-                              background: "rgba(255, 157, 77, 1)",
+                              background: "var(--mp-accent)",
                             }}
                           />
                         )}
@@ -484,28 +471,30 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
           </div>
 
           {/* Session list — fills remaining space */}
-          <SidebarSessionList
-            onNewChat={handleNewChat}
-            onSessionClick={handleSidebarSessionClick}
-          />
+          {canUseAgents && (
+            <SidebarSessionList
+              onNewChat={handleNewChat}
+              onSessionClick={handleSidebarSessionClick}
+            />
+          )}
         </>
       ) : (
         <>
           {/* Agent-scoped section: selector + Chat + Control + Workspace */}
           <div className={styles.agentScopedSection}>
-            <div className={styles.agentSelectorContainer}>
-              {canManageAgents && <AgentSelector collapsed={collapsed} />}
-              {/* Chat entry — sticky together with agent selector */}
-              <button
-                className={`${styles.stickyChatButton}${
-                  isChatActive ? ` ${styles.stickyChatButtonActive}` : ""
-                }`}
-                onClick={() => navigate(chatPath)}
-              >
-                <MessageSquareText size={16} />
-                <span>{t("nav.chat")}</span>
-              </button>
-            </div>
+            {canUseAgents && (
+              <div className={styles.agentSelectorContainer}>
+                <button
+                  className={`${styles.stickyChatButton}${
+                    isChatActive ? ` ${styles.stickyChatButtonActive}` : ""
+                  }`}
+                  onClick={() => navigate(chatPath)}
+                >
+                  <MessageSquareText size={16} />
+                  <span>{t("nav.chat")}</span>
+                </button>
+              </div>
+            )}
             <Slot name="sider.top" kind="fill" />
             <Menu
               mode="inline"
@@ -532,70 +521,6 @@ export default function Sidebar({ selectedKey }: SidebarProps) {
         </>
       )}
 
-      {user && !collapsed && (
-        <div className={styles.authActions}>
-          <div className={styles.identitySummary}>
-            <div className={styles.identityAvatar}>
-              {(user.display_name || user.username).slice(0, 1).toUpperCase()}
-            </div>
-            <div className={styles.identityText}>
-              <span className={styles.identityName}>
-                {user.display_name || user.username}
-              </span>
-              <span className={styles.identityRole}>{primaryRole(user)}</span>
-            </div>
-            {authStatus?.enabled && (
-              <Tooltip title={t("login.logout")}>
-                <Button
-                  type="text"
-                  aria-label={t("login.logout")}
-                  icon={<SparkExitFullscreenLine size={16} />}
-                  onClick={() => {
-                    void authApi.logout().finally(() => {
-                      clearAuthToken();
-                      clearSession();
-                      window.location.href = "/login";
-                    });
-                  }}
-                  className={styles.identityLogout}
-                />
-              </Tooltip>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className={styles.collapseToggleContainer}>
-        {!collapsed && (
-          <Popover
-            open={settingsOpen}
-            onOpenChange={setSettingsOpen}
-            placement="topRight"
-            trigger="click"
-            content={
-              <SidebarSettingsPanel onClose={() => setSettingsOpen(false)} />
-            }
-          >
-            <Button
-              type="text"
-              icon={<SparkSettingLine size={18} />}
-              className={styles.collapseToggle}
-            />
-          </Popover>
-        )}
-        <Button
-          type="text"
-          icon={
-            collapsed ? (
-              <SparkMenuExpandLine size={20} />
-            ) : (
-              <SparkMenuFoldLine size={20} />
-            )
-          }
-          onClick={() => setCollapsed(!collapsed)}
-          className={styles.collapseToggle}
-        />
-      </div>
     </Sider>
   );
 }

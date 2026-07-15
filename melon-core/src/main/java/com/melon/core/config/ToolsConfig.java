@@ -26,13 +26,12 @@ public class ToolsConfig {
      */
     private static Map<String, BuiltinToolConfig> defaultBuiltinTools() {
         Map<String, BuiltinToolConfig> m = new LinkedHashMap<>();
-        put(m, "execute_shell_command", true, "Execute shell commands", "💻");
+        put(m, "execute_shell_command", true, "Execute commands in the AgentScope sandbox", "shell");
         put(m, "read_file", true, "Read file contents", "📄");
         put(m, "write_file", true, "Write content to file", "✍️");
         put(m, "edit_file", true, "Edit file using find-and-replace", "🖊️");
         put(m, "grep_search", true, "Search file contents by pattern", "🔍");
         put(m, "glob_search", true, "Find files matching a glob pattern", "📁");
-        put(m, "browser_use", true, "Browser automation and web interaction", "🌐");
         put(m, "view_image", true, "Load an image into LLM context for visual analysis", false, "🖼️");
         put(m, "view_video", true, "Load a video into LLM context for visual analysis", false, "🎥");
         put(m, "send_file_to_user", true, "Send files to user", "📤");

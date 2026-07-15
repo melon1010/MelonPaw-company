@@ -16,7 +16,8 @@ import com.melon.core.config.ConfigManager;
 import com.melon.core.agent.CommandHandler;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.util.SafePathUtil;
-import com.melon.tools.shell.ExecuteShellCommandTool;
+import com.melon.core.util.WorkspacePathResolver;
+import com.melon.core.util.OutboundNetworkPolicy;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.UserMessage;
 import io.agentscope.harness.agent.HarnessAgent;
@@ -45,6 +46,8 @@ import java.util.Map;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 import java.util.UUID;
+import static com.melon.app.auth.EnterprisePermissions.AGENTS_MANAGE;
+import static com.melon.app.auth.EnterprisePermissions.APPROVALS_DECIDE;
 
 /**
  * melonPaw console-compatible endpoints used by the existing frontend.
@@ -173,8 +176,9 @@ public class ConsoleCompatController {
             return Mono.just(ResponseEntity.status(404).body(Map.of("detail", "Owned chat not found")));
         }
         String chatSessionId = stringValue(chat.getSessionId(), "default");
-        String sessionId = stringValue(payload.get("session_id"),
-                stringValue(sessionIdParam, chatSessionId));
+        // A stop request is always scoped to the owned chat. Never let a caller
+        // replace the session id after ownership has been established.
+        String sessionId = chatSessionId;
 
         boolean interrupted = false;
         String detail = "";
@@ -200,33 +204,42 @@ public class ConsoleCompatController {
             )));
         }
 
-        boolean approvalCancelled = approvalService.cancelPendingApproval(effectiveAgentId, sessionId);
+        boolean executionCancelled = agentRunner.cancel(effectiveAgentId, userId, sessionId);
+
+        boolean approvalCancelled = approvalService.cancelPendingApproval(effectiveAgentId, sessionId, userId);
         boolean planCancelled = approvalService.cancelPendingPlan(effectiveAgentId, sessionId);
-        int shellCancelled = ExecuteShellCommandTool.cancelSession(sessionId);
+        int shellCancelled = 0;
         if (!chatId.isBlank()) {
             chatManager.setStatus(effectiveAgentId, chatId, "idle");
         }
-        return Mono.just(ResponseEntity.ok(Map.of(
-                "stopped", true,
-                "interrupted", interrupted,
-                "approval_cancelled", approvalCancelled,
-                "plan_cancelled", planCancelled,
-                "shell_cancelled", shellCancelled,
-                "chat_id", chatId,
-                "agent_id", effectiveAgentId,
-                "session_id", sessionId,
-                "user_id", userId,
-                "detail", detail
-        )));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("stopped", true);
+        result.put("interrupted", interrupted);
+        result.put("execution_cancelled", executionCancelled);
+        result.put("approval_cancelled", approvalCancelled);
+        result.put("plan_cancelled", planCancelled);
+        result.put("shell_cancelled", shellCancelled);
+        result.put("chat_id", chatId);
+        result.put("agent_id", effectiveAgentId);
+        result.put("session_id", sessionId);
+        result.put("user_id", userId);
+        result.put("detail", detail);
+        return Mono.just(ResponseEntity.ok(result));
     }
 
     @GetMapping("/push-messages")
     public Mono<ResponseEntity<?>> pushMessages(
             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
-            @RequestParam(value = "session_id", required = false) String sessionId) {
+            @RequestParam(value = "session_id", required = false) String sessionId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        boolean elevated = principal.hasAnyPermission(APPROVALS_DECIDE, AGENTS_MANAGE);
         List<Map<String, Object>> pending = sessionId != null
-                ? optionalList(approvalService.getPendingApproval(agentId, sessionId))
-                : approvalService.getPendingApprovals(agentId);
+                ? optionalList(elevated
+                    ? approvalService.getPendingApproval(agentId, sessionId)
+                    : approvalService.getPendingApproval(agentId, sessionId, principal.id()))
+                : (elevated
+                    ? approvalService.getPendingApprovals(agentId)
+                    : approvalService.getPendingApprovals(agentId, principal.id()));
         return Mono.just(ResponseEntity.ok(Map.of(
                 "messages", List.of(),
                 "pending_approvals", pending
@@ -368,7 +381,7 @@ public class ConsoleCompatController {
             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
         String original = file.filename() != null ? file.filename() : "upload.bin";
         String stored = UUID.randomUUID().toString().replace("-", "") + "_" + safeFileName(original);
-        Path mediaDir = configManager.resolveWorkspaceDir(agentId).resolve("media");
+        Path mediaDir = SafePathUtil.resolveSafe(configManager.resolveWorkspaceDir(agentId), "media");
         Path target = SafePathUtil.resolveSafe(mediaDir, stored);
         return Mono.fromCallable(() -> {
                     Files.createDirectories(mediaDir);
@@ -601,8 +614,8 @@ public class ConsoleCompatController {
 
     private String readWorkspaceMarkdown(String agentId, String fileName, String fallback) {
         try {
-            Path file = configManager.resolveWorkspaceDir(agentId).resolve(fileName);
-            if (Files.isRegularFile(file)) {
+            Path file = SafePathUtil.resolveSafe(configManager.resolveWorkspaceDir(agentId), fileName);
+            if (Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
                 String content = Files.readString(file).trim();
                 if (!content.isBlank()) return content;
             }
@@ -653,13 +666,26 @@ public class ConsoleCompatController {
     }
 
     private String toFileUrl(String agentId, String value) {
-        if (value == null || value.isBlank() || value.startsWith("file://") || value.startsWith("http://")
-                || value.startsWith("https://") || value.startsWith("data:")) {
+        if (value == null || value.isBlank() || value.startsWith("data:")) {
             return value;
         }
-        Path path = Path.of(value);
+        if (value.startsWith("http://") || value.startsWith("https://")) {
+            return OutboundNetworkPolicy.requirePublicHttpUri(value).toString();
+        }
+        Path workspace = configManager.resolveWorkspaceDir(agentId);
+        Path path;
+        if (value.startsWith("file://")) {
+            path = Path.of(URI.create(value));
+        } else {
+            path = Path.of(value);
+        }
         if (!path.isAbsolute()) {
-            path = configManager.resolveWorkspaceDir(agentId).resolve("media").resolve(value);
+            path = SafePathUtil.resolveSafe(SafePathUtil.resolveSafe(workspace, "media"), value);
+        } else {
+            path = new WorkspacePathResolver(workspace.toString()).resolve(path.toString());
+        }
+        if (!Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalArgumentException("Uploaded file is missing or is not a regular workspace file");
         }
         return path.toAbsolutePath().normalize().toUri().toString();
     }

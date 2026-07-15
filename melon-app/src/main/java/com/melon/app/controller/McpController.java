@@ -1,6 +1,7 @@
 package com.melon.app.controller;
 
 import com.melon.app.mcp.McpClientManager;
+import com.melon.app.mcp.McpAccessPolicyService;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.config.ConfigManager;
 import com.melon.core.util.JsonUtils;
@@ -37,11 +38,14 @@ public class McpController {
     private final McpClientManager mcpClientManager;
     private final ConfigManager configManager;
     private final MultiAgentManager multiAgentManager;
+    private final McpAccessPolicyService accessPolicyService;
 
-    public McpController(McpClientManager mcpClientManager, ConfigManager configManager, MultiAgentManager multiAgentManager) {
+    public McpController(McpClientManager mcpClientManager, ConfigManager configManager,
+                         MultiAgentManager multiAgentManager, McpAccessPolicyService accessPolicyService) {
         this.mcpClientManager = mcpClientManager;
         this.configManager = configManager;
         this.multiAgentManager = multiAgentManager;
+        this.accessPolicyService = accessPolicyService;
     }
 
     @GetMapping
@@ -147,10 +151,7 @@ public class McpController {
     @PutMapping("/policy/{clientKey}")
     public Mono<ResponseEntity<?>> updatePolicy(@PathVariable String clientKey, @RequestBody Map<String, Object> body) {
         return Mono.fromCallable(() -> {
-            Map<String, Object> result = defaultPolicy();
-            if (body != null) result.putAll(body);
-            JsonUtils.save(policyFile(clientKey), result);
-            return ResponseEntity.ok(result);
+            return ResponseEntity.ok(accessPolicyService.save(clientKey, body));
         });
     }
 
@@ -391,21 +392,7 @@ public class McpController {
     }
 
     private Map<String, Object> policy(String clientKey) {
-        Map<String, Object> saved = JsonUtils.loadAsMap(policyFile(clientKey));
-        if (saved.isEmpty()) return defaultPolicy();
-        Map<String, Object> result = defaultPolicy();
-        result.putAll(saved);
-        return result;
-    }
-
-    private Map<String, Object> defaultPolicy() {
-        Map<String, Object> policy = new LinkedHashMap<>();
-        policy.put("default_effect", "allow");
-        policy.put("client_overrides", List.of());
-        policy.put("tool_defaults", List.of());
-        policy.put("tool_overrides", List.of());
-        policy.put("unmanaged_rules_count", 0);
-        return policy;
+        return accessPolicyService.load(clientKey);
     }
 
     private Map<String, Object> accessSummary(String clientKey) {
@@ -480,7 +467,4 @@ public class McpController {
         return list.stream().filter(java.util.Objects::nonNull).map(String::valueOf).filter(s -> !s.isBlank()).distinct().toList();
     }
 
-    private java.nio.file.Path policyFile(String clientKey) {
-        return configManager.resolveStateDir().resolve("mcp-policies").resolve(clientKey + ".json");
-    }
 }

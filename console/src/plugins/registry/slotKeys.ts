@@ -11,7 +11,7 @@
  * 3. Add the snapshot entry to `ChatScalarSnapshot` (scalar) or
  *    `ChatListSnapshot` (list) in chatExtensions.ts. TypeScript will flag
  *    mismatches in chatExtensions.ts at compile time.
- * 4. Expose via the plugin API in hostSdk/install.ts.
+ * 4. Expose through a reviewed local extension API when needed.
  * 5. Read & merge in pages/Chat/index.tsx options useMemo.
  *
  * Field strings follow `domain.field` dotted naming so they read naturally

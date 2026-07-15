@@ -715,6 +715,12 @@ public class EnterpriseIdentityStore {
         values.put("approvals:decide", "Approve or reject high-risk operations");
         values.put("audit:read", "Read enterprise audit records");
         values.put("system:manage", "Manage system-wide settings");
+        values.put(EnterprisePermissions.DATA_BREAKGLASS,
+                "Temporarily access user content through the audited break-glass workflow");
+        values.put(EnterprisePermissions.PERSONAL_WORKSPACE, "Manage the user's isolated workspace and memory");
+        values.put(EnterprisePermissions.PERSONAL_SKILLS, "Manage skills in the user's isolated workspace");
+        values.put(EnterprisePermissions.PERSONAL_CHANNELS, "Manage the user's isolated channel connections");
+        values.put(EnterprisePermissions.PERSONAL_AUTOMATIONS, "Manage the user's isolated schedules and heartbeat");
         String sql = "INSERT OR IGNORE INTO enterprise_permissions (code, description) VALUES (?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (Map.Entry<String, String> entry : values.entrySet()) {
@@ -732,9 +738,13 @@ public class EnterpriseIdentityStore {
         insertRole(connection, "APPROVER", "Approver", "Approve high-risk operations", true);
         insertRole(connection, "EMPLOYEE", "Employee", "Use assigned enterprise AI services", true);
         insertRole(connection, "AUDITOR", "Auditor", "Read audit and operational records", true);
+        insertRole(connection, "ORG_ADMIN", "Organization administrator",
+                "Manage enterprise identities, roles and project spaces without host or Agent access", true);
 
         for (String permission : listPermissionCodes(connection)) {
-            insertRolePermission(connection, "SYSTEM_ADMIN", permission);
+            if (!EnterprisePermissions.DATA_BREAKGLASS.equals(permission)) {
+                insertRolePermission(connection, "SYSTEM_ADMIN", permission);
+            }
         }
         insertRolePermission(connection, "SERVICE_OPERATOR", "projects:read");
         insertRolePermission(connection, "SERVICE_OPERATOR", "agents:use");
@@ -747,6 +757,29 @@ public class EnterpriseIdentityStore {
         insertRolePermission(connection, "EMPLOYEE", "agents:use");
         insertRolePermission(connection, "AUDITOR", "projects:read");
         insertRolePermission(connection, "AUDITOR", "audit:read");
+
+        for (String permission : Set.of(
+                "users:read", "users:manage", "roles:read", "roles:manage",
+                "projects:read", "projects:manage", "audit:read")) {
+            insertRolePermission(connection, "ORG_ADMIN", permission);
+        }
+
+        // Existing custom roles that could use an Agent retain the personal capabilities
+        // that were implicit before these permissions became independently assignable.
+        for (String permission : EnterprisePermissions.PERSONAL_CAPABILITIES) {
+            inheritPermission(connection, "agents:use", permission);
+        }
+    }
+
+    private void inheritPermission(Connection connection, String sourcePermission, String targetPermission)
+            throws SQLException {
+        String sql = "INSERT OR IGNORE INTO enterprise_role_permissions (role_code, permission_code) "
+                + "SELECT role_code, ? FROM enterprise_role_permissions WHERE permission_code = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, targetPermission);
+            statement.setString(2, sourcePermission);
+            statement.executeUpdate();
+        }
     }
 
     private void insertRole(

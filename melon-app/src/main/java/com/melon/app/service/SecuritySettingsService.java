@@ -27,7 +27,8 @@ public class SecuritySettingsService {
         Map<String, Object> guard = section("file_guard", defaultFileGuard());
         guard.putIfAbsent("enabled", false);
         guard.putIfAbsent("paths", List.of());
-        guard.putIfAbsent("allow_preview_outside_workspace", false);
+        // Arbitrary host-file preview is intentionally unsupported in enterprise mode.
+        guard.put("allow_preview_outside_workspace", false);
         return guard;
     }
 
@@ -36,6 +37,7 @@ public class SecuritySettingsService {
         Map<String, Object> guard = new LinkedHashMap<>(fileGuard());
         if (patch != null) guard.putAll(patch);
         guard.put("paths", stringList(guard.get("paths")));
+        guard.put("allow_preview_outside_workspace", false);
         root.put("file_guard", guard);
         save(root);
         return guard;

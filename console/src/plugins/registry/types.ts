@@ -1,5 +1,5 @@
 /**
- * registry/types.ts — public shapes for the QwenPaw plugin extension registries.
+ * Public shapes for the MelonPaw extension registries.
  *
  * Three console-wide concepts:
  *   - Menu  → sidebar entries with location/parentId/before/after/order
@@ -13,7 +13,7 @@
  *
  * Plugin-facing API surface lives in:
  *   - sdk.ts                  (console-wide: menu/route/slot/audit)
- *   - hostSdk/install.ts      (chat: chat.welcome/leftHeader/sender/...)
+ *   - chatExtensions.ts       (chat: welcome/header/sender/...)
  *
  * Both surfaces share the single audit log in `./audit.ts`.
  */
@@ -35,7 +35,7 @@ export function combineDisposables(...d: Disposable[]): Disposable {
         try {
           it.dispose();
         } catch (err) {
-          console.warn("[QwenPaw] Disposable threw on dispose:", err);
+          console.warn("[MelonPaw] Disposable threw on dispose:", err);
         }
       }
     },
@@ -114,7 +114,7 @@ export interface MenuItem {
 // Route (console-wide)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A registered route entry (added via builtinRoutes or QwenPaw.route.add). */
+/** A registered route entry. */
 export interface Route {
   /** Stable id, e.g. "core.chat" / "cloudpaw.a2a". */
   id: string;

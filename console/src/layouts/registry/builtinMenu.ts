@@ -137,6 +137,24 @@ export const BUILTIN_MENU: MenuItem[] = [
     route: "core.skills",
     order: 30,
   },
+  {
+    id: "core.cron-jobs",
+    location: "primary.agentScoped",
+    parentId: "core.control-group",
+    label: navLabel("nav.cronJobs"),
+    icon: CalendarClock,
+    route: "core.cron-jobs",
+    order: 40,
+  },
+  {
+    id: "core.heartbeat",
+    location: "primary.agentScoped",
+    parentId: "core.control-group",
+    label: navLabel("nav.heartbeat"),
+    icon: HeartPulse,
+    route: "core.heartbeat",
+    order: 50,
+  },
 
   // operations-group
   {
@@ -156,31 +174,13 @@ export const BUILTIN_MENU: MenuItem[] = [
     order: 10,
   },
   {
-    id: "core.cron-jobs",
-    location: "primary.agentScoped",
-    parentId: "core.agent-group",
-    label: navLabel("nav.cronJobs"),
-    icon: CalendarClock,
-    route: "core.cron-jobs",
-    order: 20,
-  },
-  {
-    id: "core.heartbeat",
-    location: "primary.agentScoped",
-    parentId: "core.agent-group",
-    label: navLabel("nav.heartbeat"),
-    icon: HeartPulse,
-    route: "core.heartbeat",
-    order: 30,
-  },
-  {
     id: "core.tools",
     location: "primary.agentScoped",
     parentId: "core.agent-group",
     label: navLabel("nav.tools"),
     icon: Wrench,
     route: "core.tools",
-    order: 40,
+    order: 20,
   },
   {
     id: "core.mcp",
@@ -189,7 +189,7 @@ export const BUILTIN_MENU: MenuItem[] = [
     label: navLabel("nav.mcp"),
     icon: Network,
     route: "core.mcp",
-    order: 50,
+    order: 30,
   },
   {
     id: "core.agent-config",
@@ -198,7 +198,7 @@ export const BUILTIN_MENU: MenuItem[] = [
     label: navLabel("nav.agentConfig"),
     icon: Settings2,
     route: "core.agent-config",
-    order: 60,
+    order: 40,
   },
   {
     id: "core.agent-stats",
@@ -207,7 +207,7 @@ export const BUILTIN_MENU: MenuItem[] = [
     label: navLabel("nav.agentStats"),
     icon: Activity,
     route: "core.agent-stats",
-    order: 70,
+    order: 50,
   },
 
   // ── Settings (Sidebar Menu #2) ───────────────────────────────────────────

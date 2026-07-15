@@ -13,7 +13,7 @@
       .qwenpaw-table-thead
       > tr
       > th {
-      background: #f9f8f4 !important;
+      background: var(--mp-canvas) !important;
     }
   }
 }
@@ -261,11 +261,11 @@
 
   /* Selected row styling */
   .selectedRow > td {
-    background-color: rgba(97, 92, 237, 0.12) !important;
+    background-color: color-mix(in srgb, var(--mp-primary) 12%, transparent) !important;
   }
 
   .selectedRow:hover > td {
-    background-color: rgba(97, 92, 237, 0.2) !important;
+    background-color: color-mix(in srgb, var(--mp-primary) 20%, transparent) !important;
   }
   :global(.sessions-filter-input) {
     :global(.qwenpaw-input),

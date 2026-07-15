@@ -25,7 +25,7 @@ public final class ChannelAccessControlSelfCheck {
 
         ChannelInboundMessage inbound = new ChannelInboundMessage();
         inbound.setAgentId("default");
-        inbound.setChannel("slack");
+        inbound.setChannel("feishu");
         inbound.setUserId("u1");
         inbound.setContent("hello");
         store.addPending("default", inbound);
@@ -33,32 +33,32 @@ public final class ChannelAccessControlSelfCheck {
             throw new AssertionError("pending user was not recorded");
         }
 
-        if (store.allowed("default", "slack", "u1", Map.of("dm_policy", "allowlist"))) {
+        if (store.allowed("default", "feishu", "u1", Map.of("dm_policy", "allowlist"))) {
             throw new AssertionError("allowlist policy should block unknown user");
         }
 
         store.pendingAction("default", "approve", List.of(Map.of(
-                "channel", "slack",
+                "channel", "feishu",
                 "user_id", "u1",
                 "remark", "ok",
                 "username", "Alice"
         )));
-        Map<String, Object> slack = store.channel("default", "slack");
-        if (!slack.toString().contains("u1") || !store.pendingAll("default").isEmpty()) {
-            throw new AssertionError("pending approve did not move user to whitelist: " + slack);
+        Map<String, Object> feishu = store.channel("default", "feishu");
+        if (!feishu.toString().contains("u1") || !store.pendingAll("default").isEmpty()) {
+            throw new AssertionError("pending approve did not move user to whitelist: " + feishu);
         }
-        if (!store.allowed("default", "slack", "u1", Map.of("dm_policy", "allowlist"))) {
+        if (!store.allowed("default", "feishu", "u1", Map.of("dm_policy", "allowlist"))) {
             throw new AssertionError("whitelisted user should pass allowlist policy");
         }
 
         Map<String, Object> visible = store.all("default");
-        if (!visible.containsKey("slack") || visible.containsKey("console")) {
+        if (!visible.containsKey("feishu") || visible.containsKey("console")) {
             throw new AssertionError("all() should return ACL data channels only: " + visible.keySet());
         }
 
-        store.updateRemark("default", "slack", "u1", "trusted");
-        store.updateUsername("default", "slack", "u1", "alice-new");
-        if (!store.channel("default", "slack").toString().contains("alice-new")) {
+        store.updateRemark("default", "feishu", "u1", "trusted");
+        store.updateUsername("default", "feishu", "u1", "alice-new");
+        if (!store.channel("default", "feishu").toString().contains("alice-new")) {
             throw new AssertionError("user metadata update was not persisted");
         }
 
@@ -70,13 +70,13 @@ public final class ChannelAccessControlSelfCheck {
             throw new AssertionError("all() should include channels with access control enabled");
         }
 
-        store.addUsers("default", "blacklist", List.of(Map.of("channel", "slack", "user_id", "u1")));
-        if (store.allowed("default", "slack", "u1", Map.of("dm_policy", "open"))) {
+        store.addUsers("default", "blacklist", List.of(Map.of("channel", "feishu", "user_id", "u1")));
+        if (store.allowed("default", "feishu", "u1", Map.of("dm_policy", "open"))) {
             throw new AssertionError("blacklisted user should be blocked");
         }
 
-        store.removeUsers("default", "blacklist", List.of(Map.of("channel", "slack", "user_id", "u1")));
-        if (!store.allowed("default", "slack", "u1", Map.of("dm_policy", "open"))) {
+        store.removeUsers("default", "blacklist", List.of(Map.of("channel", "feishu", "user_id", "u1")));
+        if (!store.allowed("default", "feishu", "u1", Map.of("dm_policy", "open"))) {
             throw new AssertionError("blacklist removal should unblock open policy");
         }
     }

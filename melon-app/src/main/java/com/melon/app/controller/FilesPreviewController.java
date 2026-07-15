@@ -21,6 +21,8 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 
+import static com.melon.app.auth.EnterprisePermissions.SYSTEM_MANAGE;
+
 @RestController
 @RequestMapping("/api/files")
 public class FilesPreviewController {
@@ -46,19 +48,18 @@ public class FilesPreviewController {
             Path workspace = configManager.resolveWorkspaceDir(AgentRequestSupport.agentId(agentId)).toAbsolutePath().normalize();
             Path file = resolvePreviewPath(workspace, filePath);
             fileGuardService.assertAllowed(file);
-            boolean operator = principal != null && principal.hasPermission("agents:manage");
-            if (!file.startsWith(workspace)
-                    && (!operator || !fileGuardService.allowPreviewOutsideWorkspace())) {
+            boolean systemAdministrator = principal != null && principal.hasPermission(SYSTEM_MANAGE);
+            if (!file.startsWith(workspace)) {
                 return ResponseEntity.status(403).body(Map.of("detail", "OUTSIDE_WORKSPACE"));
             }
-            if (!operator && isProtectedWorkspaceFile(workspace, file)) {
+            if (!systemAdministrator && isProtectedWorkspaceFile(workspace, file)) {
                 return ResponseEntity.status(403).body(Map.of("detail", "PROTECTED_WORKSPACE_FILE"));
             }
             if (!Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)
                     || Files.isSymbolicLink(file)) {
                 return ResponseEntity.notFound().build();
             }
-            if (!operator) {
+            if (!systemAdministrator) {
                 if (containsSymbolicLink(workspace, file)) {
                     return ResponseEntity.status(403).body(Map.of("detail", "SYMLINK_OUTSIDE_WORKSPACE"));
                 }

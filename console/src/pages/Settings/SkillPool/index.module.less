@@ -186,7 +186,7 @@
   }
 
   &:focus {
-    border-color: #ff7f16;
+    border-color: var(--mp-primary);
   }
 }
 
@@ -450,11 +450,11 @@
 }
 
 .selectedListItem {
-  background: rgba(255, 127, 22, 0.02);
+  background: color-mix(in srgb, var(--mp-primary) 2%, transparent);
 }
 
 .selectedCard {
-  box-shadow: 0 0 0 1px rgba(255, 127, 22, 0.2) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mp-primary) 20%, transparent) !important;
 }
 
 .batchActions {
@@ -794,7 +794,7 @@
 /* ─── Tags ────────────────────────────────────────────────────────────────── */
 .descriptionText {
   border-radius: 4px;
-  background: rgba(43, 18, 0, 0.02);
+  background: color-mix(in srgb, var(--mp-primary) 2%, transparent);
   box-sizing: border-box;
   border: 1px solid #f3f1f0;
   padding: 2px 4px;
@@ -923,7 +923,7 @@
     }
 
     &:focus {
-      border-color: #ff7f16;
+      border-color: var(--mp-primary);
     }
   }
 
@@ -971,8 +971,8 @@
   }
 
   .selectedCard {
-    border-color: #ff7f16 !important;
-    box-shadow: 0 0 0 1px rgba(255, 127, 22, 0.3) !important;
+    border-color: var(--mp-primary) !important;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--mp-primary) 30%, transparent) !important;
   }
 
   .batchCount {
@@ -1131,7 +1131,7 @@
   }
 
   .selectedListItem {
-    background: rgba(255, 127, 22, 0.05);
+    background: color-mix(in srgb, var(--mp-primary) 5%, transparent);
   }
 
   .tagChip {

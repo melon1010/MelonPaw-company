@@ -24,9 +24,6 @@ export const PROJECT_MANAGER_ROLES = new Set([
 const AUDIT_ROLES = new Set([...SYSTEM_ADMIN_ROLES, "AUDITOR"]);
 
 const OPERATOR_ROUTES = new Set([
-  "core.cron-jobs",
-  "core.heartbeat",
-  "core.tools",
   "core.mcp",
   "core.agent-config",
   "core.agent-stats",
@@ -82,6 +79,7 @@ export function canAccessRoute(
 ): boolean {
   if (!user) return false;
   if (isSystemAdmin(user)) return true;
+  if (routeId === "company.workbench") return true;
   if (routeId === "company.members") {
     return (
       hasPermission(user, "users:read") || hasPermission(user, "users:manage")
@@ -97,12 +95,40 @@ export function canAccessRoute(
     routeId === "company.tasks" ||
     routeId === "company.task-result" ||
     routeId === "core.chat" ||
-    routeId === "core.sessions" ||
-    routeId === "core.channels" ||
-    routeId === "core.workspace" ||
-    routeId === "core.skills"
+    routeId === "core.sessions"
   ) {
     return hasPermission(user, "agents:use");
+  }
+  if (routeId === "core.workspace") {
+    return (
+      hasPermission(user, "workspace:personal") ||
+      hasPermission(user, "agents:manage")
+    );
+  }
+  if (routeId === "core.skills") {
+    return (
+      hasPermission(user, "skills:personal") ||
+      hasPermission(user, "agents:manage")
+    );
+  }
+  if (routeId === "core.tools") {
+    return (
+      hasPermission(user, "agents:use") ||
+      hasPermission(user, "workspace:personal") ||
+      hasPermission(user, "agents:manage")
+    );
+  }
+  if (routeId === "core.channels") {
+    return (
+      hasPermission(user, "channels:personal") ||
+      hasPermission(user, "agents:manage")
+    );
+  }
+  if (routeId === "core.cron-jobs" || routeId === "core.heartbeat") {
+    return (
+      hasPermission(user, "automations:personal") ||
+      hasPermission(user, "agents:manage")
+    );
   }
   if (routeId === "core.inbox") {
     return (
@@ -127,7 +153,7 @@ export function canAccessRoute(
     );
   }
   if (routeId.startsWith("plugin.")) return false;
-  return true;
+  return false;
 }
 
 type ItemWithChildren = MenuItem & { __children?: MenuItem[] };

@@ -24,6 +24,7 @@ export interface AuthStatusResponse {
   enabled: boolean;
   has_users: boolean;
   bootstrap_required?: boolean;
+  bootstrap_token_required?: boolean;
   authenticated?: boolean;
   auth_disabled?: boolean;
   user?: AuthUser | null;
@@ -61,10 +62,11 @@ export const authApi = {
     username: string,
     password: string,
     displayName?: string,
+    bootstrapToken?: string,
   ): Promise<LoginResponse> => {
     return authenticate(
       "/auth/bootstrap",
-      { username, password, display_name: displayName },
+      { username, password, display_name: displayName, bootstrap_token: bootstrapToken },
       "Initialization failed",
     );
   },

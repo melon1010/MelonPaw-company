@@ -19,7 +19,7 @@ const PROVIDER_LETTER_COLORS: Record<string, string> = {
   lmstudio: "#6C5CE7",
   "siliconflow-cn": "#5B5FC7",
   "siliconflow-intl": "#5B5FC7",
-  "qwenpaw-local": "#FF7F16",
+  "qwenpaw-local": "#176B5D",
   "zhipu-cn": "#3366FF",
   "zhipu-intl": "#3366FF",
   "zhipu-cn-codingplan": "#3366FF",

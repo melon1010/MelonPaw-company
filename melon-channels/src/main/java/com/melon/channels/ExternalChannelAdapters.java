@@ -1,6 +1,7 @@
 package com.melon.channels;
 
 import com.melon.core.util.JsonUtils;
+import com.melon.core.util.OutboundNetworkPolicy;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.qrcode.QRCodeWriter;
@@ -55,7 +56,7 @@ final class ChannelHttpSupport {
     }
 
     static HttpResponse<String> get(String url, Map<String, String> headers) throws Exception {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(OutboundNetworkPolicy.requirePublicHttpUri(url))
                 .timeout(Duration.ofSeconds(45))
                 .GET();
         if (headers != null) headers.forEach(builder::header);
@@ -64,7 +65,7 @@ final class ChannelHttpSupport {
     }
 
     static HttpResponse<String> post(String url, Map<String, String> headers, Object body) throws Exception {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(OutboundNetworkPolicy.requirePublicHttpUri(url))
                 .timeout(Duration.ofSeconds(45))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(JsonUtils.toJson(body)));
@@ -420,7 +421,7 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
     private final Map<String, String> cursors = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Long>> processed = new ConcurrentHashMap<>();
     private final Map<String, Map<String, String>> contextTokens = new ConcurrentHashMap<>();
-    private final Map<String, String> tokenFiles = new ConcurrentHashMap<>();
+    private final Map<String, Path> stateDirs = new ConcurrentHashMap<>();
     private final Map<String, ScheduledFuture<?>> typingTasks = new ConcurrentHashMap<>();
     private final Map<String, TypingTicket> typingTickets = new ConcurrentHashMap<>();
 
@@ -430,7 +431,7 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
 
     @Override
     public CompletableFuture<ChannelHealth> start(String agentId, Map<String, Object> config, ChannelInboundDispatcher dispatcher) {
-        Map<String, Object> runtime = withResolvedToken(config);
+        Map<String, Object> runtime = new LinkedHashMap<>(config != null ? config : Map.of());
         List<String> missing = ChannelHttpSupport.missing(runtime, "bot_token");
         if (!Boolean.TRUE.equals(runtime.get("enabled")) || !missing.isEmpty()) {
             log.info("WeChat channel not started: agent={}, enabled={}, missing={}",
@@ -438,7 +439,7 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
             return CompletableFuture.completedFuture(health(agentId, runtime));
         }
         super.start(agentId, runtime);
-        tokenFiles.put(key(agentId), tokenFilePath(runtime));
+        stateDirs.put(key(agentId), channelStateDir(runtime));
         loadContextTokens(agentId, runtime);
         String key = key(agentId);
         tasks.computeIfAbsent(key, ignored -> executor.scheduleWithFixedDelay(
@@ -461,7 +462,7 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
 
     @Override
     public ChannelHealth health(String agentId, Map<String, Object> config) {
-        Map<String, Object> runtime = withResolvedToken(config);
+        Map<String, Object> runtime = new LinkedHashMap<>(config != null ? config : Map.of());
         if (!Boolean.TRUE.equals(runtime.get("enabled"))) {
             return ChannelHealth.of(type(), "stopped", false, true, true, "Channel is disabled.");
         }
@@ -511,7 +512,6 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
             Map<String, Object> credentials = new LinkedHashMap<>();
             credentials.put("bot_token", body.getOrDefault("bot_token", ""));
             credentials.put("base_url", body.getOrDefault("baseurl", base));
-            persistBotTokenIfConfigured(config, stringValue(credentials.get("bot_token")));
             String status = stringValue(body.get("status"), "unknown");
             String frontendStatus = ("confirmed".equals(status) || "success".equals(status)) && !stringValue(credentials.get("bot_token")).isBlank()
                     ? "success"
@@ -655,7 +655,7 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
         meta.put("is_group", !group.isBlank());
         if (from != null && !from.isBlank() && contextToken != null && !contextToken.isBlank()) {
             contextTokens.computeIfAbsent(key(agentId), ignored -> new ConcurrentHashMap<>()).put(from, contextToken);
-            saveContextTokens(agentId, Map.of("bot_token_file", tokenFiles.getOrDefault(key(agentId), "")), contextTokens.get(key(agentId)));
+            saveContextTokens(agentId, Map.of(), contextTokens.get(key(agentId)));
         }
         ChannelInboundMessage inbound = new ChannelInboundMessage();
         inbound.setAgentId(agentId);
@@ -734,39 +734,6 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
         return headers;
     }
 
-    private Map<String, Object> withResolvedToken(Map<String, Object> config) {
-        Map<String, Object> copy = new LinkedHashMap<>(config != null ? config : Map.of());
-        if (!stringValue(copy.get("bot_token")).isBlank()) return copy;
-        String tokenFile = tokenFilePath(copy);
-        if (tokenFile.isBlank()) return copy;
-        try {
-            Path path = expandUser(tokenFile);
-            if (Files.isRegularFile(path)) {
-                String token = Files.readString(path, StandardCharsets.UTF_8).trim();
-                if (!token.isBlank()) {
-                    copy.put("bot_token", token);
-                    log.info("WeChat loaded bot_token from file: {}", path);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("WeChat failed to read bot_token_file {}: {}", tokenFile, e.toString());
-        }
-        return copy;
-    }
-
-    private void persistBotTokenIfConfigured(Map<String, Object> config, String token) {
-        String file = tokenFilePath(config);
-        if (file.isBlank() || token.isBlank()) return;
-        try {
-            Path path = expandUser(file);
-            if (path.getParent() != null) Files.createDirectories(path.getParent());
-            Files.writeString(path, token, StandardCharsets.UTF_8);
-            log.info("WeChat persisted bot_token to file: {}", path);
-        } catch (Exception e) {
-            log.warn("WeChat failed to persist bot_token_file {}: {}", file, e.toString());
-        }
-    }
-
     private void loadContextTokens(String agentId, Map<String, Object> config) {
         try {
             Path path = contextTokensPath(config);
@@ -786,7 +753,9 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
 
     private void saveContextTokens(String agentId, Map<String, Object> config, Map<String, String> tokens) {
         try {
-            Path path = contextTokensPath(config);
+            Path stateDir = stateDirs.get(key(agentId));
+            if (stateDir == null) stateDir = channelStateDir(config);
+            Path path = stateDir.resolve("wechat_context_tokens.json");
             if (path.getParent() != null) Files.createDirectories(path.getParent());
             Files.writeString(path, JsonUtils.toJson(tokens != null ? tokens : Map.of()), StandardCharsets.UTF_8);
         } catch (Exception e) {
@@ -862,25 +831,17 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
         Map<String, String> tokens = contextTokens.get(key(agentId));
         if (tokens == null) return;
         tokens.remove(userId);
-        saveContextTokens(agentId, Map.of("bot_token_file", tokenFiles.getOrDefault(key(agentId), tokenFilePath(config))), tokens);
+        saveContextTokens(agentId, config, tokens);
     }
 
     private Path contextTokensPath(Map<String, Object> config) {
-        String tokenFile = tokenFilePath(config);
-        Path base = tokenFile.isBlank()
-                ? Path.of(System.getProperty("user.home"), ".melonAI", "wechat_bot_token")
-                : expandUser(tokenFile);
-        return base.getParent().resolve("wechat_context_tokens.json");
+        return channelStateDir(config).resolve("wechat_context_tokens.json");
     }
 
-    private String tokenFilePath(Map<String, Object> config) {
-        return stringValue(config.get("bot_token_file"),
-                Path.of(System.getProperty("user.home"), ".melonAI", "wechat_bot_token").toString());
-    }
-
-    private Path expandUser(String value) {
-        if (value.startsWith("~/")) {
-            return Path.of(System.getProperty("user.home"), value.substring(2));
+    private Path channelStateDir(Map<String, Object> config) {
+        String value = stringValue(config != null ? config.get("_channel_state_dir") : null);
+        if (value.isBlank()) {
+            throw new IllegalArgumentException("Server-managed channel state directory is required");
         }
         return Path.of(value);
     }
@@ -1264,7 +1225,8 @@ class QQChannelAdapter extends BasicChannelAdapter {
         String url = stringValue(ChannelHttpSupport.json(gateway.body()).get("url"));
         if (url.isBlank()) throw new IllegalStateException("QQ gateway url is empty: " + gateway.body());
         WebSocket ws = HttpClient.newHttpClient().newWebSocketBuilder()
-                .buildAsync(URI.create(url), new QQListener(agentId, config, dispatcher, token))
+                .buildAsync(OutboundNetworkPolicy.requirePublicWebUri(url),
+                        new QQListener(agentId, config, dispatcher, token))
                 .join();
         sockets.put(key, ws);
     }
@@ -1553,7 +1515,8 @@ class WeComChannelAdapter extends BasicChannelAdapter {
             HttpClient.newHttpClient().newWebSocketBuilder()
                     .header("x-bot-id", stringValue(config.get("bot_id")))
                     .header("x-secret", stringValue(config.get("secret")))
-                    .buildAsync(URI.create(wsUrl), new JsonChannelListener(agentId, type(), dispatcher, this::parseWebhook))
+                    .buildAsync(OutboundNetworkPolicy.requirePublicWebUri(wsUrl),
+                            new JsonChannelListener(agentId, type(), dispatcher, this::parseWebhook))
                     .thenAccept(ws -> sockets.put(agentId, ws));
         }
         return super.start(agentId, config);
@@ -1774,7 +1737,8 @@ class XiaoYiChannelAdapter extends BasicChannelAdapter {
                 .header("x-sign", ChannelHttpSupport.hmacSha256Base64(stringValue(config.get("sk")), timestamp))
                 .header("x-ts", timestamp)
                 .header("x-agent-id", stringValue(config.get("agent_id")))
-                .buildAsync(URI.create(url), new JsonChannelListener(agentId, type(), dispatcher, (a, body, headers) -> {
+                .buildAsync(OutboundNetworkPolicy.requirePublicWebUri(url),
+                        new JsonChannelListener(agentId, type(), dispatcher, (a, body, headers) -> {
                     ChannelInboundMessage inbound = parseWebhook(a, body, headers);
                     sessionServers.put(inbound.getSessionId().replaceFirst("^xiaoyi:", ""), server);
                     return inbound;
@@ -1905,7 +1869,8 @@ class YuanbaoChannelAdapter extends BasicChannelAdapter {
         botIds.put(cacheKey, token.botId);
         String wsUrl = stringValue(config.get("websocket_url"), DEFAULT_WS);
         WebSocket ws = HttpClient.newHttpClient().newWebSocketBuilder()
-                .buildAsync(URI.create(wsUrl), new YuanbaoListener(agentId, config, dispatcher, token))
+                .buildAsync(OutboundNetworkPolicy.requirePublicWebUri(wsUrl),
+                        new YuanbaoListener(agentId, config, dispatcher, token))
                 .join();
         sockets.put(cacheKey, ws);
         ws.sendBinary(ByteBuffer.wrap(YuanbaoProto.authBind(token.botId, token.source, token.value)), true);
@@ -2067,103 +2032,6 @@ class YuanbaoChannelAdapter extends BasicChannelAdapter {
     public void close() {
         sockets.values().forEach(WebSocket::abort);
         executor.shutdownNow();
-    }
-}
-
-class VoiceChannelAdapter extends BasicChannelAdapter {
-    VoiceChannelAdapter() {
-        super("voice", true, false, false, true);
-    }
-
-    @Override
-    public ChannelHealth health(String agentId, Map<String, Object> config) {
-        if (!Boolean.TRUE.equals(config.get("enabled"))) return ChannelHealth.of(type(), "stopped", false, true, true, "Channel is disabled.");
-        List<String> missing = ChannelHttpSupport.missing(config, "twilio_account_sid", "twilio_auth_token", "phone_number_sid");
-        if (!missing.isEmpty()) return ChannelHealth.of(type(), "misconfigured", false, false, true, "Missing required config: " + String.join(", ", missing));
-        return super.health(agentId, config);
-    }
-
-    @Override
-    public ChannelInboundMessage parseWebhook(String agentId, Map<String, Object> body, Map<String, String> headers) {
-        String callSid = ChannelHttpSupport.first(body, "CallSid", "call_sid", "session_id");
-        String from = ChannelHttpSupport.first(body, "From", "from_number", "user_id");
-        ChannelInboundMessage inbound = new ChannelInboundMessage();
-        inbound.setAgentId(agentId);
-        inbound.setChannel(type());
-        inbound.setUserId(from);
-        inbound.setSessionId("voice:" + callSid);
-        inbound.setContent(ChannelHttpSupport.first(body, "SpeechResult", "transcript", "text", "message"));
-        inbound.setChannelMeta(ChannelHttpSupport.copy(body));
-        inbound.setReplyTo(new ChannelAddress("call", callSid, Map.of("call_sid", callSid, "from_number", from, "headers", headers != null ? headers : Map.of())));
-        return inbound;
-    }
-
-    @Override
-    public CompletableFuture<ChannelOutboundMessage> send(ChannelOutboundMessage message, Map<String, Object> config) {
-        ChannelHttpSupport.mark(message, "sent", "voice replies are returned as TwiML by webhook");
-        return CompletableFuture.completedFuture(message);
-    }
-
-    String twiml(String text, Map<String, Object> config) {
-        String language = stringValue(config.get("language"), "zh-CN");
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Say language=\""
-                + escape(language) + "\">" + escape(text) + "</Say><Gather input=\"speech\" method=\"POST\" speechTimeout=\"auto\"/></Response>";
-    }
-
-    private String escape(String value) {
-        return value == null ? "" : value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                .replace("\"", "&quot;").replace("'", "&apos;");
-    }
-}
-
-class SipChannelAdapter extends BasicChannelAdapter {
-    SipChannelAdapter() {
-        super("sip", true, false, false, true);
-    }
-
-    @Override
-    public ChannelHealth health(String agentId, Map<String, Object> config) {
-        if (!Boolean.TRUE.equals(config.get("enabled"))) return ChannelHealth.of(type(), "stopped", false, true, true, "Channel is disabled.");
-        if ("livekit".equals(stringValue(config.get("sip_mode"))) || "production".equals(stringValue(config.get("sip_mode")))) {
-            List<String> missing = ChannelHttpSupport.missing(config, "livekit_url", "livekit_api_key", "livekit_api_secret");
-            if (!missing.isEmpty()) return ChannelHealth.of(type(), "misconfigured", false, false, true, "Missing required config: " + String.join(", ", missing));
-        }
-        return super.health(agentId, config);
-    }
-
-    @Override
-    public ChannelInboundMessage parseWebhook(String agentId, Map<String, Object> body, Map<String, String> headers) {
-        String call = ChannelHttpSupport.first(body, "call_id", "participant_identity", "sip_call_id", "session_id");
-        String from = ChannelHttpSupport.first(body, "from", "phone_number", "caller", "user_id");
-        ChannelInboundMessage inbound = new ChannelInboundMessage();
-        inbound.setAgentId(agentId);
-        inbound.setChannel(type());
-        inbound.setUserId(from);
-        inbound.setSessionId("sip:" + call);
-        inbound.setContent(ChannelHttpSupport.first(body, "transcript", "text", "message"));
-        inbound.setChannelMeta(ChannelHttpSupport.copy(body));
-        inbound.setReplyTo(new ChannelAddress("sip", call, Map.of("call_id", call, "headers", headers != null ? headers : Map.of())));
-        return inbound;
-    }
-
-    @Override
-    public CompletableFuture<ChannelOutboundMessage> send(ChannelOutboundMessage message, Map<String, Object> config) {
-        String url = ChannelHttpSupport.first(config, "reply_url", "webhook_url");
-        if (url.isBlank()) {
-            ChannelHttpSupport.mark(message, "sent", "SIP/LiveKit response stored in channel output; no reply_url configured");
-            return CompletableFuture.completedFuture(message);
-        }
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                HttpResponse<String> response = ChannelHttpSupport.post(url, Map.of(), Map.of(
-                        "call_id", ChannelHttpSupport.target(message, "call_id"),
-                        "text", message.getText()));
-                ChannelHttpSupport.mark(message, response.statusCode() < 300 ? "sent" : "failed", response.statusCode() + " " + response.body());
-            } catch (Exception e) {
-                ChannelHttpSupport.mark(message, "failed", e.getMessage());
-            }
-            return message;
-        });
     }
 }
 

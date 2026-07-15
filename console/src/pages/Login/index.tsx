@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Form, Input, Typography } from "antd";
 import { useAppMessage } from "../../hooks/useAppMessage";
-import { LockOutlined, UserOutlined } from "@ant-design/icons";
+import { KeyOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
 import { authApi } from "../../api/modules/auth";
 import { setAuthToken } from "../../api/config";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -19,6 +19,7 @@ export default function LoginPage() {
   const [isBootstrap, setIsBootstrap] = useState(
     searchParams.get("setup") === "1",
   );
+  const [bootstrapTokenRequired, setBootstrapTokenRequired] = useState(false);
   const { message } = useAppMessage();
   const { setSession } = useAuth();
 
@@ -31,6 +32,7 @@ export default function LoginPage() {
           return;
         }
         setIsBootstrap(Boolean(res.bootstrap_required || !res.has_users));
+        setBootstrapTokenRequired(Boolean(res.bootstrap_token_required));
         if (res.authenticated && res.user) {
           setSession(res.user, res);
           navigate("/workbench", { replace: true });
@@ -43,6 +45,7 @@ export default function LoginPage() {
     username: string;
     password: string;
     displayName?: string;
+    bootstrapToken?: string;
   }) => {
     setLoading(true);
     try {
@@ -55,6 +58,7 @@ export default function LoginPage() {
             values.username.trim(),
             values.password,
             values.displayName?.trim(),
+            values.bootstrapToken?.trim(),
           )
         : await authApi.login(values.username.trim(), values.password);
       if (res.token) {
@@ -114,6 +118,17 @@ export default function LoginPage() {
           {isBootstrap && (
             <Form.Item name="displayName">
               <Input placeholder={t("enterprise.auth.displayName")} />
+            </Form.Item>
+          )}
+          {isBootstrap && bootstrapTokenRequired && (
+            <Form.Item
+              name="bootstrapToken"
+              rules={[{ required: true, message: t("enterprise.auth.bootstrapTokenRequired") }]}
+            >
+              <Input.Password
+                prefix={<KeyOutlined />}
+                placeholder={t("enterprise.auth.bootstrapToken")}
+              />
             </Form.Item>
           )}
           <Form.Item

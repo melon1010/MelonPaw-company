@@ -1,11 +1,14 @@
 package com.melon.app.controller;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.melon.app.auth.EnterpriseAgentAccessService;
+import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.service.BuiltinSkillService;
 import com.melon.app.service.SecuritySettingsService;
 import com.melon.app.service.SkillService;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.util.JsonUtils;
+import com.melon.core.util.OutboundNetworkPolicy;
 import com.melon.core.security.ScanResult;
 import com.melon.core.security.SkillScanner;
 import org.slf4j.Logger;
@@ -15,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -41,9 +45,10 @@ public class SkillController {
 
     private static final Logger log = LoggerFactory.getLogger(SkillController.class);
     private static final long MAX_REMOTE_SKILL_ZIP_BYTES = 100L * 1024L * 1024L;
+    private static final int MAX_REMOTE_SKILL_REDIRECTS = 5;
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
-            .followRedirects(HttpClient.Redirect.NORMAL)
+            .followRedirects(HttpClient.Redirect.NEVER)
             .build();
 
     private final SkillService skillService;
@@ -51,15 +56,18 @@ public class SkillController {
     private final SecuritySettingsService securitySettingsService;
     private final SkillScanner skillScanner;
     private final MultiAgentManager multiAgentManager;
+    private final EnterpriseAgentAccessService agentAccessService;
     private final Map<String, Map<String, Object>> hubInstallTasks = new ConcurrentHashMap<>();
 
     public SkillController(SkillService skillService, BuiltinSkillService builtinSkillService,
                            SecuritySettingsService securitySettingsService,
-                           MultiAgentManager multiAgentManager) {
+                           MultiAgentManager multiAgentManager,
+                           EnterpriseAgentAccessService agentAccessService) {
         this.skillService = skillService;
         this.builtinSkillService = builtinSkillService;
         this.securitySettingsService = securitySettingsService;
         this.multiAgentManager = multiAgentManager;
+        this.agentAccessService = agentAccessService;
         this.skillScanner = new SkillScanner();
     }
 
@@ -85,8 +93,10 @@ public class SkillController {
     }
 
     @GetMapping("/workspaces")
-    public Mono<ResponseEntity<?>> listSkillWorkspaces(@RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
-        return Mono.fromCallable(() -> ResponseEntity.ok(configuredAgents().stream()
+    public Mono<ResponseEntity<?>> listSkillWorkspaces(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> ResponseEntity.ok(agentAccessService.accessibleAgentIds(principal).stream()
                 .map(id -> Map.of(
                         "agent_id", id,
                         "agent_name", agentName(id),
@@ -263,9 +273,13 @@ public class SkillController {
     }
 
     @PostMapping("/pool/upload")
-    public Mono<ResponseEntity<?>> uploadWorkspaceSkillToPool(@RequestBody(required = false) Map<String, Object> body) {
+    public Mono<ResponseEntity<?>> uploadWorkspaceSkillToPool(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal,
+            @RequestBody(required = false) Map<String, Object> body) {
         return Mono.fromCallable(() -> {
-            String workspaceId = stringValue(body != null ? body.get("workspace_id") : null, "default");
+            String requestedWorkspaceId = stringValue(body != null ? body.get("workspace_id") : null, agentId);
+            String workspaceId = resolveWorkspaceTarget(principal, agentId, requestedWorkspaceId);
             String skillName = stringValue(body != null ? body.get("skill_name") : null, "");
             boolean overwrite = Boolean.TRUE.equals(body != null ? body.get("overwrite") : null);
             if (skillName.isBlank()) {
@@ -276,14 +290,20 @@ public class SkillController {
     }
 
     @PostMapping("/pool/download")
-    public Mono<ResponseEntity<?>> downloadSkillPoolSkill(@RequestBody(required = false) Map<String, Object> body) {
+    public Mono<ResponseEntity<?>> downloadSkillPoolSkill(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal,
+            @RequestBody(required = false) Map<String, Object> body) {
         return Mono.fromCallable(() -> {
             String skillName = stringValue(body != null ? body.get("skill_name") : null, "");
             if (skillName.isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of("detail", "skill_name is required"));
             }
             boolean overwrite = Boolean.TRUE.equals(body != null ? body.get("overwrite") : null);
-            List<String> targets = targetWorkspaceIds(body);
+            List<String> targets = targetWorkspaceIds(body, agentId, principal).stream()
+                    .map(target -> resolveWorkspaceTarget(principal, agentId, target))
+                    .distinct()
+                    .toList();
             List<Map<String, Object>> downloaded = new ArrayList<>();
             List<Map<String, Object>> conflicts = new ArrayList<>();
             for (String target : targets) {
@@ -830,40 +850,96 @@ public class SkillController {
         return "";
     }
 
-    private Path downloadRemoteZip(String sourceUrl) throws Exception {
-        URI uri = URI.create(sourceUrl);
-        HttpRequest request = HttpRequest.newBuilder(uri)
-                .timeout(Duration.ofSeconds(60))
-                .GET()
-                .build();
-        HttpResponse<InputStream> response = HTTP.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalArgumentException("Skill download failed: HTTP " + response.statusCode());
-        }
-        long declared = response.headers().firstValueAsLong("content-length").orElse(-1L);
-        if (declared > MAX_REMOTE_SKILL_ZIP_BYTES) {
-            throw new IllegalArgumentException("Skill archive is too large");
-        }
-        Path zip = Files.createTempFile("melon-skill-remote-", ".zip");
+    Path downloadRemoteZip(String sourceUrl) throws Exception {
+        URI initial = requirePublicSkillUri(sourceUrl);
+        HttpResponse<InputStream> response = openRemoteSkill(initial);
+        Path zip = null;
         boolean ok = false;
-        try (InputStream input = response.body(); OutputStream output = Files.newOutputStream(zip)) {
-            byte[] buffer = new byte[64 * 1024];
-            long total = 0L;
-            int read;
-            while ((read = input.read(buffer)) != -1) {
-                total += read;
-                if (total > MAX_REMOTE_SKILL_ZIP_BYTES) {
-                    throw new IllegalArgumentException("Skill archive is too large");
+        try (InputStream input = response.body()) {
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new IllegalArgumentException("Skill download failed: HTTP " + response.statusCode());
+            }
+            long declared = response.headers().firstValueAsLong("content-length").orElse(-1L);
+            if (declared > MAX_REMOTE_SKILL_ZIP_BYTES) {
+                throw new IllegalArgumentException("Skill archive is too large");
+            }
+            zip = Files.createTempFile("melon-skill-remote-", ".zip");
+            try (OutputStream output = Files.newOutputStream(zip)) {
+                byte[] buffer = new byte[64 * 1024];
+                long total = 0L;
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    total += read;
+                    if (total > MAX_REMOTE_SKILL_ZIP_BYTES) {
+                        throw new IllegalArgumentException("Skill archive is too large");
+                    }
+                    output.write(buffer, 0, read);
                 }
-                output.write(buffer, 0, read);
             }
             ok = true;
             return zip;
         } finally {
-            if (!ok) {
+            if (!ok && zip != null) {
                 Files.deleteIfExists(zip);
             }
         }
+    }
+
+    private HttpResponse<InputStream> openRemoteSkill(URI initial) throws Exception {
+        URI current = initial;
+        Set<String> visited = new LinkedHashSet<>();
+        for (int redirects = 0; ; redirects++) {
+            current = requirePublicSkillUri(current.toString());
+            if (!visited.add(current.normalize().toString())) {
+                throw new IllegalArgumentException("Skill download redirect loop detected");
+            }
+
+            HttpRequest request = HttpRequest.newBuilder(current)
+                    .timeout(Duration.ofSeconds(60))
+                    .GET()
+                    .build();
+            HttpResponse<InputStream> response = HTTP.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            if (!isRedirect(response.statusCode())) {
+                return response;
+            }
+
+            try (InputStream ignored = response.body()) {
+                if (redirects >= MAX_REMOTE_SKILL_REDIRECTS) {
+                    throw new IllegalArgumentException("Skill download exceeded redirect limit");
+                }
+                String location = response.headers().firstValue("location")
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Skill download redirect is missing Location"));
+                current = resolvePublicSkillRedirect(current, location);
+            }
+        }
+    }
+
+    static URI requirePublicSkillUri(String sourceUrl) {
+        return OutboundNetworkPolicy.requirePublicHttpUri(sourceUrl);
+    }
+
+    static URI resolvePublicSkillRedirect(URI current, String location) {
+        if (current == null || location == null || location.isBlank()) {
+            throw new IllegalArgumentException("Skill download redirect is invalid");
+        }
+        URI next;
+        try {
+            next = current.resolve(URI.create(location.trim()));
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Skill download redirect is invalid", e);
+        }
+        next = OutboundNetworkPolicy.requirePublicHttpUri(next.toString());
+        if ("https".equalsIgnoreCase(current.getScheme())
+                && !"https".equalsIgnoreCase(next.getScheme())) {
+            throw new SecurityException("HTTPS skill downloads cannot redirect to HTTP");
+        }
+        return next;
+    }
+
+    private boolean isRedirect(int statusCode) {
+        return statusCode == 301 || statusCode == 302 || statusCode == 303
+                || statusCode == 307 || statusCode == 308;
     }
 
     private ResponseEntity<?> responseForLocalImport(Map<String, Object> result) {
@@ -905,9 +981,10 @@ public class SkillController {
     }
 
     @SuppressWarnings("unchecked")
-    private List<String> targetWorkspaceIds(Map<String, Object> body) {
+    private List<String> targetWorkspaceIds(Map<String, Object> body, String headerAgentId,
+                                            EnterprisePrincipal principal) {
         if (body != null && Boolean.TRUE.equals(body.get("all_workspaces"))) {
-            return List.of("default");
+            return agentAccessService.accessibleAgentIds(principal);
         }
         Object targets = body != null ? body.get("targets") : null;
         if (targets instanceof List<?> list && !list.isEmpty()) {
@@ -921,7 +998,19 @@ public class SkillController {
                 return ids;
             }
         }
-        return List.of("default");
+        return List.of(safeAgentId(headerAgentId));
+    }
+
+    /**
+     * Body-provided workspace ids are only hints. The access service applies
+     * the same personal-agent and break-glass rules as the HTTP agent scope
+     * filter, so skill transfer endpoints cannot be used as a scope bypass.
+     */
+    private String resolveWorkspaceTarget(EnterprisePrincipal principal, String headerAgentId,
+                                          String requestedAgentId) {
+        String requested = requestedAgentId == null || requestedAgentId.isBlank()
+                ? headerAgentId : requestedAgentId;
+        return agentAccessService.resolve(principal, requested);
     }
 
     private String safeAgentId(String agentId) {

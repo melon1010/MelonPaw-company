@@ -1,10 +1,8 @@
 import { Card, Button, Tag, Avatar, Popconfirm, Checkbox } from "antd";
 import {
-  MessageCircle,
-  Hash,
-  Send,
-  MessageSquare,
-  Mail,
+  Bell,
+  Clock3,
+  HeartPulse,
   RefreshCw,
   Trash2,
   Brain,
@@ -23,25 +21,19 @@ interface PushMessageCardProps {
 }
 
 const CHANNEL_ICONS = {
-  wechat: MessageCircle,
-  slack: Hash,
-  telegram: Send,
-  discord: MessageSquare,
-  email: Mail,
+  system: Bell,
+  cron: Clock3,
   memory: Brain,
-  heartbeat: MessageCircle,
+  heartbeat: HeartPulse,
   skill: RefreshCw,
 };
 
 const CHANNEL_COLORS = {
-  wechat: "#07C160",
-  slack: "#4A154B",
-  telegram: "#0088CC",
-  discord: "#5865F2",
-  email: "#EA4335",
-  memory: "#7C3AED",
-  heartbeat: "#5865F2",
-  skill: "#1677ff",
+  system: "#2f6f91",
+  cron: "#a56312",
+  memory: "#6f5f9b",
+  heartbeat: "#b34842",
+  skill: "#176b5d",
 };
 
 const normalizeCronTaskName = (title: string): string =>

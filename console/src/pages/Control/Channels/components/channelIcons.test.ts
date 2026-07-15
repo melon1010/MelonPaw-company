@@ -14,10 +14,10 @@ describe("getChannelIconUrl", () => {
     );
   });
 
-  it("returns specific CDN URL for known channel 'discord'", () => {
-    const url = getChannelIconUrl("discord");
+  it("returns specific CDN URL for known channel 'wechat'", () => {
+    const url = getChannelIconUrl("wechat");
     expect(url).toBe(
-      "https://gw.alicdn.com/imgextra/i4/O1CN01BQFnBu21PWTtKbPmU_!!6000000006977-2-tps-400-400.png",
+      "https://gw.alicdn.com/imgextra/i4/O1CN01GsAob11fkfDWVIb3R_!!6000000004045-2-tps-400-400.png",
     );
   });
 
@@ -34,12 +34,12 @@ describe("getChannelIconUrl", () => {
 });
 
 describe("getChannelLetterColor", () => {
-  it("returns predefined color '#FF7F16' for known channel 'console'", () => {
-    expect(getChannelLetterColor("console")).toBe("#FF7F16");
+  it("returns the company color for known channel 'console'", () => {
+    expect(getChannelLetterColor("console")).toBe("#176B5D");
   });
 
-  it("returns predefined color '#5865F2' for known channel 'discord'", () => {
-    expect(getChannelLetterColor("discord")).toBe("#5865F2");
+  it("returns predefined color '#07C160' for known channel 'wechat'", () => {
+    expect(getChannelLetterColor("wechat")).toBe("#07C160");
   });
 
   it("returns a color string starting with '#' for unknown channel 'my_custom_bot'", () => {

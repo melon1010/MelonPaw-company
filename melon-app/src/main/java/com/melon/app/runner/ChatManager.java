@@ -305,7 +305,8 @@ public class ChatManager {
     }
 
     private Path chatsFile(String agentId) {
-        return configManager.resolveWorkspaceDir(normalizeAgentId(agentId)).resolve("chats.json");
+        return SafePathUtil.resolveSafe(
+                configManager.resolveWorkspaceDir(normalizeAgentId(agentId)), "chats.json");
     }
 
     private Map<String, Object> repairCompactedStateFromLog(String agentId, String sessionId,

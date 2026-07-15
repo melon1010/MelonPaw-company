@@ -8,10 +8,14 @@ import io.agentscope.core.permission.PermissionMode;
 import io.agentscope.core.permission.PermissionRule;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.IsolationScope;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.memory.compaction.ToolResultEvictionConfig;
 import io.agentscope.harness.agent.memory.MemoryConfig;
 import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
+import io.agentscope.harness.agent.sandbox.impl.docker.DockerFilesystemSpec;
+import io.agentscope.harness.agent.sandbox.WorkspaceSpec;
+import io.agentscope.harness.agent.sandbox.layout.BindMountEntry;
 import io.agentscope.harness.agent.tool.SkillManageConfig;
 import io.agentscope.harness.agent.tools.ToolsConfig;
 import io.agentscope.harness.agent.workspace.LocalFsMode;
@@ -103,13 +107,21 @@ public class MelonAgentFactory {
                 .name(agentConfig.getName())
                 .agentId(agentId)
                 .toolkit(toolkit)
-                .workspace(workspaceDir)
-                .filesystem(new LocalFilesystemSpec()
-                        .project(workspaceDir)
-                        .projectWritable(true)
-                        .mode(LocalFsMode.SANDBOXED)
-                        .inheritEnv(false)
-                        .executeTimeoutSeconds(shellTimeoutSeconds(agentConfig)))
+                .workspace(workspaceDir);
+        if ("local".equalsIgnoreCase(executionSandboxMode())) {
+            log.warn("Agent {} uses local shell execution. This is a development-only mode; "
+                    + "enterprise deployments must use DockerFilesystemSpec.", agentId);
+            builder.filesystem(new LocalFilesystemSpec()
+                    .project(workspaceDir)
+                    .projectWritable(true)
+                    .mode(LocalFsMode.SANDBOXED)
+                    .isolationScope(IsolationScope.USER)
+                    .inheritEnv(false)
+                    .executeTimeoutSeconds(shellTimeoutSeconds(agentConfig)));
+        } else {
+            builder.filesystem(dockerFilesystem(workspaceDir));
+        }
+        builder
                 .toolsConfig(buildHarnessToolsConfig(agentConfig))
                 .middlewares(middlewares)
                 .compaction(compaction)
@@ -129,7 +141,6 @@ public class MelonAgentFactory {
                         .mainDir("skills")
                         .build())
                 .enableTaskList(agentConfig.getRunning().isTaskListEnabled())
-                .disableShellTool()
                 .disableSubagents();
         addContextFiles(builder, agentConfig);
         if (providerManager != null) {
@@ -151,12 +162,6 @@ public class MelonAgentFactory {
 
     private Toolkit buildToolkit(String agentId, AgentConfig config, Path workspaceDir) {
         Toolkit toolkit = new Toolkit();
-        registerIfEnabled(toolkit, config, "execute_shell_command", "com.melon.tools.shell.ExecuteShellCommandTool",
-                workspaceDir.toString(),
-                config.getRunning().getShellCommandTimeout(),
-                config.getRunning().getShellCommandExecutable(),
-                toolGuardConfig(config));
-        registerIfEnabled(toolkit, config, "browser_use", "com.melon.tools.browser.BrowserUseTool");
         registerIfEnabled(toolkit, config, "view_image", "com.melon.tools.media.ViewImageTool", workspaceDir);
         registerIfEnabled(toolkit, config, "view_video", "com.melon.tools.media.ViewVideoTool", workspaceDir);
         registerIfEnabled(toolkit, config, "get_current_time", "com.melon.tools.util.GetCurrentTimeTool");
@@ -173,6 +178,45 @@ public class MelonAgentFactory {
         }
         log.info("melonPaw toolkit registered tools: {}", toolkit.getToolNames());
         return toolkit;
+    }
+
+    private DockerFilesystemSpec dockerFilesystem(Path workspaceDir) {
+        String image = envOr("MELON_SANDBOX_IMAGE", "melonpaw-company-sandbox:latest");
+        DockerFilesystemSpec spec = new DockerFilesystemSpec()
+                .image(image)
+                .workspaceRoot("/workspace")
+                .memorySizeBytes(512L * 1024L * 1024L)
+                .cpuCount(2L)
+                // The sandbox must be able to fetch public documentation and skill assets.
+                // Operators can set MELON_SANDBOX_NETWORK=none or provide a restricted
+                // Docker network when outbound access is not allowed by policy.
+                .network(envOr("MELON_SANDBOX_NETWORK", "bridge"))
+                .additionalRunArgs(
+                        "--cap-drop=ALL",
+                        "--security-opt=no-new-privileges:true",
+                        "--pids-limit=256");
+        spec.isolationScope(IsolationScope.USER);
+        // Keep the Web workspace and the Agent workspace consistent. Only the already validated
+        // per-user workspace is mounted; the project root and all other users remain outside.
+        WorkspaceSpec workspaceSpec = new WorkspaceSpec();
+        workspaceSpec.setRoot("/workspace");
+        BindMountEntry workspaceMount = new BindMountEntry();
+        workspaceMount.setHostPath(workspaceDir.toAbsolutePath().normalize().toString());
+        workspaceMount.setReadOnly(false);
+        workspaceSpec.getEntries().put(".", workspaceMount);
+        spec.workspaceSpec(workspaceSpec);
+        spec.workspaceProjectionEnabled(false);
+        return spec;
+    }
+
+    private String executionSandboxMode() {
+        return envOr("MELON_EXECUTION_SANDBOX", "docker");
+    }
+
+    private String envOr(String name, String fallback) {
+        String value = System.getProperty(name);
+        if (value == null || value.isBlank()) value = System.getenv(name);
+        return value == null || value.isBlank() ? fallback : value.trim();
     }
 
     private void registerIfEnabled(Toolkit toolkit, AgentConfig config, String toolName, String className, Object... args) {
@@ -219,18 +263,10 @@ public class MelonAgentFactory {
         return tool == null || tool.isEnabled();
     }
 
-    private Map<String, Object> toolGuardConfig(AgentConfig config) {
-        if (config == null || config.getFrontendRunningConfig() == null) return Map.of();
-        Object guard = config.getFrontendRunningConfig().get("tool_guard_config");
-        if (!(guard instanceof Map<?, ?> guardMap)) return Map.of();
-        Map<String, Object> result = new java.util.LinkedHashMap<>();
-        guardMap.forEach((key, value) -> result.put(String.valueOf(key), value));
-        return result;
-    }
-
     private ToolsConfig buildHarnessToolsConfig(AgentConfig config) {
         ToolsConfig tools = new ToolsConfig();
         List<String> denied = new ArrayList<>();
+        denyOfficialToolWhenDisabled(config, denied, "execute_shell_command", "execute");
         denyOfficialToolWhenDisabled(config, denied, "read_file", "read_file");
         denyOfficialToolWhenDisabled(config, denied, "write_file", "write_file");
         denyOfficialToolWhenDisabled(config, denied, "edit_file", "edit_file");
@@ -325,17 +361,11 @@ public class MelonAgentFactory {
         boolean smart = "SMART".equalsIgnoreCase(level);
         PermissionContextState.Builder builder = PermissionContextState.builder()
                 .mode(strict ? PermissionMode.DEFAULT : PermissionMode.BYPASS);
-        builder.addDenyRule("execute_shell_command", new PermissionRule("execute_shell_command",
-                "qwenpaw-auto-deny-shell", PermissionBehavior.DENY, "melonpaw-java"));
         if (strict) {
             for (String tool : strictApprovalTools()) {
                 builder.addAskRule(tool, new PermissionRule(tool, null, PermissionBehavior.ASK, "melonpaw-java"));
             }
         } else {
-            builder.addAskRule("execute_shell_command", new PermissionRule("execute_shell_command",
-                    "delete", PermissionBehavior.ASK, "melonpaw-java"));
-            builder.addAskRule("execute_shell_command", new PermissionRule("execute_shell_command",
-                    "qwenpaw-dangerous-shell", PermissionBehavior.ASK, "melonpaw-java"));
             for (String tool : lifecycleApprovalTools()) {
                 builder.addAskRule(tool, new PermissionRule(tool, null, PermissionBehavior.ASK, "melonpaw-java"));
             }
@@ -360,16 +390,15 @@ public class MelonAgentFactory {
 
     private List<String> smartApprovalTools() {
         return List.of(
-                "execute_shell_command",
+                "execute",
                 "write_file",
-                "edit_file",
-                "browser_use"
+                "edit_file"
         );
     }
 
     private List<String> strictApprovalTools() {
         java.util.LinkedHashSet<String> tools = new java.util.LinkedHashSet<>();
-        tools.addAll(List.of("execute_shell_command", "write_file", "edit_file", "read_file",
+        tools.addAll(List.of("execute", "write_file", "edit_file", "read_file",
                 "grep_files", "glob_files", "list_files"));
         tools.addAll(lifecycleApprovalTools());
         tools.addAll(smartApprovalTools());

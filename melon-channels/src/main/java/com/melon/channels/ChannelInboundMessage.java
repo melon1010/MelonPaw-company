@@ -10,6 +10,8 @@ public class ChannelInboundMessage {
     private String agentId = "default";
     private String channel = "console";
     private String userId = "default";
+    // Internal execution identity. Webhook payload metadata must never populate it.
+    private String executionUserId = "";
     private String sessionId = "default";
     private String content = "";
     private List<Map<String, Object>> attachments = new ArrayList<>();
@@ -24,6 +26,11 @@ public class ChannelInboundMessage {
 
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = value(userId, "default"); }
+
+    public String getExecutionUserId() { return executionUserId; }
+    public void setExecutionUserId(String executionUserId) {
+        this.executionUserId = executionUserId == null ? "" : executionUserId.trim();
+    }
 
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = value(sessionId, "default"); }

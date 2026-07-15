@@ -1,4 +1,4 @@
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { Layout, Result, Spin } from "antd";
 import { Routes, Route, useLocation, matchPath } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -38,19 +38,24 @@ export default function MainLayout() {
   const currentPath = location.pathname;
   const routes = useRoutes();
   const { user } = useAuth();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const selectedKey = useMemo(
     () => pickSelectedKey(currentPath, routes),
     [currentPath, routes],
   );
+  const canPollConsole = canAccessRoute("core.inbox", user);
 
   return (
     <Layout className={styles.mainLayout}>
-      <Header />
+      <Header
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+      />
       <Layout>
-        <Sidebar selectedKey={selectedKey} />
+        <Sidebar selectedKey={selectedKey} collapsed={sidebarCollapsed} />
         <Content className="page-container">
-          <ConsolePollService />
+          {canPollConsole && <ConsolePollService />}
           <Slot name="content.statusBar" kind="fill" />
           <div className="page-content">
             <ChunkErrorBoundary resetKey={currentPath}>

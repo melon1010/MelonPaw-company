@@ -6,8 +6,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -69,6 +72,34 @@ class ProjectWorkspaceServiceTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.write("project-one", "PROJECT.md", oversized));
+    }
+
+    @Test
+    void projectMembersCanContributeKnowledgeButCannotChangeProjectPolicy() {
+        EnterpriseIdentityStore store = new EnterpriseIdentityStore(tempDir.resolve("project-auth.db"));
+        AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
+        EnterprisePrincipal administrator = auth.bootstrap(
+                "admin", "Administrator", "StrongPassword123");
+        EnterprisePrincipal member = auth.createUser(
+                "member", "Member", "MemberPassword123", true, Set.of("EMPLOYEE"));
+        EnterprisePrincipal viewer = auth.createUser(
+                "viewer", "Viewer", "ViewerPassword123", true, Set.of("EMPLOYEE"));
+        EnterpriseIdentityStore.ProjectSpaceRecord project = store.createProject(
+                "project-one", "Project One", "authorization test", administrator.id());
+        store.putProjectMember(project.id(), member.id(), "MEMBER");
+        store.putProjectMember(project.id(), viewer.id(), "VIEWER");
+
+        ProjectSpaceController controller = new ProjectSpaceController(
+                store, new ProjectWorkspaceService(configManager()));
+        assertEquals(200, controller.updateWorkspaceDocument(
+                project.id(), "KNOWLEDGE.md", Map.of("content", "member contribution"), member)
+                .block().getStatusCode().value());
+        assertEquals(403, controller.updateWorkspaceDocument(
+                project.id(), "POLICY.md", Map.of("content", "unauthorized policy"), member)
+                .block().getStatusCode().value());
+        assertEquals(403, controller.updateWorkspaceDocument(
+                project.id(), "KNOWLEDGE.md", Map.of("content", "viewer edit"), viewer)
+                .block().getStatusCode().value());
     }
 
     private ConfigManager configManager() {

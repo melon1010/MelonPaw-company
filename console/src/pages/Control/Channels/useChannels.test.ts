@@ -61,7 +61,7 @@ describe("useChannels", () => {
     expect(result.current.channelTypes).toEqual(mockTypes);
   });
 
-  it("orderedKeys 按 builtinOrder 排序：builtin 在前，custom 在后", async () => {
+  it("orderedKeys only exposes supported domestic channels", async () => {
     (api.listChannels as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (api.listChannelTypes as ReturnType<typeof vi.fn>).mockResolvedValue([
       "dingtalk",
@@ -75,14 +75,10 @@ describe("useChannels", () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(result.current.orderedKeys).toEqual([
-      "console",
-      "dingtalk",
-      "my-custom",
-    ]);
+    expect(result.current.orderedKeys).toEqual(["console", "dingtalk"]);
   });
 
-  it("orderedKeys 中不在 builtinOrder 的 key 出现在末尾", async () => {
+  it("orderedKeys excludes international and custom channel types", async () => {
     (api.listChannels as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (api.listChannelTypes as ReturnType<typeof vi.fn>).mockResolvedValue([
       "alpha-custom",
@@ -97,21 +93,7 @@ describe("useChannels", () => {
       expect(result.current.loading).toBe(false);
     });
 
-    const keys = result.current.orderedKeys;
-    const builtinKeys = ["feishu", "telegram"];
-    const customKeys = ["alpha-custom", "beta-custom"];
-
-    // builtin keys 全部出现在 custom keys 之前
-    const lastBuiltinIndex = Math.max(
-      ...builtinKeys.map((k) => keys.indexOf(k)),
-    );
-    const firstCustomIndex = Math.min(
-      ...customKeys.map((k) => keys.indexOf(k)),
-    );
-
-    expect(lastBuiltinIndex).toBeLessThan(firstCustomIndex);
-    // custom keys 都在末尾
-    expect(keys.slice(-customKeys.length).sort()).toEqual(customKeys.sort());
+    expect(result.current.orderedKeys).toEqual(["feishu"]);
   });
 
   it("isBuiltin 返回 true 当 channels[key].isBuiltin === true", async () => {

@@ -12,7 +12,7 @@
 .sessionListHeader {
   flex-shrink: 0;
   z-index: 1;
-  background: #f9f8f4;
+  background: var(--mp-sidebar);
 }
 
 /* Search bar area */
@@ -24,8 +24,8 @@
   margin: 6px 8px 4px;
   padding: 7px 12px;
   border: none;
-  border-radius: 8px;
-  background: #ff7f16;
+  border-radius: 4px;
+  background: var(--mp-primary);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -33,7 +33,7 @@
   transition: opacity 0.15s;
 
   &:hover {
-    opacity: 0.85;
+    background: var(--mp-primary-hover);
   }
 }
 
@@ -44,6 +44,9 @@
 .searchInput {
   border-radius: 6px;
   font-size: 12px;
+  color: var(--mp-sidebar-text) !important;
+  background: var(--mp-sidebar-hover) !important;
+  border-color: #344740 !important;
 }
 
 /* Session items container */
@@ -74,12 +77,12 @@
   font-weight: 600;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: var(--colorTextQuaternary, rgba(0, 0, 0, 0.25));
+  color: var(--mp-sidebar-muted);
   user-select: none;
   transition: color 0.15s;
 
   &:hover {
-    color: var(--colorTextTertiary, rgba(0, 0, 0, 0.45));
+    color: var(--mp-sidebar-text);
   }
 }
 
@@ -91,7 +94,7 @@
   justify-content: center;
   padding: 24px 12px;
   font-size: 12px;
-  color: var(--colorTextTertiary, rgba(0, 0, 0, 0.45));
+  color: var(--mp-sidebar-muted);
 }
 
 /* Dark mode */

@@ -8,22 +8,28 @@ import { useTranslation } from "react-i18next";
 import { getAgentDisplayName } from "../../utils/agentDisplayName";
 import { useNavigate } from "react-router-dom";
 import { useAppMessage } from "../../hooks/useAppMessage";
+import { useAuth } from "../../contexts/AuthContext";
+import { canAccessRoute } from "../../auth/authorization";
 import styles from "./index.module.less";
 
 interface AgentSelectorProps {
   collapsed?: boolean;
+  variant?: "sidebar" | "header";
 }
 
 export default function AgentSelector({
   collapsed = false,
+  variant = "sidebar",
 }: AgentSelectorProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { selectedAgent, agents, setSelectedAgent, setAgents } =
     useAgentStore();
+  const { user } = useAuth();
   const { message } = useAppMessage();
   const [loading, setLoading] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const canManageAgents = canAccessRoute("core.agents", user);
 
   useEffect(() => {
     loadAgents();
@@ -60,22 +66,27 @@ export default function AgentSelector({
     message.success(t("agent.switchSuccess"));
   };
 
-  // Auto-switch to default if the selected agent was deleted or disabled
+  // Keep persisted selections inside the agent list authorized by the backend.
   useEffect(() => {
-    if (!agents?.length || selectedAgent === "default") return;
+    if (!agents?.length) return;
 
     const currentAgent = agents.find((a) => a.id === selectedAgent);
+    if (currentAgent?.enabled) return;
+
+    const fallbackAgent = agents.find((agent) => agent.enabled);
+    if (!fallbackAgent || fallbackAgent.id === selectedAgent) return;
+
+    setSelectedAgent(fallbackAgent.id);
+    if (selectedAgent === "default") return;
 
     if (!currentAgent) {
       // Agent was deleted — no longer in the list
-      setSelectedAgent("default");
       message.warning(t("agent.currentAgentDeleted"));
-    } else if (!currentAgent.enabled) {
+    } else {
       // Agent exists but was disabled
-      setSelectedAgent("default");
       message.warning(t("agent.currentAgentDisabled"));
     }
-  }, [agents, selectedAgent, setSelectedAgent, t]);
+  }, [agents, message, selectedAgent, setSelectedAgent, t]);
 
   // Count only enabled agents for badge
   const enabledCount = agents?.filter((a) => a.enabled).length ?? 0;
@@ -103,15 +114,21 @@ export default function AgentSelector({
   }
 
   return (
-    <div className={styles.agentSelectorWrapper}>
-      <div className={styles.agentSelectorLabel}>
-        <span>
-          {t("agent.currentWorkspace")}
-          {agentCount > 0 && (
-            <span className={styles.agentCountBadge}> ({agentCount})</span>
-          )}
-        </span>
-      </div>
+    <div
+      className={`${styles.agentSelectorWrapper} ${
+        variant === "header" ? styles.agentSelectorHeader : ""
+      }`}
+    >
+      {variant === "sidebar" && (
+        <div className={styles.agentSelectorLabel}>
+          <span>
+            {t("agent.currentWorkspace")}
+            {agentCount > 0 && (
+              <span className={styles.agentCountBadge}> ({agentCount})</span>
+            )}
+          </span>
+        </div>
+      )}
       <Select
         value={selectedAgent}
         onChange={handleChange}
@@ -120,6 +137,7 @@ export default function AgentSelector({
         placeholder={t("agent.selectAgent")}
         optionLabelProp="label"
         popupClassName={styles.agentSelectorDropdown}
+        popupMatchSelectWidth={variant === "header" ? 300 : true}
         onOpenChange={setDropdownOpen}
         suffixIcon={
           dropdownOpen ? <SparkUpLine size={20} /> : <SparkDownLine size={20} />
@@ -130,13 +148,15 @@ export default function AgentSelector({
               <span className={styles.dropdownHeaderTitle}>
                 {t("agent.currentWorkspace")}
               </span>
-              <button
-                className={styles.managementLink}
-                onClick={() => navigate("/agents")}
-              >
-                {t("agent.management")}
-                <ChevronRight size={12} strokeWidth={2.5} />
-              </button>
+              {canManageAgents && (
+                <button
+                  className={styles.managementLink}
+                  onClick={() => navigate("/agents")}
+                >
+                  {t("agent.management")}
+                  <ChevronRight size={12} strokeWidth={2.5} />
+                </button>
+              )}
             </div>
             {menu}
           </>

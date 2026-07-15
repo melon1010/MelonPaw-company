@@ -27,6 +27,13 @@ import reactor.core.scheduler.Schedulers;
 
 import java.nio.charset.StandardCharsets;
 
+import static com.melon.app.auth.EnterprisePermissions.AGENTS_MANAGE;
+import static com.melon.app.auth.EnterprisePermissions.AGENTS_USE;
+import static com.melon.app.auth.EnterprisePermissions.PERSONAL_AUTOMATIONS;
+import static com.melon.app.auth.EnterprisePermissions.PERSONAL_CHANNELS;
+import static com.melon.app.auth.EnterprisePermissions.PERSONAL_SKILLS;
+import static com.melon.app.auth.EnterprisePermissions.PERSONAL_WORKSPACE;
+
 /** Bearer-token security for the private enterprise deployment. */
 @Configuration
 @EnableReactiveMethodSecurity
@@ -55,6 +62,7 @@ public class SecurityConfig {
                                 "/api/auth/login", "/api/auth/bootstrap", "/api/auth/register").permitAll()
                         .pathMatchers(HttpMethod.GET,
                                 "/api/auth/status", "/api/agent/health").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/api/channels/onebot/websocket").permitAll()
                         .pathMatchers("/", "/console", "/console/**", "/assets/**", "/favicon.ico",
                                 "/*.js", "/*.css", "/*.map", "/*.png", "/*.svg", "/*.woff", "/*.woff2").permitAll()
 
@@ -62,6 +70,7 @@ public class SecurityConfig {
                         // permissions with @PreAuthorize and membership checks.
                         .pathMatchers("/api/auth/**", "/api/admin/users/**", "/api/roles/**",
                                 "/api/project-spaces/**", "/api/projects/**").authenticated()
+                        .pathMatchers("/api/version", "/api/settings/**").authenticated()
 
                         // Employees can use published agents and can only access chats after the
                         // controller has bound the request to the authenticated principal.
@@ -69,7 +78,7 @@ public class SecurityConfig {
                                 .hasAuthority("agents:use")
                         .pathMatchers("/api/chats/**", "/api/console/chat", "/api/console/chat/**",
                                 "/api/console/upload", "/api/console/push-messages",
-                                "/api/console/inbox/**", "/api/files/preview/**")
+                                "/api/console/inbox/**")
                                 .hasAuthority("agents:use")
                         .pathMatchers("/api/commands/check")
                                 .hasAuthority("agents:use")
@@ -83,9 +92,21 @@ public class SecurityConfig {
                         .pathMatchers("/api/token-usage/**", "/api/config/security/audit-events")
                                 .hasAnyAuthority("audit:read", "agents:manage", "system:manage")
 
+                        // Employees may inspect only the effective model id for their already
+                        // resolved Agent; provider credentials and model administration stay global.
+                        .pathMatchers(HttpMethod.GET, "/api/models/active")
+                                .hasAuthority("agents:use")
+
+                        // MCP server registration, OAuth material and direct server tool calls
+                        // are deployment-level capabilities, not Agent configuration.
+                        .pathMatchers("/api/mcp/**")
+                                .hasAuthority("system:manage")
+
                         // Agent operators manage the runtime surface. Channel webhooks remain
                         // protected here until a channel-specific signature has been verified;
                         // internal polling and WebSocket adapters are unaffected.
+                        .pathMatchers(HttpMethod.PUT, "/api/agents/order")
+                                .hasAuthority("system:manage")
                         .pathMatchers(HttpMethod.POST, "/api/agents", "/api/agents/**")
                                 .hasAuthority("agents:manage")
                         .pathMatchers(HttpMethod.PUT, "/api/agents/**")
@@ -94,32 +115,24 @@ public class SecurityConfig {
                                 .hasAuthority("agents:manage")
                         .pathMatchers(HttpMethod.DELETE, "/api/agents/**")
                                 .hasAuthority("agents:manage")
-                        .pathMatchers(HttpMethod.GET, "/api/workspace")
-                                .hasAuthority("agents:manage")
-                        .pathMatchers(HttpMethod.PUT, "/api/workspace")
-                                .hasAuthority("agents:manage")
-                        .pathMatchers(HttpMethod.POST, "/api/workspace/init", "/api/workspace/upload")
-                                .hasAuthority("agents:manage")
                         .pathMatchers("/api/skills/pool/**", "/api/skills/hub/**", "/api/skills/workspaces",
                                 "/api/workspace/running-config", "/api/workspace/running-config/**",
-                                "/api/workspace/download",
-                                "/api/access-control/**",
-                                "/api/cron/**", "/api/tools/**", "/api/mcp/**",
-                                "/api/config/heartbeat", "/api/config/heartbeat/**",
                                 "/api/agent-stats/**")
                                 .hasAuthority("agents:manage")
 
-                        // Every employee owns an isolated personal workspace. Only the explicit
-                        // document and preference endpoints below are part of the employee surface.
-                        .pathMatchers("/api/skills/**", "/api/config/channels/**", "/api/channels/**")
-                                .hasAuthority("agents:use")
-                        .pathMatchers("/api/workspace/files", "/api/workspace/files/**",
-                                "/api/workspace/memory", "/api/workspace/memory/**",
-                                "/api/workspace/language",
-                                "/api/workspace/system-prompt-files")
-                                .hasAuthority("agents:use")
-                        .pathMatchers("/api/workspace/**")
-                                .hasAuthority("agents:manage")
+                        // Personal capabilities are independently assignable. Agent operators use
+                        // the same APIs for managed non-personal Agents.
+                        .pathMatchers("/api/skills/**")
+                                .hasAnyAuthority(PERSONAL_SKILLS, AGENTS_MANAGE)
+                        .pathMatchers("/api/tools/**")
+                                .hasAnyAuthority(AGENTS_USE, PERSONAL_WORKSPACE, AGENTS_MANAGE)
+                        .pathMatchers("/api/config/channels/**", "/api/channels/**",
+                                "/api/access-control/**")
+                                .hasAnyAuthority(PERSONAL_CHANNELS, AGENTS_MANAGE)
+                        .pathMatchers("/api/cron/**", "/api/config/heartbeat", "/api/config/heartbeat/**")
+                                .hasAnyAuthority(PERSONAL_AUTOMATIONS, AGENTS_MANAGE)
+                        .pathMatchers("/api/files/preview/**", "/api/workspace/**")
+                                .hasAnyAuthority(PERSONAL_WORKSPACE, AGENTS_MANAGE)
 
                         // Secrets, executable extensions, backups and host-level controls are
                         // intentionally reserved for system administrators.
@@ -143,31 +156,56 @@ public class SecurityConfig {
         return (exchange, chain) -> ReactiveSecurityContextHolder.getContext()
                 .map(context -> context.getAuthentication().getPrincipal())
                 .ofType(EnterprisePrincipal.class)
-                .<ServerWebExchange>map(principal -> {
-                    if (principal.hasPermission("agents:manage")
-                            || !principal.hasPermission("agents:use")) {
-                        return exchange;
+                .map(principal -> {
+                    if (!hasAgentScopedCapability(principal)) {
+                        return new AgentScopeDecision(exchange, null);
                     }
-                    String requested = exchange.getRequest().getHeaders().getFirst("X-Agent-Id");
-                    String path = exchange.getRequest().getPath().pathWithinApplication().value();
-                    String effective = isPersonalResourcePath(path)
-                            ? agentAccessService.ensurePersonalAgent(principal)
-                            : agentAccessService.resolve(principal, requested);
-                    var request = exchange.getRequest().mutate()
-                            .headers(headers -> headers.set("X-Agent-Id", effective))
-                            .build();
-                    return exchange.mutate().request(request).build();
+                    try {
+                        String requested = exchange.getRequest().getHeaders().getFirst("X-Agent-Id");
+                        String path = exchange.getRequest().getPath().pathWithinApplication().value();
+                        String effective = principal.hasPermission(AGENTS_MANAGE)
+                                ? agentAccessService.resolve(principal, requested)
+                                : (isPersonalResourcePath(path)
+                                    ? agentAccessService.ensurePersonalAgent(principal)
+                                    : agentAccessService.resolve(principal, requested));
+                        var request = exchange.getRequest().mutate()
+                                .headers(headers -> headers.set("X-Agent-Id", effective))
+                                .build();
+                        return new AgentScopeDecision(exchange.mutate().request(request).build(), null);
+                    } catch (SecurityException e) {
+                        return new AgentScopeDecision(exchange, e.getMessage());
+                    }
                 })
-                .defaultIfEmpty(exchange)
-                .flatMap(chain::filter);
+                .defaultIfEmpty(new AgentScopeDecision(exchange, null))
+                .flatMap(decision -> decision.deniedReason() == null
+                        ? chain.filter(decision.exchange())
+                        : writeError(exchange, HttpStatus.FORBIDDEN, decision.deniedReason()));
     }
 
-    private boolean isPersonalResourcePath(String path) {
+    boolean isPersonalResourcePath(String path) {
         return path.startsWith("/api/skills")
+                || path.startsWith("/api/tools")
                 || path.startsWith("/api/workspace")
                 || path.startsWith("/api/config/channels")
                 || path.startsWith("/api/channels")
+                || path.startsWith("/api/access-control")
+                || path.startsWith("/api/cron")
+                || path.startsWith("/api/config/heartbeat")
                 || path.startsWith("/api/files");
+    }
+
+    private boolean hasAgentScopedCapability(EnterprisePrincipal principal) {
+        return principal.hasAnyPermission(
+                AGENTS_USE,
+                AGENTS_MANAGE,
+                PERSONAL_WORKSPACE,
+                PERSONAL_SKILLS,
+                PERSONAL_CHANNELS,
+                PERSONAL_AUTOMATIONS
+        );
+    }
+
+    private record AgentScopeDecision(ServerWebExchange exchange, String deniedReason) {
     }
 
     private AuthenticationWebFilter bearerFilter(AuthService authService) {
@@ -180,6 +218,12 @@ public class SecurityConfig {
                         .switchIfEmpty(Mono.error(new BadCredentialsException("Invalid or expired access token")));
         AuthenticationWebFilter filter = new AuthenticationWebFilter(authenticationManager);
         filter.setServerAuthenticationConverter(exchange -> {
+            String path = exchange.getRequest().getPath().pathWithinApplication().value();
+            if ("/api/channels/onebot/websocket".equals(path)) {
+                // This upgrade uses the per-Agent OneBot token, which is verified by
+                // OneBotWebSocketHandler instead of the application login token.
+                return Mono.empty();
+            }
             String authorization = exchange.getRequest().getHeaders().getFirst("Authorization");
             if (authorization == null || !authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
                 return Mono.empty();

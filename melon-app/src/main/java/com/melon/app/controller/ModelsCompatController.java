@@ -6,6 +6,8 @@ import com.melon.core.provider.ProviderManager;
 import com.melon.core.util.JsonUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import com.melon.app.auth.EnterprisePrincipal;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -222,9 +224,13 @@ public class ModelsCompatController {
     public Mono<ResponseEntity<?>> getActiveModels(
             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String headerAgentId,
             @RequestParam(value = "agent_id", required = false) String queryAgentId,
-            @RequestParam(value = "scope", defaultValue = "effective") String scope) {
-        String agentId = queryAgentId == null || queryAgentId.isBlank() ? headerAgentId : queryAgentId;
-        return Mono.fromCallable(() -> ResponseEntity.ok(activeModels(agentId, scope)));
+            @RequestParam(value = "scope", defaultValue = "effective") String scope,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        boolean systemManager = principal != null && principal.hasPermission("system:manage");
+        String agentId = systemManager && queryAgentId != null && !queryAgentId.isBlank()
+                ? queryAgentId : headerAgentId;
+        String effectiveScope = systemManager ? scope : "effective";
+        return Mono.fromCallable(() -> ResponseEntity.ok(activeModels(agentId, effectiveScope)));
     }
 
     @PutMapping("/active")

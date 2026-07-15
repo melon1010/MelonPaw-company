@@ -36,10 +36,6 @@ public class FileGuardService {
         return false;
     }
 
-    public boolean allowPreviewOutsideWorkspace() {
-        return Boolean.TRUE.equals(securitySettingsService.fileGuard().get("allow_preview_outside_workspace"));
-    }
-
     private List<GuardPath> guardedPaths(Object raw) {
         if (!(raw instanceof List<?> list)) {
             return List.of();

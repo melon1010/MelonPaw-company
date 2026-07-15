@@ -2,6 +2,7 @@ package com.melon.app.controller;
 
 import com.melon.core.config.ConfigManager;
 import com.melon.core.util.JsonUtils;
+import com.melon.core.util.SafePathUtil;
 import com.melon.app.cron.CronExecutor;
 import com.melon.app.service.AgentStatsService;
 import com.melon.app.service.AuditLogService;
@@ -9,6 +10,8 @@ import com.melon.app.service.BuiltinSkillService;
 import com.melon.app.service.SecuritySettingsService;
 import com.melon.app.service.SkillService;
 import com.melon.app.service.ApprovalService;
+import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.HeartbeatConfig;
@@ -16,7 +19,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
-import com.melon.tools.shell.ExecuteShellCommandTool;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -30,6 +32,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static com.melon.core.util.ValueUtils.stringValue;
+import static com.melon.app.auth.EnterprisePermissions.AGENTS_MANAGE;
+import static com.melon.app.auth.EnterprisePermissions.APPROVALS_DECIDE;
 
 /**
  * Compatibility endpoints for melonPaw frontend pages whose deep backend
@@ -48,6 +52,7 @@ public class FrontendCompatController {
     private final AuditLogService auditLogService;
     private final BuiltinSkillService builtinSkillService;
     private final SkillService skillService;
+    private final EnterpriseAgentAccessService agentAccessService;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3))
             .build();
@@ -60,7 +65,8 @@ public class FrontendCompatController {
                                     SecuritySettingsService securitySettingsService,
                                     AuditLogService auditLogService,
                                     BuiltinSkillService builtinSkillService,
-                                    SkillService skillService) {
+                                    SkillService skillService,
+                                    EnterpriseAgentAccessService agentAccessService) {
         this.configManager = configManager;
         this.approvalService = approvalService;
         this.multiAgentManager = multiAgentManager;
@@ -70,6 +76,7 @@ public class FrontendCompatController {
         this.auditLogService = auditLogService;
         this.builtinSkillService = builtinSkillService;
         this.skillService = skillService;
+        this.agentAccessService = agentAccessService;
     }
 
     @GetMapping("/version")
@@ -138,7 +145,9 @@ public class FrontendCompatController {
     }
 
     @PostMapping("/config/heartbeat/run")
-    public Mono<ResponseEntity<?>> runHeartbeat(@RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
+    public Mono<ResponseEntity<?>> runHeartbeat(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal EnterprisePrincipal principal) {
         String id = AgentRequestSupport.agentId(agentId);
         return Mono.fromCallable(() -> {
             AgentConfig config = configManager.getConfig().getAgent(id);
@@ -146,8 +155,11 @@ public class FrontendCompatController {
                 return ResponseEntity.notFound().build();
             }
             String message = heartbeatInstruction(id);
-            cronExecutor.injectMessage(id, message, "heartbeat-manual-" + System.currentTimeMillis(),
-                    "main", "main", "console", Map.of("source", "heartbeat", "channel", "console"),
+            String taskId = "heartbeat-manual-" + System.currentTimeMillis();
+            String ownerUserId = principal != null && principal.id() != null ? principal.id() : "system";
+            cronExecutor.injectMessage(id, message, taskId,
+                    ownerUserId, taskId, "console",
+                    Map.of("source", "heartbeat", "channel", "console", "execution_user_id", ownerUserId),
                     reply -> {}, err -> {});
             return ResponseEntity.ok(Map.of("started", true));
         }).subscribeOn(Schedulers.boundedElastic());
@@ -181,8 +193,9 @@ public class FrontendCompatController {
     }
 
     private String heartbeatInstruction(String agentId) {
-        Path heartbeatFile = configManager.resolveWorkspaceDir(agentId).resolve("HEARTBEAT.md");
-        if (Files.isRegularFile(heartbeatFile)) {
+        Path heartbeatFile = SafePathUtil.resolveSafe(
+                configManager.resolveWorkspaceDir(agentId), "HEARTBEAT.md");
+        if (Files.isRegularFile(heartbeatFile, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             try {
                 String text = Files.readString(heartbeatFile).trim();
                 if (!text.isBlank()) return text;
@@ -245,17 +258,26 @@ public class FrontendCompatController {
 
     @GetMapping("/config/security/tool-guard/builtin-rules")
     public Mono<ResponseEntity<?>> builtinToolGuardRules() {
-        return Mono.just(ResponseEntity.ok(ExecuteShellCommandTool.builtinRulePayloads()));
+        return Mono.just(ResponseEntity.ok(List.of(Map.of(
+                "id", "agentscope-execute-approval",
+                "category", "execution",
+                "severity", "medium",
+                "patterns", List.of("execute"),
+                "exclude_patterns", List.of(),
+                "description", "AgentScope execute runs only inside the configured sandbox and follows the Agent approval level.",
+                "remediation", "Use SMART or STRICT approval for interactive work; configure unattended jobs explicitly."))));
     }
 
     @GetMapping("/config/security/audit-events")
     public Mono<ResponseEntity<?>> auditEvents(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+                                               @org.springframework.security.core.annotation.AuthenticationPrincipal EnterprisePrincipal principal,
                                                @RequestParam(value = "session_id", required = false) String sessionId,
                                                @RequestParam(value = "tool_name", required = false) String toolName,
                                                @RequestParam(value = "decision", required = false) String decision,
                                                @RequestParam(value = "limit", defaultValue = "100") int limit) {
+        String effectiveAgentId = agentAccessService.resolveAuditScope(principal, agentId);
         return Mono.just(ResponseEntity.ok(auditLogService.query(
-                AgentRequestSupport.agentId(agentId), sessionId, toolName, decision, limit)));
+                effectiveAgentId, sessionId, toolName, decision, limit)));
     }
 
     @GetMapping("/config/security/file-guard")
@@ -754,20 +776,24 @@ public class FrontendCompatController {
     @PostMapping("/approval/approve")
     public Mono<ResponseEntity<?>> approveCommand(@RequestBody(required = false) Map<String, Object> body,
                                                   @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
-                                                  @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+                                                  @org.springframework.security.core.annotation.AuthenticationPrincipal EnterprisePrincipal principal) {
         String sessionId = body != null ? stringValue(body.get("session_id"), "default") : "default";
         String requestId = body != null ? stringValue(body.get("request_id"), "") : "";
-        boolean accepted = approvalService.decidePendingApproval(agentId, sessionId, requestId, true);
+        boolean elevated = principal.hasAnyPermission(APPROVALS_DECIDE, AGENTS_MANAGE);
+        boolean accepted = approvalService.decidePendingApproval(agentId, sessionId, requestId,
+                principal.id(), elevated, true);
         return Mono.just(ResponseEntity.ok(Map.of("success", accepted, "message", accepted ? "approved" : "approval not found")));
     }
 
     @PostMapping("/approval/deny")
     public Mono<ResponseEntity<?>> denyCommand(@RequestBody(required = false) Map<String, Object> body,
                                                @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
-                                               @RequestHeader(value = "X-User-Id", defaultValue = "default") String userId) {
+                                               @org.springframework.security.core.annotation.AuthenticationPrincipal EnterprisePrincipal principal) {
         String sessionId = body != null ? stringValue(body.get("session_id"), "default") : "default";
         String requestId = body != null ? stringValue(body.get("request_id"), "") : "";
-        boolean accepted = approvalService.decidePendingApproval(agentId, sessionId, requestId, false);
+        boolean elevated = principal.hasAnyPermission(APPROVALS_DECIDE, AGENTS_MANAGE);
+        boolean accepted = approvalService.decidePendingApproval(agentId, sessionId, requestId,
+                principal.id(), elevated, false);
         return Mono.just(ResponseEntity.ok(Map.of("success", accepted, "message", accepted ? "denied" : "approval not found")));
     }
 

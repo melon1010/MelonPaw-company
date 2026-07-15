@@ -5,6 +5,7 @@ import com.melon.core.config.AgentConfig;
 import com.melon.core.config.ConfigManager;
 import com.melon.core.security.ScanResult;
 import com.melon.core.security.SkillScanner;
+import com.melon.core.util.SafePathUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -63,9 +64,11 @@ public class SkillService {
             return skills;
         }
         try (Stream<Path> entries = Files.list(skillsDir)) {
-            entries.filter(Files::isDirectory)
+            entries.filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+                    .filter(path -> !Files.isSymbolicLink(path))
                     .filter(dir -> !"_drafts".equals(dir.getFileName().toString()))
-                    .filter(dir -> Files.isRegularFile(dir.resolve("SKILL.md")))
+                    .filter(dir -> Files.isRegularFile(dir.resolve("SKILL.md"), LinkOption.NOFOLLOW_LINKS))
+                    .filter(dir -> !Files.isSymbolicLink(dir.resolve("SKILL.md")))
                     .forEach(dir -> {
                 String name = dir.getFileName().toString();
                 Path skillFile = dir.resolve("SKILL.md");
@@ -117,12 +120,7 @@ public class SkillService {
     }
 
     public String getSkillContent(String agentId, String skillName) throws IOException {
-        Path skillsDir = skillsDir(agentId);
-        String safeName = normalizeSkillName(skillName);
-        Path skillFile = skillsDir.resolve(safeName).resolve("SKILL.md");
-        if (!Files.exists(skillFile)) {
-            throw new NoSuchFileException("Skill not found: " + skillName);
-        }
+        Path skillFile = requireSkillDir(skillsDir(agentId), skillName).resolve("SKILL.md");
         return Files.readString(skillFile);
     }
 
@@ -136,13 +134,14 @@ public class SkillService {
     public void createSkill(String agentId, String name, String content) throws IOException {
         Path skillsDir = skillsDir(agentId);
         String safeName = normalizeSkillName(name);
-        writeSkill(skillsDir.resolve(safeName), content);
-        setEnabled(skillsDir.resolve(safeName), true);
+        Path skillDir = skillPath(skillsDir, safeName);
+        writeSkill(skillDir, content);
+        setEnabled(skillDir, true);
         log.info("Skill created: {}", name);
     }
 
     public void createPoolSkill(String name, String content) throws IOException {
-        writeSkill(skillPoolDir().resolve(normalizeSkillName(name)), content);
+        writeSkill(skillPath(skillPoolDir(), normalizeSkillName(name)), content);
         log.info("Pool skill created: {}", name);
     }
 
@@ -155,11 +154,11 @@ public class SkillService {
 
     public void deleteSkill(String agentId, String name) throws IOException {
         Path skillsDir = skillsDir(agentId);
-        deleteSkillDir(skillsDir.resolve(normalizeSkillName(name)));
+        deleteSkillDir(skillPath(skillsDir, normalizeSkillName(name)));
     }
 
     public void deletePoolSkill(String name) throws IOException {
-        deleteSkillDir(skillPoolDir().resolve(normalizeSkillName(name)));
+        deleteSkillDir(skillPath(skillPoolDir(), normalizeSkillName(name)));
     }
 
     public Map<String, Object> enableSkill(String agentId, String name) throws IOException {
@@ -218,11 +217,11 @@ public class SkillService {
 
     public Map<String, Object> downloadPoolSkillToWorkspace(String agentId, String name, boolean overwrite) throws IOException {
         String safeName = normalizeSkillName(name);
-        Path source = skillPoolDir().resolve(safeName);
+        Path source = skillPath(skillPoolDir(), safeName);
         if (!Files.exists(source.resolve("SKILL.md"))) {
             throw new NoSuchFileException("Pool skill not found: " + name);
         }
-        Path target = skillsDir(agentId).resolve(safeName);
+        Path target = skillPath(skillsDir(agentId), safeName);
         if (Files.exists(target) && !overwrite) {
             return Map.of(
                     "downloaded", false,
@@ -245,11 +244,11 @@ public class SkillService {
 
     public Map<String, Object> uploadWorkspaceSkillToPool(String agentId, String name, boolean overwrite) throws IOException {
         String safeName = normalizeSkillName(name);
-        Path source = skillsDir(agentId).resolve(safeName);
+        Path source = skillPath(skillsDir(agentId), safeName);
         if (!Files.exists(source.resolve("SKILL.md"))) {
             throw new NoSuchFileException("Workspace skill not found: " + name);
         }
-        Path target = skillPoolDir().resolve(safeName);
+        Path target = skillPath(skillPoolDir(), safeName);
         if (Files.exists(target) && !overwrite) {
             return Map.of("success", false, "conflict", true, "name", name);
         }
@@ -294,11 +293,11 @@ public class SkillService {
 
     private void writeSkill(Path skillDir, String content) throws IOException {
         Files.createDirectories(skillDir);
-        Files.writeString(skillDir.resolve("SKILL.md"), content);
+        Files.writeString(SafePathUtil.resolveSafe(skillDir, "SKILL.md"), content);
     }
 
     private void setEnabled(Path skillDir, boolean enabled) throws IOException {
-        Path marker = skillDir.resolve(".disabled");
+        Path marker = SafePathUtil.resolveSafe(skillDir, ".disabled");
         if (enabled) {
             Files.deleteIfExists(marker);
         } else {
@@ -338,7 +337,7 @@ public class SkillService {
                 if (content.isBlank()) {
                     throw new IOException("Skill " + originalName + " has empty SKILL.md");
                 }
-                if (!seen.add(finalName) || Files.exists(targetRoot.resolve(finalName))) {
+                if (!seen.add(finalName) || Files.exists(skillPath(targetRoot, finalName), LinkOption.NOFOLLOW_LINKS)) {
                     conflicts.add(importConflict(finalName, existing));
                     continue;
                 }
@@ -357,7 +356,7 @@ public class SkillService {
 
             List<String> imported = new ArrayList<>();
             for (SkillImportPlan plan : plans) {
-                Path target = targetRoot.resolve(plan.name());
+                Path target = skillPath(targetRoot, plan.name());
                 copyDirectory(plan.source(), target);
                 if (includeEnabled) setEnabled(target, enable);
                 imported.add(plan.name());
@@ -490,8 +489,14 @@ public class SkillService {
     }
 
     private void copyDirectory(Path source, Path target) throws IOException {
+        if (Files.isSymbolicLink(source) || Files.isSymbolicLink(target)) {
+            throw new SecurityException("Symbolic links are not allowed in skill paths");
+        }
         try (var stream = Files.walk(source)) {
             for (Path path : stream.toList()) {
+                if (Files.isSymbolicLink(path)) {
+                    throw new SecurityException("Symbolic links are not allowed in skills: " + path);
+                }
                 Path relative = source.relativize(path);
                 Path dst = target.resolve(relative);
                 if (Files.isDirectory(path)) {
@@ -517,8 +522,10 @@ public class SkillService {
     }
 
     private Path requireSkillDir(Path parent, String name) throws IOException {
-        Path skillDir = parent.resolve(normalizeSkillName(name)).normalize();
-        if (!skillDir.startsWith(parent.normalize()) || !Files.exists(skillDir.resolve("SKILL.md"))) {
+        Path skillDir = skillPath(parent, normalizeSkillName(name));
+        Path skillFile = SafePathUtil.resolveSafe(skillDir, "SKILL.md");
+        if (!Files.isDirectory(skillDir, LinkOption.NOFOLLOW_LINKS)
+                || !Files.isRegularFile(skillFile, LinkOption.NOFOLLOW_LINKS)) {
             throw new NoSuchFileException("Skill not found: " + name);
         }
         return skillDir;
@@ -526,7 +533,7 @@ public class SkillService {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> meta(Path skillDir) {
-        Path path = skillDir.resolve(".melon-skill-meta.json");
+        Path path = SafePathUtil.resolveSafe(skillDir, ".melon-skill-meta.json");
         Map<String, Object> raw = com.melon.core.util.JsonUtils.loadAsMap(path);
         return raw == null ? new LinkedHashMap<>() : raw;
     }
@@ -534,7 +541,8 @@ public class SkillService {
     private void updateMeta(Path skillDir, String key, Object value) {
         Map<String, Object> meta = new LinkedHashMap<>(meta(skillDir));
         meta.put(key, value);
-        com.melon.core.util.JsonUtils.save(skillDir.resolve(".melon-skill-meta.json"), meta);
+        com.melon.core.util.JsonUtils.save(
+                SafePathUtil.resolveSafe(skillDir, ".melon-skill-meta.json"), meta);
     }
 
     @SuppressWarnings("unchecked")
@@ -561,7 +569,11 @@ public class SkillService {
     private Path skillsDir(String agentId) {
         Path workspace = configManager.resolveWorkspaceDir(safeAgentId(agentId));
         workspaceManager.initWorkspace(workspace);
-        return workspace.resolve("skills");
+        return SafePathUtil.resolveSafe(workspace, "skills");
+    }
+
+    private Path skillPath(Path parent, String name) {
+        return SafePathUtil.resolveSafe(parent, name);
     }
 
     private String safeAgentId(String agentId) {

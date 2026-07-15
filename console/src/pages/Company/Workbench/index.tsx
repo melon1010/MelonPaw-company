@@ -1,13 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, Empty, Spin, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { ArrowRight, Bot, FolderKanban, ListChecks, RefreshCw } from "lucide-react";
+import {
+  ArrowRight,
+  Bot,
+  FolderKanban,
+  ListChecks,
+  RefreshCw,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import api, { companyApi, type ChatSpec, type ProjectSpace } from "../../../api";
+import api, {
+  companyApi,
+  type ChatSpec,
+  type ProjectSpace,
+} from "../../../api";
 import type { AgentSummary } from "../../../api/types/agents";
 import { useAuth } from "../../../contexts/AuthContext";
-import { canAccessRoute, hasPermission } from "../../../auth/authorization";
+import { canAccessRoute } from "../../../auth/authorization";
 import { PageHeader } from "../../../components/PageHeader";
 import styles from "../company.module.less";
 
@@ -38,22 +48,23 @@ export default function CompanyWorkbench() {
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState<string | null>(null);
+  const canStartTask = canAccessRoute("core.chat", user);
 
   const load = useCallback(async () => {
     setLoading(true);
     setWarning(null);
-    const canUseAgents = hasPermission(user, "agents:use");
-    const canOperateAgents = hasPermission(user, "agents:manage");
     const results = await Promise.allSettled([
       companyApi.listProjects(),
-      canUseAgents ? api.listChats() : Promise.resolve([] as ChatSpec[]),
-      canUseAgents
+      canStartTask ? api.listChats() : Promise.resolve([] as ChatSpec[]),
+      canStartTask
         ? api.listAgents()
         : Promise.resolve({ agents: [] as AgentSummary[] }),
-      canOperateAgents ? api.listChannels() : Promise.resolve(null),
+      canStartTask ? api.listChannels() : Promise.resolve(null),
     ]);
 
-    const failed = results.filter((result) => result.status === "rejected").length;
+    const failed = results.filter(
+      (result) => result.status === "rejected",
+    ).length;
     const projects = results[0].status === "fulfilled" ? results[0].value : [];
     const tasks = results[1].status === "fulfilled" ? results[1].value : [];
     const agents =
@@ -69,7 +80,6 @@ export default function CompanyWorkbench() {
       "onebot",
       "yuanbao",
       "xiaoyi",
-      "mqtt",
       "console",
     ]);
     const enabledChannels = channelConfig
@@ -84,7 +94,7 @@ export default function CompanyWorkbench() {
       setWarning(t("enterprise.workbench.partialData", { count: failed }));
     }
     setLoading(false);
-  }, [t, user]);
+  }, [canStartTask, t]);
 
   useEffect(() => {
     void load();
@@ -145,7 +155,9 @@ export default function CompanyWorkbench() {
         <Button
           type="link"
           icon={<ArrowRight size={15} />}
-          onClick={() => navigate(`/tasks/${encodeURIComponent(row.id)}/result`)}
+          onClick={() =>
+            navigate(`/tasks/${encodeURIComponent(row.id)}/result`)
+          }
         >
           {t("enterprise.tasks.result")}
         </Button>
@@ -155,9 +167,15 @@ export default function CompanyWorkbench() {
 
   const metrics = [
     [t("enterprise.workbench.projects"), data.projects.length],
-    [t("enterprise.workbench.enabledAgents"), data.agents.filter((a) => a.enabled).length],
+    [
+      t("enterprise.workbench.enabledAgents"),
+      data.agents.filter((a) => a.enabled).length,
+    ],
     [t("enterprise.workbench.totalTasks"), data.tasks.length],
-    [t("enterprise.workbench.runningTasks"), data.tasks.filter((c) => c.status === "running").length],
+    [
+      t("enterprise.workbench.runningTasks"),
+      data.tasks.filter((c) => c.status === "running").length,
+    ],
     [t("enterprise.workbench.channels"), data.enabledChannels],
   ];
 
@@ -193,13 +211,15 @@ export default function CompanyWorkbench() {
           <>
             <div className={styles.toolbar}>
               <div className={styles.quickActions}>
-                <Button
-                  type="primary"
-                  icon={<Bot size={16} />}
-                  onClick={() => navigate("/chat")}
-                >
-                  {t("enterprise.workbench.startTask")}
-                </Button>
+                {canStartTask && (
+                  <Button
+                    type="primary"
+                    icon={<Bot size={16} />}
+                    onClick={() => navigate("/chat")}
+                  >
+                    {t("enterprise.workbench.startTask")}
+                  </Button>
+                )}
                 <Button
                   icon={<FolderKanban size={16} />}
                   onClick={() => navigate("/projects")}

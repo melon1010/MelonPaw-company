@@ -29,7 +29,7 @@ public class ApprovalService {
     private final ConfigManager configManager;
     private final AuditLogService auditLogService;
 
-    // agentId + sessionId -> live approval gate for the paused AgentScope stream
+    // agentId + ownerUserId + sessionId -> live approval gate for the paused AgentScope stream
     private final ConcurrentHashMap<String, PendingApprovalSession> pendingApprovalSessions = new ConcurrentHashMap<>();
     // agentId + sessionId -> pending plan data
     private final ConcurrentHashMap<String, Map<String, Object>> pendingPlans = new ConcurrentHashMap<>();
@@ -76,7 +76,14 @@ public class ApprovalService {
      * Gets the pending approval for a session.
      */
     public Map<String, Object> getPendingApproval(String agentId, String sessionId) {
-        PendingApprovalSession session = pendingApprovalSessions.get(scopeKey(agentId, sessionId));
+        PendingApprovalSession session = findPendingSession(agentId, sessionId, "");
+        return session != null ? session.firstApproval() : null;
+    }
+
+    /** Returns a pending item only when it belongs to the requested user. */
+    public Map<String, Object> getPendingApproval(String agentId, String sessionId, String userId) {
+        PendingApprovalSession session = pendingApprovalSessions.get(
+                approvalScopeKey(agentId, userId, sessionId));
         return session != null ? session.firstApproval() : null;
     }
 
@@ -90,10 +97,29 @@ public class ApprovalService {
         return approvals;
     }
 
+    /** Returns only approvals owned by one user. */
+    public List<Map<String, Object>> getPendingApprovals(String agentId, String userId) {
+        List<Map<String, Object>> approvals = new ArrayList<>();
+        for (PendingApprovalSession session : pendingApprovalSessions.values()) {
+            if (sameAgent(agentId, session.agentId()) && session.belongsTo(userId)) {
+                approvals.addAll(session.approvals());
+            }
+        }
+        return approvals;
+    }
+
     public Mono<List<ConfirmResult>> openPendingApproval(String agentId, String sessionId, List<ToolUseBlock> toolCalls,
                                                          List<Map<String, Object>> approvalRequests) {
-        String key = scopeKey(agentId, sessionId);
-        PendingApprovalSession session = new PendingApprovalSession(normalizeAgentId(agentId), toolCalls, approvalRequests);
+        return openPendingApproval(agentId, sessionId, "", toolCalls, approvalRequests);
+    }
+
+    public Mono<List<ConfirmResult>> openPendingApproval(String agentId, String sessionId, String ownerUserId,
+                                                         List<ToolUseBlock> toolCalls,
+                                                         List<Map<String, Object>> approvalRequests) {
+        String key = approvalScopeKey(agentId, ownerUserId, sessionId);
+        PendingApprovalSession session = new PendingApprovalSession(
+                normalizeAgentId(agentId), normalizeUserId(ownerUserId), normalizeSessionId(sessionId),
+                toolCalls, approvalRequests);
         PendingApprovalSession previous = pendingApprovalSessions.put(key, session);
         if (previous != null) {
             previous.cancel();
@@ -102,20 +128,40 @@ public class ApprovalService {
     }
 
     public boolean cancelPendingApproval(String agentId, String sessionId) {
-        PendingApprovalSession session = pendingApprovalSessions.remove(scopeKey(agentId, sessionId));
+        PendingApprovalSession session = findPendingSession(agentId, sessionId, "");
+        if (session == null) return false;
+        pendingApprovalSessions.remove(session.scopeKey(), session);
+        session.cancel();
+        return true;
+    }
+
+    public boolean cancelPendingApproval(String agentId, String sessionId, String ownerUserId) {
+        PendingApprovalSession session = pendingApprovalSessions.remove(
+                approvalScopeKey(agentId, ownerUserId, sessionId));
         if (session == null) return false;
         session.cancel();
         return true;
     }
 
     public boolean decidePendingApproval(String agentId, String sessionId, String requestId, boolean approved) {
-        String key = scopeKey(agentId, sessionId);
-        PendingApprovalSession session = pendingApprovalSessions.get(key);
+        return decidePendingApproval(agentId, sessionId, requestId, "", true, approved);
+    }
+
+    /** Decides one approval after owner/elevated-role authorization. */
+    public boolean decidePendingApproval(String agentId, String sessionId, String requestId,
+                                         String actorUserId, boolean elevated, boolean approved) {
+        PendingApprovalSession session = elevated
+                ? findPendingSession(agentId, sessionId, requestId)
+                : pendingApprovalSessions.get(approvalScopeKey(agentId, actorUserId, sessionId));
         if (session == null) return false;
+        if (!elevated && !session.belongsTo(actorUserId)) return false;
         ApprovalDecision decision = session.decide(requestId, approved);
         boolean accepted = decision != null;
         if (accepted && auditLogService != null) {
-            Map<String, Object> approval = decision.approval() != null ? decision.approval() : Map.of();
+            Map<String, Object> approval = new LinkedHashMap<>(
+                    decision.approval() != null ? decision.approval() : Map.of());
+            approval.put("decision_actor_user_id", normalizeUserId(actorUserId));
+            approval.put("decision_actor_scope", elevated ? "ELEVATED" : "OWNER");
             String auditedAgentId = stringValue(approval.getOrDefault("agent_id", session.agentId()), session.agentId());
             String sid = stringValue(approval.getOrDefault("session_id", sessionId), "default");
             String toolName = stringValue(approval.getOrDefault("actual_tool_name",
@@ -127,7 +173,7 @@ public class ApprovalService {
                     approval);
         }
         if (session.isDone()) {
-            pendingApprovalSessions.remove(key, session);
+            pendingApprovalSessions.remove(session.scopeKey(), session);
         }
         return accepted;
     }
@@ -173,6 +219,22 @@ public class ApprovalService {
         return normalizeAgentId(agentId) + "\n" + normalizeSessionId(sessionId);
     }
 
+    private String approvalScopeKey(String agentId, String ownerUserId, String sessionId) {
+        return normalizeAgentId(agentId) + "\n" + normalizeUserId(ownerUserId)
+                + "\n" + normalizeSessionId(sessionId);
+    }
+
+    private PendingApprovalSession findPendingSession(String agentId, String sessionId, String requestId) {
+        String normalizedAgent = normalizeAgentId(agentId);
+        String normalizedSession = normalizeSessionId(sessionId);
+        return pendingApprovalSessions.values().stream()
+                .filter(session -> normalizedAgent.equals(session.agentId()))
+                .filter(session -> normalizedSession.equals(session.sessionId()))
+                .filter(session -> requestId == null || requestId.isBlank() || session.hasRequest(requestId))
+                .findFirst()
+                .orElse(null);
+    }
+
     private boolean sameAgent(String left, String right) {
         return normalizeAgentId(left).equals(normalizeAgentId(right));
     }
@@ -187,14 +249,19 @@ public class ApprovalService {
 
     private static final class PendingApprovalSession {
         private final String agentId;
+        private final String ownerUserId;
+        private final String sessionId;
         private final Map<String, ToolUseBlock> toolCalls = new LinkedHashMap<>();
         private final Map<String, Map<String, Object>> approvals = new LinkedHashMap<>();
         private final List<ConfirmResult> results = new ArrayList<>();
         private final CompletableFuture<List<ConfirmResult>> future = new CompletableFuture<>();
 
-        PendingApprovalSession(String agentId, List<ToolUseBlock> toolCalls,
+        PendingApprovalSession(String agentId, String ownerUserId, String sessionId,
+                               List<ToolUseBlock> toolCalls,
                                List<Map<String, Object>> approvalRequests) {
             this.agentId = agentId;
+            this.ownerUserId = ownerUserId;
+            this.sessionId = sessionId;
             if (toolCalls != null) {
                 for (ToolUseBlock toolCall : toolCalls) {
                     if (toolCall != null && toolCall.getId() != null) {
@@ -234,6 +301,14 @@ public class ApprovalService {
             return new ArrayList<>(approvals.values());
         }
 
+        synchronized boolean belongsTo(String userId) {
+            return !ownerUserId.isBlank() && ownerUserId.equals(normalizeUserId(userId));
+        }
+
+        synchronized boolean hasRequest(String requestId) {
+            return toolCalls.containsKey(requestId);
+        }
+
         synchronized boolean isDone() {
             return future.isDone();
         }
@@ -244,6 +319,14 @@ public class ApprovalService {
 
         String agentId() {
             return agentId;
+        }
+
+        String sessionId() {
+            return sessionId;
+        }
+
+        String scopeKey() {
+            return agentId + "\n" + ownerUserId + "\n" + sessionId;
         }
 
         synchronized void cancel() {
@@ -258,6 +341,10 @@ public class ApprovalService {
         private String firstPendingId() {
             return toolCalls.keySet().stream().findFirst().orElse("");
         }
+    }
+
+    private static String normalizeUserId(String userId) {
+        return userId == null || userId.isBlank() ? "" : userId.trim();
     }
 
     private record ApprovalDecision(ToolUseBlock toolCall, Map<String, Object> approval) {

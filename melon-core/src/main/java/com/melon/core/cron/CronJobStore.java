@@ -1,6 +1,7 @@
 package com.melon.core.cron;
 
 import com.melon.core.util.JsonUtils;
+import com.melon.core.util.SafePathUtil;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -109,7 +110,7 @@ public final class CronJobStore {
     }
 
     public static Path jobsFile(Path workspaceDir) {
-        return workspaceDir.resolve("jobs.json");
+        return SafePathUtil.resolveSafe(workspaceDir, "jobs.json");
     }
 
     private static Object firstPresent(Map<String, Object> body, String... keys) {

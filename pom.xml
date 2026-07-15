@@ -57,8 +57,6 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <agentscope.version>2.0.0</agentscope.version>
-        <playwright.version>1.45.0</playwright.version>
-        <paho.version>1.2.5</paho.version>
         <zxing.version>3.5.3</zxing.version>
         <sqlite-jdbc.version>3.45.3.0</sqlite-jdbc.version>
         <maven-checkstyle-plugin.version>3.4.0</maven-checkstyle-plugin.version>
@@ -121,16 +119,6 @@
                 <groupId>io.agentscope</groupId>
                 <artifactId>agentscope-extensions-model-ollama</artifactId>
                 <version>${agentscope.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.microsoft.playwright</groupId>
-                <artifactId>playwright</artifactId>
-                <version>${playwright.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.eclipse.paho</groupId>
-                <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
-                <version>${paho.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.google.zxing</groupId>

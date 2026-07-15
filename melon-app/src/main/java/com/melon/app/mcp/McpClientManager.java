@@ -3,7 +3,6 @@ package com.melon.app.mcp;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import com.melon.core.config.ConfigManager;
-import com.melon.core.env.EnvBridge;
 import com.melon.core.util.JsonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -941,7 +940,7 @@ public class McpClientManager {
             if (config.getCwd() != null && !config.getCwd().isBlank()) {
                 pb.directory(new File(config.getCwd()));
             }
-            EnvBridge.applyToProcessEnv(pb.environment());
+            retainProcessLaunchEnvironment(pb.environment());
             if (config.getEnv() != null) pb.environment().putAll(config.getEnv());
             Process process = pb.start();
             Thread stderr = new Thread(() -> {
@@ -955,6 +954,19 @@ public class McpClientManager {
             StdioSession session = new StdioSession(process);
             session.initialize();
             return session;
+        }
+
+        private static void retainProcessLaunchEnvironment(Map<String, String> environment) {
+            Map<String, String> inherited = new LinkedHashMap<>(environment);
+            environment.clear();
+            for (String key : List.of(
+                    "PATH", "Path", "PATHEXT", "SystemRoot", "ComSpec",
+                    "HOME", "USERPROFILE", "TEMP", "TMP", "LANG", "LC_ALL")) {
+                String value = inherited.get(key);
+                if (value != null && !value.isBlank()) {
+                    environment.put(key, value);
+                }
+            }
         }
 
         boolean isAlive() {

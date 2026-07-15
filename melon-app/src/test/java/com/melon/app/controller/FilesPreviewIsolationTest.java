@@ -73,6 +73,33 @@ class FilesPreviewIsolationTest {
                 controller.preview(employee(), "default", "result.txt").block().getStatusCode());
     }
 
+    @Test
+    void outsideWorkspacePreviewIsDisabledEvenWithBreakGlass() throws Exception {
+        ConfigManager configManager = new ConfigManager();
+        configManager.setConfigPath(tempDir.resolve("breakglass-config.yaml"));
+        configManager.setHomeDir(tempDir.resolve("breakglass-home").toString());
+        configManager.load();
+        Path workspace = configManager.resolveWorkspaceDir("default");
+        Files.createDirectories(workspace);
+        Path outside = tempDir.resolve("outside.txt");
+        Files.writeString(outside, "outside");
+
+        SecuritySettingsService settings = new SecuritySettingsService(configManager);
+        FilesPreviewController controller = new FilesPreviewController(
+                configManager, new FileGuardService(settings));
+
+        EnterprisePrincipal admin = new EnterprisePrincipal(
+                "admin-id", "admin", "Admin", true,
+                Set.of("SYSTEM_ADMIN"), Set.of(), "", "");
+        EnterprisePrincipal breakGlass = new EnterprisePrincipal(
+                "admin-id", "admin", "Admin", true,
+                Set.of("SYSTEM_ADMIN"), Set.of("data:breakglass"), "", "");
+        assertEquals(HttpStatus.FORBIDDEN,
+                controller.preview(admin, "default", outside.toString()).block().getStatusCode());
+        assertEquals(HttpStatus.FORBIDDEN,
+                controller.preview(breakGlass, "default", outside.toString()).block().getStatusCode());
+    }
+
     private EnterprisePrincipal employee() {
         return new EnterprisePrincipal(
                 "employee-id", "employee", "Employee", true,

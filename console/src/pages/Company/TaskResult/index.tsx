@@ -73,7 +73,7 @@ export default function TaskResultPage() {
   const cardOptions = useMemo(
     () =>
       ({
-        welcome: { nick: "MelonPaw-Company", avatar: "/online.svg" },
+        welcome: { nick: "MelonPaw-Company", avatar: "/company-mark.svg" },
         theme: {
           darkMode: isDark,
           colorPrimary: "#1677ff",

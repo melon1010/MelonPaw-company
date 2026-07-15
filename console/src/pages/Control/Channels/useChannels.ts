@@ -2,6 +2,18 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import api from "../../../api";
 import { useAgentStore } from "../../../stores/agentStore";
 
+export const DOMESTIC_CHANNELS = [
+  "console",
+  "dingtalk",
+  "feishu",
+  "wecom",
+  "wechat",
+  "qq",
+  "onebot",
+  "yuanbao",
+  "xiaoyi",
+] as const;
+
 export function useChannels() {
   const { selectedAgent } = useAgentStore();
   const [channels, setChannels] = useState<
@@ -31,32 +43,9 @@ export function useChannels() {
     fetchChannels();
   }, [fetchChannels, selectedAgent]);
 
-  // Built-in channels come first (in a fixed order), then custom channels
-  const builtinOrder = useMemo(
-    () => [
-      "console",
-      "dingtalk",
-      "feishu",
-      "imessage",
-      "discord",
-      "telegram",
-      "qq",
-      "wechat",
-      "wecom",
-      "yuanbao",
-      "matrix",
-      "sip",
-      "xiaoyi",
-    ],
-    [],
-  );
-
   const orderedKeys = useMemo(
-    () => [
-      ...builtinOrder.filter((k) => channelTypes.includes(k)),
-      ...channelTypes.filter((k) => !builtinOrder.includes(k)),
-    ],
-    [builtinOrder, channelTypes],
+    () => DOMESTIC_CHANNELS.filter((key) => channelTypes.includes(key)),
+    [channelTypes],
   );
 
   // Read isBuiltin from API response

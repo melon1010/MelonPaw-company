@@ -3,8 +3,10 @@
   justify-content: space-between;
   align-items: center;
   position: relative;
-  padding: 20px;
-  border-bottom: 1px solid #eae9e7;
+  min-height: 58px;
+  padding: 14px 20px;
+  background: var(--mp-surface);
+  border-bottom: 1px solid var(--mp-border);
   flex-shrink: 0;
 
   @media (max-width: 768px) {
@@ -34,26 +36,26 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 16px;
+  font-size: 13px;
   flex: 1;
   min-width: 0;
   flex-wrap: wrap;
 }
 
 .breadcrumbParent {
-  color: #999;
-  font-weight: 400;
+  color: var(--mp-text-tertiary);
+  font-weight: 550;
 }
 
 .breadcrumbSeparator {
-  color: #ccc;
-  margin: 0 4px;
+  color: var(--mp-border-strong);
+  margin: 0 2px;
 }
 
 .breadcrumbCurrent {
-  color: #333;
-  font-weight: 600;
-  font-size: 20px;
+  color: var(--mp-text);
+  font-weight: 680;
+  font-size: 18px;
 }
 
 .center {
@@ -66,12 +68,13 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 @media (max-width: 768px) {
   .pageHeader {
-    padding: 12px 16px;
+    min-height: 52px;
+    padding: 10px 12px;
     flex-wrap: wrap;
     gap: 8px;
   }
@@ -87,7 +90,7 @@
   }
 
   .breadcrumbParent {
-    font-size: 14px;
+    font-size: 12px;
   }
 
   .breadcrumbSeparator {
@@ -95,7 +98,7 @@
   }
 
   .breadcrumbCurrent {
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .extra {
@@ -109,18 +112,19 @@
 /* ─── Dark mode ─────────────────────────────────────────────────────────────── */
 :global(.dark-mode) {
   .pageHeader {
-    border-bottom-color: rgba(255, 255, 255, 0.12);
+    background: var(--mp-surface);
+    border-bottom-color: var(--mp-border);
   }
 
   .breadcrumbParent {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--mp-text-tertiary);
   }
 
   .breadcrumbSeparator {
-    color: rgba(255, 255, 255, 0.2);
+    color: var(--mp-border-strong);
   }
 
   .breadcrumbCurrent {
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--mp-text);
   }
 }

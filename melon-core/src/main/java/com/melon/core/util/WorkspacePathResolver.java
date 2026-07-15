@@ -18,7 +18,7 @@ public final class WorkspacePathResolver {
         }
         Path requested = Path.of(filePath);
         if (requested.isAbsolute()) {
-            Path normalized = requested.normalize();
+            Path normalized = requested.toAbsolutePath().normalize();
             if (!SafePathUtil.isWithinDir(normalized, workspaceDir)) {
                 throw new SecurityException("Path outside workspace: " + filePath);
             }

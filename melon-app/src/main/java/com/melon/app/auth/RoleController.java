@@ -2,6 +2,7 @@ package com.melon.app.auth;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +16,8 @@ import reactor.core.scheduler.Schedulers;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+
+import static com.melon.app.auth.EnterprisePermissions.SYSTEM_MANAGE;
 
 /** Role and permission catalogue for the enterprise administration console. */
 @RestController
@@ -38,23 +41,38 @@ public class RoleController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('roles:manage')")
-    public Mono<ResponseEntity<?>> create(@RequestBody Map<String, Object> body) {
-        return blocking(() -> ResponseEntity.status(201).body(save(text(body, "code"), body).toMap()));
+    public Mono<ResponseEntity<?>> create(
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return blocking(() -> ResponseEntity.status(201)
+                .body(save(text(body, "code"), body, principal).toMap()));
     }
 
     @PutMapping("/{code}")
     @PreAuthorize("hasAuthority('roles:manage')")
     public Mono<ResponseEntity<?>> update(
-            @PathVariable String code, @RequestBody(required = false) Map<String, Object> body) {
-        return blocking(() -> ResponseEntity.ok(save(code, body).toMap()));
+            @PathVariable String code,
+            @RequestBody(required = false) Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return blocking(() -> ResponseEntity.ok(save(code, body, principal).toMap()));
     }
 
-    private EnterpriseIdentityStore.RoleRecord save(String code, Map<String, Object> body) {
+    private EnterpriseIdentityStore.RoleRecord save(
+            String code, Map<String, Object> body, EnterprisePrincipal principal) {
+        Set<String> permissions = stringSet(body == null ? null : body.get("permissions"));
+        if (!principal.hasPermission(SYSTEM_MANAGE)) {
+            for (String permission : permissions) {
+                if (!principal.hasPermission(permission)) {
+                    throw new SecurityException(
+                            "Organization administrators cannot grant permission: " + permission);
+                }
+            }
+        }
         return store.saveCustomRole(
                 code,
                 text(body, "name"),
                 text(body, "description"),
-                stringSet(body == null ? null : body.get("permissions"))
+                permissions
         );
     }
 

@@ -21,11 +21,12 @@ describe("CHANNELS", () => {
   });
 
   it("contains expected channel types", () => {
-    expect(CHANNELS.discord).toBe("discord");
+    expect(Object.keys(CHANNELS)).toHaveLength(9);
+    expect(CHANNELS.console).toBe("console");
     expect(CHANNELS.dingtalk).toBe("dingtalk");
     expect(CHANNELS.feishu).toBe("feishu");
-    expect(CHANNELS.telegram).toBe("telegram");
-    expect(CHANNELS.console).toBe("console");
+    expect(CHANNELS.wechat).toBe("wechat");
+    expect(CHANNELS.onebot).toBe("onebot");
   });
 });
 

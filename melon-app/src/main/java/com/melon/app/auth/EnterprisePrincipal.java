@@ -32,7 +32,22 @@ public record EnterprisePrincipal(
     }
 
     public boolean hasPermission(String permission) {
+        if (EnterprisePermissions.DATA_BREAKGLASS.equals(permission)) {
+            return permissions.contains(permission);
+        }
         return hasRole("SYSTEM_ADMIN") || permissions.contains(permission);
+    }
+
+    public boolean hasAnyPermission(String... values) {
+        if (values == null) {
+            return false;
+        }
+        for (String value : values) {
+            if (hasPermission(value)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public List<GrantedAuthority> authorities() {

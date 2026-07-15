@@ -25,18 +25,19 @@ dayjs.extend(relativeTime);
 import MainLayout from "./layouts/MainLayout";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import { PluginProvider, usePlugins } from "./plugins/PluginContext";
+import { PluginProvider } from "./plugins/PluginContext";
 import { ApprovalProvider } from "./contexts/ApprovalContext";
 import { Suspense } from "react";
-import { lazyImportWithRetry } from "./utils/lazyWithRetry";
+import { lazyWithRetry } from "./utils/lazyWithRetry";
 
-const LoginPage = lazyImportWithRetry("./pages/Login/index");
+const LoginPage = lazyWithRetry(() => import("./pages/Login"));
 import { authApi } from "./api/modules/auth";
 import { languageApi } from "./api/modules/language";
 import { useUploadLimitStore } from "./stores/uploadLimitStore";
 import { getApiToken, clearAuthToken } from "./api/config";
 import "./styles/layout.css";
 import "./styles/form-override.css";
+import "./styles/enterprise-theme.css";
 
 const antdLocaleMap: Record<string, Locale> = {
   zh: zhCN,
@@ -153,8 +154,50 @@ function AppInner() {
   const basename = getRouterBasename(window.location.pathname);
   const { i18n } = useTranslation();
   const { isDark } = useTheme();
-  const { loading: pluginsLoading } = usePlugins();
   const selectedTheme = isDark ? bailianDarkTheme : bailianTheme;
+  const companyTokens = isDark
+    ? {
+        colorPrimary: "#64c2a8",
+        colorPrimaryHover: "#79ceb7",
+        colorPrimaryActive: "#48aa90",
+        colorPrimaryBg: "#203c35",
+        colorInfo: "#6da9c7",
+        colorSuccess: "#63b88a",
+        colorWarning: "#dda35f",
+        colorError: "#dc7770",
+        colorLink: "#79ceb7",
+        colorBgBase: "#111614",
+        colorBgLayout: "#111614",
+        colorBgContainer: "#18201e",
+        colorBgElevated: "#1d2825",
+        colorFillAlter: "#202b28",
+        colorText: "#eef5f2",
+        colorTextSecondary: "#b1c1bb",
+        colorTextTertiary: "#84968f",
+        colorBorder: "#3a4b46",
+        colorBorderSecondary: "#2d3b37",
+      }
+    : {
+        colorPrimary: "#176b5d",
+        colorPrimaryHover: "#10584d",
+        colorPrimaryActive: "#0b493f",
+        colorPrimaryBg: "#e4f1ed",
+        colorInfo: "#2f6f91",
+        colorSuccess: "#2f855a",
+        colorWarning: "#a56312",
+        colorError: "#b34842",
+        colorLink: "#176b5d",
+        colorBgBase: "#edf1f0",
+        colorBgLayout: "#edf1f0",
+        colorBgContainer: "#ffffff",
+        colorBgElevated: "#ffffff",
+        colorFillAlter: "#f3f6f4",
+        colorText: "#1c2926",
+        colorTextSecondary: "#53645f",
+        colorTextTertiary: "#7b8985",
+        colorBorder: "#bdc9c4",
+        colorBorderSecondary: "#d4dcd8",
+      };
   const lang = i18n.resolvedLanguage || i18n.language || "en";
   const [antdLocale, setAntdLocale] = useState<Locale>(
     antdLocaleMap[lang] ?? enUS,
@@ -193,11 +236,6 @@ function AppInner() {
     };
   }, [i18n]);
 
-  // Wait for plugins to load before rendering routes that might be patched
-  if (pluginsLoading) {
-    return null;
-  }
-
   return (
     <BrowserRouter basename={basename}>
       <GlobalStyle />
@@ -214,12 +252,58 @@ function AppInner() {
             ? antdTheme.darkAlgorithm
             : antdTheme.defaultAlgorithm,
           token: {
-            colorPrimary: "#0f766e",
-            colorInfo: "#2563eb",
-            colorWarning: "#d97706",
-            borderRadius: 6,
+            ...(selectedTheme as any)?.theme?.token,
+            ...companyTokens,
+            borderRadius: 4,
+            borderRadiusLG: 6,
+            controlHeight: 34,
+            controlHeightSM: 28,
+            fontSize: 14,
+            boxShadow: "0 8px 24px rgba(28, 41, 38, 0.10)",
+            boxShadowSecondary: "0 4px 14px rgba(28, 41, 38, 0.08)",
             fontFamily:
               "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          },
+          components: {
+            ...(selectedTheme as any)?.theme?.components,
+            Button: {
+              borderRadius: 4,
+              controlHeight: 34,
+              primaryShadow: "none",
+              defaultShadow: "none",
+            },
+            Card: { borderRadiusLG: 6 },
+            Input: {
+              activeBorderColor: companyTokens.colorPrimary,
+              hoverBorderColor: companyTokens.colorPrimary,
+              activeShadow: `0 0 0 2px ${isDark ? "rgba(100, 194, 168, 0.18)" : "rgba(23, 107, 93, 0.12)"}`,
+            },
+            Select: {
+              activeBorderColor: companyTokens.colorPrimary,
+              hoverBorderColor: companyTokens.colorPrimary,
+              optionSelectedBg: companyTokens.colorPrimaryBg,
+            },
+            Table: {
+              headerBg: isDark ? "#202b28" : "#f3f6f4",
+              headerColor: isDark ? "#b1c1bb" : "#53645f",
+              rowHoverBg: isDark ? "#202b28" : "#f6f9f7",
+              borderColor: isDark ? "#2d3b37" : "#dbe2df",
+              cellPaddingBlock: 10,
+              cellPaddingInline: 14,
+            },
+            Tabs: {
+              inkBarColor: companyTokens.colorPrimary,
+              itemActiveColor: companyTokens.colorPrimary,
+              itemHoverColor: companyTokens.colorPrimaryHover,
+              itemSelectedColor: companyTokens.colorPrimary,
+              titleFontSize: 13,
+            },
+            Menu: {
+              itemBorderRadius: 4,
+              itemHeight: 38,
+              itemMarginInline: 6,
+            },
+            Modal: { borderRadiusLG: 6 },
           },
         }}
       >

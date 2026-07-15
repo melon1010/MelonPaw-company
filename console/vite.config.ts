@@ -110,6 +110,15 @@ export default defineConfig(({ mode }) => {
       cssCodeSplit: true,
       sourcemap: mode !== "production",
       chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes("@agentscope-ai/chat/")) {
+              return "agentscope-chat";
+            }
+          },
+        },
+      },
     },
   };
 });

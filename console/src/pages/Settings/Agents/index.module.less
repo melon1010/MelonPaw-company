@@ -12,7 +12,7 @@
       .qwenpaw-table-thead
       > tr
       > th {
-      background: #f9f8f4 !important;
+      background: var(--mp-canvas) !important;
     }
 
     .qwenpaw-table-cell {
@@ -158,13 +158,13 @@
   transition: all 0.15s ease;
 
   &:hover {
-    border-color: #615ced;
-    background: rgba(97, 92, 237, 0.02);
+    border-color: var(--mp-primary);
+    background: var(--mp-surface-subtle);
   }
 
   &.pickerCardSelected {
-    border-color: #615ced;
-    background: rgba(97, 92, 237, 0.06);
+    border-color: var(--mp-primary);
+    background: var(--mp-primary-soft);
   }
 
   &.pickerCardDisabled {
@@ -180,7 +180,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #615ced;
+  background: var(--mp-primary);
   color: #fff;
   display: flex;
   align-items: center;
@@ -238,11 +238,11 @@
     border-color: rgba(255, 255, 255, 0.12);
 
     &:hover {
-      background: rgba(97, 92, 237, 0.08);
+      background: var(--mp-surface-subtle);
     }
 
     &.pickerCardSelected {
-      background: rgba(97, 92, 237, 0.12);
+      background: var(--mp-primary-soft);
     }
   }
 
@@ -267,7 +267,7 @@
 
   &:hover {
     background: rgba(255, 255, 255, 0.08) !important;
-    color: #ff7f16 !important;
+    color: var(--mp-primary) !important;
   }
 
   .anticon,

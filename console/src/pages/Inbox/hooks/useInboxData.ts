@@ -75,10 +75,10 @@ const mapEventToPushMessage = (
       : event.source_type === "memory"
       ? "memory"
       : event.source_type === "cron"
-      ? "wechat"
+      ? "cron"
       : event.source_type === "skill_autoupdate"
       ? "skill"
-      : "email",
+      : "system",
   channelName:
     event.source_type === "heartbeat"
       ? "Heartbeat"

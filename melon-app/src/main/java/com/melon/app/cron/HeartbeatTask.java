@@ -1,8 +1,10 @@
 package com.melon.app.cron;
 
+import com.melon.app.auth.EnterpriseIdentityStore;
 import com.melon.core.config.ConfigManager;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.HeartbeatConfig;
+import com.melon.core.util.SafePathUtil;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -34,10 +36,13 @@ public class HeartbeatTask implements Runnable {
 
     private final CronExecutor cronExecutor;
     private final ConfigManager configManager;
+    private final EnterpriseIdentityStore identityStore;
 
-    public HeartbeatTask(CronExecutor cronExecutor, ConfigManager configManager) {
+    public HeartbeatTask(CronExecutor cronExecutor, ConfigManager configManager,
+                         EnterpriseIdentityStore identityStore) {
         this.cronExecutor = cronExecutor;
         this.configManager = configManager;
+        this.identityStore = identityStore;
     }
 
     @Value("${melon.cron.heartbeat_interval_seconds:300}")
@@ -111,8 +116,9 @@ public class HeartbeatTask implements Runnable {
             return;
         }
 
-        Path heartbeatFile = configManager.resolveWorkspaceDir(agentId).resolve(HEARTBEAT_FILE);
-        if (!Files.exists(heartbeatFile)) {
+        Path heartbeatFile = SafePathUtil.resolveSafe(
+                configManager.resolveWorkspaceDir(agentId), HEARTBEAT_FILE);
+        if (!Files.isRegularFile(heartbeatFile, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
 
@@ -133,8 +139,13 @@ public class HeartbeatTask implements Runnable {
 
     private void triggerAgent(String agentId, String message) {
         String taskId = "heartbeat-" + System.currentTimeMillis();
+        String ownerUserId = identityStore.findAgentBinding(agentId)
+                .map(EnterpriseIdentityStore.AgentBindingRecord::ownerUserId)
+                .filter(value -> value != null && !value.isBlank())
+                .orElse("system");
         cronExecutor.injectMessage(agentId, message, taskId,
-                "main", "main", "console", Map.of("source", "heartbeat", "channel", "console"),
+                ownerUserId, taskId, "console",
+                Map.of("source", "heartbeat", "channel", "console", "execution_user_id", ownerUserId),
                 reply -> {}, err -> {});
     }
 

@@ -16,11 +16,8 @@ export interface InboxSummary {
 export interface PushMessage {
   id: string;
   channelType:
-    | "wechat"
-    | "slack"
-    | "telegram"
-    | "discord"
-    | "email"
+    | "system"
+    | "cron"
     | "memory"
     | "heartbeat"
     | "skill";

@@ -20,7 +20,7 @@ public final class ExternalChannelAdaptersSelfCheck {
 
     public static void main(String[] args) throws Exception {
         ChannelAdapterRegistry registry = new ChannelAdapterRegistry();
-        for (String type : List.of("qq", "wechat", "wecom", "yuanbao", "xiaoyi", "voice", "sip")) {
+        for (String type : List.of("qq", "wechat", "wecom", "yuanbao", "xiaoyi")) {
             ChannelAdapter adapter = registry.get(type);
             if (!adapter.implemented()) {
                 throw new AssertionError(type + " should be backed by a real adapter");
@@ -197,13 +197,12 @@ public final class ExternalChannelAdaptersSelfCheck {
             if (!"ilink_bot_token".equals(wechatAuthType.get()) || wechatUin.get() == null || wechatUin.get().isBlank()) {
                 throw new AssertionError("WeChat QR request missed iLink headers");
             }
-            Path tokenFile = Files.createTempFile("wechat-token", ".txt");
+            Path stateDir = Files.createTempDirectory("wechat-channel-state");
             Map<String, Object> qrStatus = registry.get("wechat").qrcodeStatus("default",
-                    Map.of("base_url", baseUrl, "bot_token_file", tokenFile.toString()), "wx-token-1");
+                    Map.of("base_url", baseUrl, "_channel_state_dir", stateDir.toString()), "wx-token-1");
             if (!"success".equals(qrStatus.get("status"))
-                    || !"token-from-qr".equals(((Map<?, ?>) qrStatus.get("credentials")).get("bot_token"))
-                    || !Files.readString(tokenFile).contains("token-from-qr")) {
-                throw new AssertionError("WeChat QR status should activate persisted credentials: " + qrStatus);
+                    || !"token-from-qr".equals(((Map<?, ?>) qrStatus.get("credentials")).get("bot_token"))) {
+                throw new AssertionError("WeChat QR status should return credentials for scoped persistence: " + qrStatus);
             }
 
             reflectWechatStartTyping(registry.get("wechat"), wechat, Map.of("enabled", true, "bot_token", "token1", "base_url", baseUrl));
@@ -223,12 +222,6 @@ public final class ExternalChannelAdaptersSelfCheck {
             }
             if (wechatTyping.get() < 2) {
                 throw new AssertionError("WeChat typing keepalive should start and stop around outbound send");
-            }
-
-            VoiceChannelAdapter voice = (VoiceChannelAdapter) registry.get("voice");
-            String twiml = voice.twiml("你好", Map.of("language", "zh-CN"));
-            if (!twiml.contains("<Response>") || !twiml.contains("你好")) {
-                throw new AssertionError("Voice TwiML failed: " + twiml);
             }
 
             String url = baseUrl + "/reply";

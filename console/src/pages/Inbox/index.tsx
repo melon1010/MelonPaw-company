@@ -316,7 +316,7 @@ export default function InboxPage() {
           <Bell size={16} />
           {t("inbox.tabPushMessages")}
           {summary.pushMessages.unread > 0 && (
-            <Badge count={summary.pushMessages.unread} color="#ff7f16" />
+            <Badge count={summary.pushMessages.unread} color="var(--mp-accent)" />
           )}
         </span>
       ),
@@ -436,7 +436,7 @@ export default function InboxPage() {
           <PackageOpen size={16} />
           {t("inbox.tabApprovals")}
           {urgentApprovalCount > 0 && (
-            <Badge count={urgentApprovalCount} color="#ff7f16" />
+            <Badge count={urgentApprovalCount} color="var(--mp-accent)" />
           )}
         </span>
       ),

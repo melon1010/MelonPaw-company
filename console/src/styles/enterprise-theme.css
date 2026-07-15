@@ -1,0 +1,530 @@
+/*
+ * MelonPaw-Company visual compatibility layer.
+ *
+ * AgentScope design components currently expose the `qwenpaw` CSS namespace.
+ * The namespace is an integration contract, not product branding, so the
+ * company theme owns its appearance here instead of forking vendor packages.
+ */
+:root {
+  --mp-primary: #2f6fed;
+  --mp-primary-hover: #2359c4;
+  --mp-primary-soft: #eaf1ff;
+  --mp-accent: #e76f51;
+  --mp-info: #2779bd;
+  --mp-warning: #b76a16;
+  --mp-danger: #c44747;
+  --mp-canvas: #f3f5f7;
+  --mp-surface: #ffffff;
+  --mp-surface-subtle: #f7f8fa;
+  --mp-surface-muted: #e9edf2;
+  --mp-border: #e0e5eb;
+  --mp-border-strong: #c5cdd7;
+  --mp-text: #17212b;
+  --mp-text-secondary: #536170;
+  --mp-text-tertiary: #7d8996;
+  --mp-sidebar: #20252b;
+  --mp-sidebar-hover: #2a3139;
+  --mp-sidebar-active: #2f6fed;
+  --mp-sidebar-text: #dce2e8;
+  --mp-sidebar-muted: #929da8;
+  --mp-focus-ring: rgba(47, 111, 237, 0.18);
+  --mp-shadow-popover: 0 12px 30px rgba(23, 33, 43, 0.14);
+  --colorPrimary: var(--mp-primary);
+  --colorPrimaryBg: var(--mp-primary-soft);
+  --colorText: var(--mp-text);
+  --colorTextSecondary: var(--mp-text-secondary);
+  --colorTextTertiary: var(--mp-text-tertiary);
+  --colorBorder: var(--mp-border-strong);
+  --colorBorderSecondary: var(--mp-border);
+  --primary-color: var(--mp-primary);
+  --text-tertiary: var(--mp-text-tertiary);
+}
+
+html.dark-mode {
+  --mp-primary: #78a6ff;
+  --mp-primary-hover: #91b6ff;
+  --mp-primary-soft: #1b2e50;
+  --mp-accent: #f08a70;
+  --mp-info: #70b3e5;
+  --mp-warning: #dda35f;
+  --mp-danger: #dc7770;
+  --mp-canvas: #11151a;
+  --mp-surface: #191e24;
+  --mp-surface-subtle: #20262d;
+  --mp-surface-muted: #29313a;
+  --mp-border: #303842;
+  --mp-border-strong: #46515e;
+  --mp-text: #f0f3f6;
+  --mp-text-secondary: #b6c0ca;
+  --mp-text-tertiary: #87939f;
+  --mp-sidebar: #15191e;
+  --mp-sidebar-hover: #242b33;
+  --mp-sidebar-active: #315fae;
+  --mp-sidebar-text: #e1e6eb;
+  --mp-sidebar-muted: #8f9aa5;
+  --mp-focus-ring: rgba(120, 166, 255, 0.22);
+  --mp-shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.34);
+}
+
+html,
+body,
+#root {
+  color: var(--mp-text);
+  background: var(--mp-canvas);
+}
+
+body {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+::selection {
+  color: var(--mp-text);
+  background: var(--mp-primary-soft);
+}
+
+* {
+  scrollbar-color: var(--mp-border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--mp-border-strong);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+}
+
+.ant-layout,
+.ant-layout-content,
+.qwenpaw-layout,
+.qwenpaw-layout-content,
+.page-container,
+.page-content {
+  background: var(--mp-canvas) !important;
+}
+
+.page-content {
+  color: var(--mp-text);
+}
+
+/* Flat enterprise surfaces */
+.ant-card,
+.qwenpaw-card,
+.qwenpaw-card-wrapper,
+.qwenpaw-spark-card-wrapper {
+  overflow: hidden;
+  background: var(--mp-surface) !important;
+  border-color: var(--mp-border) !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+}
+
+.ant-card-head,
+.qwenpaw-card-head {
+  min-height: 46px;
+  background: var(--mp-surface) !important;
+  border-bottom-color: var(--mp-border) !important;
+}
+
+.ant-card-head-title,
+.qwenpaw-card-head-title,
+.qwenpaw-card-wrapper .qwenpaw-title,
+.qwenpaw-spark-title {
+  color: var(--mp-text) !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+}
+
+.qwenpaw-card-wrapper .qwenpaw-info,
+.qwenpaw-spark-info {
+  color: var(--mp-text-tertiary) !important;
+}
+
+.ant-card-body,
+.qwenpaw-card-body {
+  background: var(--mp-surface) !important;
+}
+
+/* Data-dense tables */
+.ant-table-wrapper,
+.qwenpaw-table-wrapper,
+.ant-table,
+.qwenpaw-table,
+.ant-table-container,
+.qwenpaw-table-container {
+  background: var(--mp-surface) !important;
+}
+
+.ant-table-thead > tr > th,
+.ant-table-thead > tr > td,
+.qwenpaw-table-thead > tr > th,
+.qwenpaw-table-thead > tr > td,
+.ant-table-sticky-holder,
+.qwenpaw-table-sticky-holder {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface-subtle) !important;
+  border-bottom-color: var(--mp-border) !important;
+  font-size: 12px;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+}
+
+.ant-table-tbody > tr > td,
+.qwenpaw-table-tbody > tr > td {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface) !important;
+  border-bottom-color: var(--mp-border) !important;
+}
+
+.ant-table-tbody > tr:hover > td,
+.qwenpaw-table-tbody > tr:hover > td {
+  background: var(--mp-surface-subtle) !important;
+}
+
+.ant-table-tbody > tr.ant-table-row-selected > td,
+.qwenpaw-table-tbody > tr.qwenpaw-table-row-selected > td {
+  background: var(--mp-primary-soft) !important;
+}
+
+.ant-table-cell-fix-left,
+.ant-table-cell-fix-right,
+.qwenpaw-table-cell-fix-left,
+.qwenpaw-table-cell-fix-right {
+  background: inherit !important;
+}
+
+/* Commands and form controls */
+.ant-btn,
+.qwenpaw-btn,
+.ant-input,
+.qwenpaw-input,
+.ant-input-affix-wrapper,
+.qwenpaw-input-affix-wrapper,
+.ant-input-number,
+.qwenpaw-input-number,
+.ant-picker,
+.qwenpaw-picker,
+.ant-select-selector,
+.qwenpaw-select-selector,
+.ant-segmented,
+.qwenpaw-segmented {
+  border-radius: 4px !important;
+  box-shadow: none;
+}
+
+.ant-btn-primary,
+.qwenpaw-btn-primary {
+  color: #fff !important;
+  background: var(--mp-primary) !important;
+  border-color: var(--mp-primary) !important;
+  box-shadow: none !important;
+}
+
+.ant-btn-primary:hover,
+.qwenpaw-btn-primary:hover {
+  background: var(--mp-primary-hover) !important;
+  border-color: var(--mp-primary-hover) !important;
+}
+
+.ant-btn-default,
+.qwenpaw-btn-default {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface) !important;
+  border-color: var(--mp-border-strong) !important;
+}
+
+.ant-btn-default:hover,
+.qwenpaw-btn-default:hover {
+  color: var(--mp-primary) !important;
+  background: var(--mp-surface-subtle) !important;
+  border-color: var(--mp-primary) !important;
+}
+
+.ant-btn-text,
+.qwenpaw-btn-text {
+  color: var(--mp-text-secondary);
+}
+
+.ant-btn-text:hover,
+.qwenpaw-btn-text:hover {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-muted) !important;
+}
+
+.ant-input,
+.qwenpaw-input,
+.ant-input-affix-wrapper,
+.qwenpaw-input-affix-wrapper,
+.ant-input-number,
+.qwenpaw-input-number,
+.ant-picker,
+.qwenpaw-picker,
+.ant-select-selector,
+.qwenpaw-select-selector {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface) !important;
+  border-color: var(--mp-border-strong) !important;
+}
+
+.ant-input:hover,
+.qwenpaw-input:hover,
+.ant-input-affix-wrapper:hover,
+.qwenpaw-input-affix-wrapper:hover,
+.ant-select:hover .ant-select-selector,
+.qwenpaw-select:hover .qwenpaw-select-selector {
+  border-color: var(--mp-primary) !important;
+}
+
+.ant-input:focus,
+.qwenpaw-input:focus,
+.ant-input-affix-wrapper-focused,
+.qwenpaw-input-affix-wrapper-focused,
+.ant-select-focused .ant-select-selector,
+.qwenpaw-select-focused .qwenpaw-select-selector {
+  border-color: var(--mp-primary) !important;
+  box-shadow: 0 0 0 2px var(--mp-focus-ring) !important;
+}
+
+.ant-form-item-label > label,
+.qwenpaw-form-item-label > label {
+  color: var(--mp-text-secondary) !important;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.ant-form-item-extra,
+.ant-form-item-explain,
+.qwenpaw-form-item-extra,
+.qwenpaw-form-item-explain {
+  color: var(--mp-text-tertiary) !important;
+}
+
+.ant-tag,
+.qwenpaw-tag {
+  border-radius: 3px !important;
+  font-weight: 550;
+  letter-spacing: 0;
+}
+
+.ant-tabs-nav,
+.qwenpaw-tabs-nav {
+  margin-bottom: 0 !important;
+}
+
+.ant-tabs-tab,
+.qwenpaw-tabs-tab {
+  color: var(--mp-text-secondary) !important;
+  font-size: 13px;
+}
+
+.ant-tabs-tab-active .ant-tabs-tab-btn,
+.qwenpaw-tabs-tab-active .qwenpaw-tabs-tab-btn {
+  color: var(--mp-primary) !important;
+}
+
+.ant-tabs-ink-bar,
+.qwenpaw-tabs-ink-bar {
+  background: var(--mp-primary) !important;
+}
+
+.ant-pagination-item,
+.qwenpaw-pagination-item,
+.ant-pagination-prev button,
+.ant-pagination-next button,
+.qwenpaw-pagination-prev button,
+.qwenpaw-pagination-next button {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface) !important;
+  border-color: var(--mp-border) !important;
+  border-radius: 4px !important;
+}
+
+.ant-pagination-item-active,
+.qwenpaw-pagination-item-active {
+  border-color: var(--mp-primary) !important;
+}
+
+.ant-pagination-item-active a,
+.qwenpaw-pagination-item-active a {
+  color: var(--mp-primary) !important;
+}
+
+/* Overlay surfaces remain visibly separate from the workspace. */
+.ant-modal-content,
+.qwenpaw-modal-content,
+.ant-popover-inner,
+.qwenpaw-popover-inner,
+.ant-dropdown-menu,
+.qwenpaw-dropdown-menu,
+.ant-select-dropdown,
+.qwenpaw-select-dropdown {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface) !important;
+  border: 1px solid var(--mp-border) !important;
+  border-radius: 6px !important;
+  box-shadow: var(--mp-shadow-popover) !important;
+}
+
+.ant-modal-header,
+.qwenpaw-modal-header,
+.ant-drawer-header,
+.qwenpaw-drawer-header {
+  background: var(--mp-surface) !important;
+  border-bottom-color: var(--mp-border) !important;
+}
+
+.ant-modal-title,
+.qwenpaw-modal-title,
+.ant-drawer-title,
+.qwenpaw-drawer-title {
+  color: var(--mp-text) !important;
+  font-size: 15px !important;
+  font-weight: 650 !important;
+}
+
+.ant-drawer-content,
+.qwenpaw-drawer-content,
+.ant-drawer-body,
+.qwenpaw-drawer-body {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface) !important;
+}
+
+/* Conversation workspace */
+.qwenpaw-chat-anywhere,
+.qwenpaw-chat-anywhere-chat,
+.qwenpaw-chat-anywhere-message-list,
+.qwenpaw-bubble-list-wrapper,
+.qwenpaw-chat-anywhere-message-list-welcome,
+.qwenpaw-chat-anywhere-welcome-default {
+  background: var(--mp-canvas) !important;
+}
+
+.qwenpaw-chat-anywhere-default-header,
+[class*="qwenpaw-chat-anywhere-default-header-inner"] {
+  background: var(--mp-surface) !important;
+  border-bottom: 1px solid var(--mp-border);
+}
+
+.qwenpaw-chat-anywhere-default-header-inner {
+  min-height: 52px;
+  padding: 0 16px !important;
+}
+
+.qwenpaw-chat-anywhere-message-list .qwenpaw-bubble-list {
+  max-width: 920px !important;
+  padding: 20px 24px 28px;
+}
+
+.qwenpaw-bubble-content {
+  color: var(--mp-text) !important;
+}
+
+.qwenpaw-bubble-start .qwenpaw-bubble-content-filled,
+.qwenpaw-bubble-assistant .qwenpaw-bubble-content-filled {
+  background: var(--mp-surface) !important;
+  border: 1px solid var(--mp-border) !important;
+  border-radius: 6px 6px 6px 2px !important;
+}
+
+.qwenpaw-bubble-end .qwenpaw-bubble-content-filled,
+.qwenpaw-bubble-user .qwenpaw-bubble-content-filled {
+  color: var(--mp-text) !important;
+  background: var(--mp-primary-soft) !important;
+  border: 1px solid color-mix(in srgb, var(--mp-primary) 34%, var(--mp-border)) !important;
+  border-radius: 6px 6px 2px 6px !important;
+}
+
+.qwenpaw-chat-anywhere-input {
+  background: var(--mp-surface) !important;
+  border-top: 1px solid var(--mp-border);
+}
+
+.qwenpaw-chat-anywhere-input-wrapper,
+.qwenpaw-chat-anywhere-sender-wrapper {
+  max-width: 920px !important;
+}
+
+.qwenpaw-sender,
+.qwenpaw-sender-content {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface) !important;
+  border-color: var(--mp-border-strong) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 16px rgba(28, 41, 38, 0.08) !important;
+}
+
+.qwenpaw-sender:focus-within,
+.qwenpaw-sender-content:focus-within {
+  border-color: var(--mp-primary) !important;
+  box-shadow: 0 0 0 2px var(--mp-focus-ring) !important;
+}
+
+.qwenpaw-chat-anywhere-welcome-default > .qwenpaw-avatar,
+.qwenpaw-chat-anywhere-welcome-default [class$="-avatar"] {
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+  min-height: 48px !important;
+  border-radius: 8px !important;
+}
+
+.qwenpaw-chat-anywhere-welcome-default-prompt,
+.qwenpaw-welcome-prompts-prompt {
+  height: auto !important;
+  min-height: 42px;
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface) !important;
+  border: 1px solid var(--mp-border) !important;
+  border-radius: 5px !important;
+}
+
+.qwenpaw-chat-anywhere-welcome-default-prompt:hover,
+.qwenpaw-welcome-prompts-prompt:hover {
+  color: var(--mp-primary) !important;
+  background: var(--mp-surface-subtle) !important;
+  border-color: var(--mp-primary) !important;
+}
+
+@media (max-width: 768px) {
+  .qwenpaw-chat-anywhere-default-header-inner {
+    min-height: 48px;
+    padding: 0 10px !important;
+  }
+
+  .qwenpaw-chat-anywhere-message-list .qwenpaw-bubble-list {
+    min-width: 0 !important;
+    padding: 14px 12px 22px !important;
+  }
+
+  .qwenpaw-chat-anywhere-input-wrapper,
+  .qwenpaw-chat-anywhere-sender-wrapper {
+    min-width: 0 !important;
+    padding-right: 10px !important;
+    padding-left: 10px !important;
+  }
+
+  .ant-modal,
+  .qwenpaw-modal {
+    max-width: calc(100vw - 20px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

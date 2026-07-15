@@ -1789,7 +1789,7 @@
     "exemptFileExtensionsPlaceholder": ".md, .txt, .json",
     "exemptToolNames": "Nama Alat yang Dikecualikan",
     "exemptToolNamesTooltip": "Hasil alat dari alat ini akan menggunakan ambang pesan terbaru",
-    "exemptToolNamesPlaceholder": "browser_use, read_file",
+    "exemptToolNamesPlaceholder": "get_current_time, memory_search",
     "language": "Bahasa Agen",
     "languageTooltip": "Bahasa untuk file persona agen (SOUL.md, AGENTS.md, dll.).",
     "languageConfirmTitle": "Ubah Bahasa Agen",

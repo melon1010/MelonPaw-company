@@ -1,6 +1,7 @@
 package com.melon.core.agent;
 
 import com.melon.core.config.AgentConfig;
+import com.melon.core.util.SafePathUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,11 +64,11 @@ public class WorkspaceManager {
                 createMdIfMissing(dir, filename);
             }
             for (String dirname : WORKSPACE_DIRS) {
-                Files.createDirectories(dir.resolve(dirname));
+                Files.createDirectories(SafePathUtil.resolveSafe(dir, dirname));
             }
-            createJsonIfMissing(dir.resolve("chats.json"), Map.of("version", 1, "chats", List.of()));
-            createJsonIfMissing(dir.resolve("jobs.json"), Map.of("version", 1, "jobs", List.of()));
-            createJsonIfMissing(dir.resolve("agent.json"), Map.of("version", 1));
+            createJsonIfMissing(SafePathUtil.resolveSafe(dir, "chats.json"), Map.of("version", 1, "chats", List.of()));
+            createJsonIfMissing(SafePathUtil.resolveSafe(dir, "jobs.json"), Map.of("version", 1, "jobs", List.of()));
+            createJsonIfMissing(SafePathUtil.resolveSafe(dir, "agent.json"), Map.of("version", 1));
         } catch (IOException e) {
             log.error("Failed to init workspace at {}", dir, e);
         }
@@ -83,7 +84,8 @@ public class WorkspaceManager {
             data.put("workspace_dir", dir.toString());
             data.put("active_model", config.getActiveModel() != null ? config.getActiveModel() : "");
             data.put("approval_level", config.getApproval() != null ? config.getApproval().getLevel() : "AUTO");
-            JSON.writerWithDefaultPrettyPrinter().writeValue(dir.resolve("agent.json").toFile(), data);
+            JSON.writerWithDefaultPrettyPrinter().writeValue(
+                    SafePathUtil.resolveSafe(dir, "agent.json").toFile(), data);
         } catch (IOException e) {
             log.error("Failed to write agent.json at {}", dir, e);
         }
@@ -104,7 +106,7 @@ public class WorkspaceManager {
     }
 
     private void createMdIfMissing(Path dir, String filename) throws IOException {
-        Path target = dir.resolve(filename);
+        Path target = SafePathUtil.resolveSafe(dir, filename);
         try (InputStream in = WorkspaceManager.class.getClassLoader().getResourceAsStream("agents/" + filename)) {
             if (Files.exists(target)) {
                 if (in != null && isLegacyBuiltinMd(filename, Files.readString(target))) {

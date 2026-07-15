@@ -67,7 +67,14 @@ public class CreateCronJobTool extends ToolBase {
                 "type", "message",
                 "content", java.util.List.of(Map.of("type", "text", "text", prompt))
         ))));
-        body.put("dispatch", Map.of("type", "channel", "channel", "console", "target", Map.of("user_id", "default"), "mode", "final", "meta", Map.of()));
+        String ownerUserId = param.getRuntimeContext() != null
+                && param.getRuntimeContext().getUserId() != null
+                && !param.getRuntimeContext().getUserId().isBlank()
+                ? param.getRuntimeContext().getUserId()
+                : "default";
+        body.put("owner_user_id", ownerUserId);
+        body.put("dispatch", Map.of("type", "channel", "channel", "console",
+                "target", Map.of("user_id", ownerUserId), "mode", "final", "meta", Map.of()));
 
         Map<String, Object> job = CronJobStore.create(workspaceDir, body);
         return Mono.just(ToolResultBlock.text("Cron job created: " + job.get("name")

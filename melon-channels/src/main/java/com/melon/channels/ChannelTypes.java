@@ -5,31 +5,28 @@ import java.util.Set;
 
 public final class ChannelTypes {
 
-    public static final List<String> BUILTIN = List.of(
+    /** Channels exposed by the domestic enterprise Web product. */
+    public static final List<String> DOMESTIC = List.of(
             "console",
             "dingtalk",
             "feishu",
-            "imessage",
-            "discord",
-            "telegram",
             "qq",
             "wechat",
             "wecom",
             "yuanbao",
-            "matrix",
-            "sip",
             "xiaoyi",
-            "slack",
-            "mqtt",
-            "mattermost",
-            "onebot",
-            "voice"
+            "onebot"
     );
+
+    public static final List<String> BUILTIN = DOMESTIC;
+
+    public static boolean supported(String channel) {
+        return channel != null && DOMESTIC.contains(channel.trim().toLowerCase());
+    }
 
     public static final Set<String> SECRET_KEYS = Set.of(
             "token",
             "bot_token",
-            "app_token",
             "access_token",
             "client_secret",
             "app_secret",
@@ -37,13 +34,9 @@ public final class ChannelTypes {
             "verification_token",
             "secret",
             "password",
-            "sip_password",
             "sk",
             "dashscope_api_key",
-            "auth_token",
-            "twilio_auth_token",
-            "livekit_api_secret",
-            "bot_token_file"
+            "auth_token"
     );
 
     private ChannelTypes() {

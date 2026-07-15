@@ -27,7 +27,7 @@ public class ChannelAccessControlStore {
         Map<String, Object> data = load(agentId);
         Map<String, Object> result = new LinkedHashMap<>();
         data.forEach((channel, raw) -> {
-            if (raw instanceof Map<?, ?> acl && hasAclData(acl)) {
+            if (ChannelTypes.supported(channel) && raw instanceof Map<?, ?> acl && hasAclData(acl)) {
                 result.put(channel, copy(acl));
             }
         });
@@ -38,6 +38,7 @@ public class ChannelAccessControlStore {
     }
 
     public Map<String, Object> channel(String agentId, String channel) {
+        requireSupported(channel);
         Map<String, Object> data = load(agentId);
         Object raw = data.get(channel);
         return raw instanceof Map<?, ?> map ? copy(map) : emptyAcl();
@@ -60,6 +61,7 @@ public class ChannelAccessControlStore {
         Map<String, Object> data = load(agentId);
         for (Map<String, Object> entry : entries != null ? entries : List.<Map<String, Object>>of()) {
             String channel = stringValue(entry.get("channel"), "console");
+            requireSupported(channel);
             String userId = stringValue(entry.get("user_id"));
             if (userId.isBlank()) continue;
             Map<String, Object> acl = acl(data, channel);
@@ -75,6 +77,7 @@ public class ChannelAccessControlStore {
         Map<String, Object> data = load(agentId);
         for (Map<String, Object> entry : entries != null ? entries : List.<Map<String, Object>>of()) {
             String channel = stringValue(entry.get("channel"), "console");
+            requireSupported(channel);
             String userId = stringValue(entry.get("user_id"));
             if (userId.isBlank()) continue;
             users(acl(data, channel), listName).remove(userId);
@@ -84,6 +87,7 @@ public class ChannelAccessControlStore {
     }
 
     public Map<String, Object> updateRemark(String agentId, String channel, String userId, String remark) {
+        requireSupported(channel);
         Map<String, Object> data = load(agentId);
         Map<String, Object> acl = acl(data, channel);
         for (String list : List.of("whitelist", "blacklist")) {
@@ -100,6 +104,7 @@ public class ChannelAccessControlStore {
     }
 
     public Map<String, Object> updateUsername(String agentId, String channel, String userId, String username) {
+        requireSupported(channel);
         Map<String, Object> data = load(agentId);
         Map<String, Object> acl = acl(data, channel);
         for (String list : List.of("whitelist", "blacklist")) {
@@ -116,6 +121,7 @@ public class ChannelAccessControlStore {
     }
 
     public void addPending(String agentId, ChannelInboundMessage message) {
+        requireSupported(message.getChannel());
         Map<String, Object> data = load(agentId);
         Map<String, Object> acl = acl(data, message.getChannel());
         List<Object> pending = pending(acl);
@@ -137,6 +143,7 @@ public class ChannelAccessControlStore {
     }
 
     public boolean allowed(String agentId, String channel, String userId, Map<String, Object> channelMeta, Map<String, Object> channelConfig) {
+        requireSupported(channel);
         boolean group = isGroup(channelMeta);
         if (group && Boolean.TRUE.equals(channelConfig.get("group_disabled"))) return false;
         if (!group && Boolean.TRUE.equals(channelConfig.get("dm_disabled"))) return false;
@@ -171,6 +178,7 @@ public class ChannelAccessControlStore {
         Map<String, Object> data = load(agentId);
         for (Map<String, Object> entry : entries != null ? entries : List.<Map<String, Object>>of()) {
             String channel = stringValue(entry.get("channel"), "console");
+            requireSupported(channel);
             String userId = stringValue(entry.get("user_id"));
             if (userId.isBlank()) continue;
             Map<String, Object> acl = acl(data, channel);
@@ -190,6 +198,12 @@ public class ChannelAccessControlStore {
     private Map<String, Object> load(String agentId) {
         Map<String, Object> data = JsonUtils.load(file(agentId), MAP_TYPE);
         return data != null ? data : new LinkedHashMap<>();
+    }
+
+    private void requireSupported(String channel) {
+        if (!ChannelTypes.supported(channel)) {
+            throw new IllegalArgumentException("Unsupported channel in domestic deployment: " + channel);
+        }
     }
 
     private void save(String agentId, Map<String, Object> data) {

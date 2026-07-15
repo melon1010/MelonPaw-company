@@ -815,7 +815,7 @@
     "exemptFileExtensionsPlaceholder": ".md, .txt, .json",
     "exemptToolNames": "Tên công cụ miễn trừ",
     "exemptToolNamesTooltip": "Kết quả từ các công cụ này dùng ngưỡng tin nhắn gần đây",
-    "exemptToolNamesPlaceholder": "browser_use, read_file",
+    "exemptToolNamesPlaceholder": "get_current_time, memory_search",
     "language": "Ngôn ngữ agent",
     "languageTooltip": "Ngôn ngữ cho các file nhân cách (SOUL.md, AGENTS.md,...). Thay đổi sẽ sao chép lại các file MD theo ngôn ngữ mới.",
     "languageConfirmTitle": "Đổi ngôn ngữ agent",

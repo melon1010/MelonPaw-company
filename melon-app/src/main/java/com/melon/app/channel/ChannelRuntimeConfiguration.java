@@ -50,8 +50,10 @@ public class ChannelRuntimeConfiguration {
     }
 
     @Bean
-    public OneBotWebSocketHandler oneBotWebSocketHandler(ChannelAdapterRegistry registry, ChannelManager channelManager) {
-        return new OneBotWebSocketHandler(registry, channelManager);
+    public OneBotWebSocketHandler oneBotWebSocketHandler(ChannelAdapterRegistry registry,
+                                                         ChannelManager channelManager,
+                                                         ChannelConfigService configService) {
+        return new OneBotWebSocketHandler(registry, channelManager, configService);
     }
 
     @Bean

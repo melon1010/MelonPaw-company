@@ -2,7 +2,9 @@
 
 MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务执行平台。后端基于 Java 17、Spring Boot WebFlux 和 AgentScope Java 2.0.0 GA，前端采用 React、TypeScript 与 Vite。
 
-项目由 QwenPaw 的交互基础演进而来，但作为独立项目维护，不是 QwenPaw 或 AgentScope 的官方发行版。上游来源和再分发边界见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。当前目录未绑定任何个人公开仓库，正式发布地址确定前不写入 SCM 或 issue 链接。
+企业角色、个人资源和管理边界见 [企业能力与权限矩阵](docs/ENTERPRISE_CAPABILITY_MATRIX.md)；尚未完成的生产能力及验收标准见 [企业化剩余工作](docs/ENTERPRISE_REMAINING_WORK.md)。
+
+项目由 QwenPaw 的交互基础演进而来，但作为独立项目维护，不是 QwenPaw 或 AgentScope 的官方发行版。上游来源和再分发边界见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。
 
 ## 产品边界
 
@@ -10,7 +12,7 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 - 只交付响应式 Web 控制台，并兼容移动端浏览器；不包含桌面客户端、CLI 和 Coding 模式。
 - 支持直接运行 JAR 或使用常规进程服务部署；当前不提供 Kubernetes 部署方案。
 - 企业身份、角色、项目关系和个人资源映射保存在内嵌 SQLite 中，不要求安装 PostgreSQL。
-- 渠道能力以国内场景为重点，保留钉钉、飞书、微信和企业微信适配能力；渠道配置归属具体用户。
+- 渠道只保留控制台、钉钉、飞书、QQ、微信、企业微信、元宝、小艺和 OneBot；渠道配置归属具体用户。
 - 自定义跨 Agent 调用和 AgentScope 官方 Subagent 当前均不对 Web 用户开放。企业级委派、审批和审计闭环完成前不会启用。
 
 ## 当前能力
@@ -20,7 +22,7 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 - 项目成员关系及项目文档工作区，项目资源按成员角色授权。
 - 基于 SSE 的流式对话，工具调用和执行结果沿用 `tool/result` 事件展示。
 - Agent、模型、工具、MCP、审计、备份和系统设置等管理能力按权限展示。
-- 工具审批、文件路径约束、技能扫描、密钥管理和操作审计等安全边界。
+- 工具审批、文件路径约束、技能扫描、密钥掩码和操作审计等安全边界。
 
 项目共享 Agent 的执行入口仍保持关闭。它只有在任务所有权、委派范围、额度、审批人和审计链完整后才应开放。
 
@@ -34,7 +36,7 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 | 会话上下文 | 使用 `RuntimeContext(userId, sessionId)` 传递用户和会话身份 |
 | 状态持久化 | 全应用注入统一的 `AgentStateStore`，每个 Agent 通过命名空间包装器隔离状态，默认底层使用官方 `JsonFileAgentStateStore` |
 | 工作区 | 使用 Harness Workspace，`AGENTS.md` 和 `MEMORY.md` 由 Harness 管理，其他上下文文件通过 `additionalContextFile` 注入 |
-| 文件工具 | 使用 Harness 官方文件工具，文件系统采用 `LocalFsMode.SANDBOXED` 并锚定授权工作区 |
+| 文件与命令工具 | 使用 Harness 官方文件工具和官方 `execute`；生产默认采用 `DockerFilesystemSpec`、`IsolationScope.USER`，只挂载已授权的个人工作区 |
 | 技能 | 使用 Harness 动态技能与官方 `SkillManageTool`；创建前要求审批，审批后经官方安全扫描进入用户正式技能目录 |
 | 工具审批 | 使用 `PermissionContextState`/`PermissionEngine` 规则和 `RequireUserConfirmEvent`，再接入企业审批记录 |
 | Subagent | 构建 Agent 时显式禁用，等待企业级委派、RBAC、审批、额度和审计能力完成 |
@@ -49,7 +51,7 @@ Maven 聚合工程只包含五个子模块：
 MelonPaw-Company/
 |-- melon-plugin-api/   第三方插件 SPI
 |-- melon-core/         Agent 运行时、配置、模型接入、安全与中间件
-|-- melon-tools/        受控 Shell、浏览器、媒体、定时任务等扩展工具
+|-- melon-tools/        定时任务等少量业务扩展工具
 |-- melon-channels/     渠道适配、消息队列和渠道访问控制
 |-- melon-app/          Spring Boot Web 应用、认证、企业服务和 REST/SSE 接口
 |-- console/            React Web 控制台，不是 Maven 子模块
@@ -76,6 +78,7 @@ melon-app 聚合其他四个 Java 模块，并打包 console/dist。
 | JDK | 17 或更高 |
 | Maven | 3.8 或更高 |
 | Node.js | 18 或更高 |
+| Docker | 运行 Agent 文件/命令工具时必需；Web 管理页本身可在无 Docker 时启动 |
 
 ## 构建
 
@@ -98,6 +101,20 @@ mvn clean package
 
 ## 启动
 
+先构建一次企业沙箱镜像。镜像内以非 root 用户运行，并包含技能脚本常用的 Bash、Git、curl、Python 和 Node.js：
+
+```powershell
+.\scripts\build-sandbox.ps1
+```
+
+Linux 可执行等价命令：
+
+```bash
+docker build -t melonpaw-company-sandbox:latest docker/sandbox
+```
+
+默认使用 Docker `bridge` 网络，使 `execute_shell_command` 能获取公开链接和技能依赖。生产环境应通过 `MELON_SANDBOX_NETWORK` 指定受限出口网络；禁止外网时可设为 `none`。每个执行上下文采用 AgentScope `USER` 隔离，只把受控工作区根目录下当前用户的工作区挂载到容器。
+
 Windows 可使用仓库内脚本，默认监听 `127.0.0.1:8088`：
 
 ```powershell
@@ -109,11 +126,15 @@ Windows 可使用仓库内脚本，默认监听 `127.0.0.1:8088`：
 ```powershell
 $env:SERVER_ADDRESS = "127.0.0.1"
 $env:SERVER_PORT = "8088"
+$env:MELON_EXECUTION_SANDBOX = "docker"
+$env:MELON_SANDBOX_IMAGE = "melonpaw-company-sandbox:latest"
 java -jar .\melon-app\target\melonpaw-company-web.jar
 ```
 
 ```bash
 SERVER_ADDRESS=127.0.0.1 SERVER_PORT=8088 \
+  MELON_EXECUTION_SANDBOX=docker \
+  MELON_SANDBOX_IMAGE=melonpaw-company-sandbox:latest \
   java -jar melon-app/target/melonpaw-company-web.jar
 ```
 
@@ -123,7 +144,11 @@ SERVER_ADDRESS=127.0.0.1 SERVER_PORT=8088 \
 ${MELON_HOME}/enterprise.db
 ```
 
+当系统没有任何用户且未显式设置 `MELON_BOOTSTRAP_TOKEN` 时，后端会生成 256 位初始化令牌并写入 `${MELON_HOME}/bootstrap.token`；登录页会要求输入该令牌。首个管理员创建成功后文件会被删除，初始化接口随即永久关闭。也可以在启动前由运维系统注入 `MELON_BOOTSTRAP_TOKEN`，此时不会生成令牌文件。
+
 这是应用内嵌的 SQLite 数据库，无需安装或启动 PostgreSQL。可通过 `MELON_ENTERPRISE_DATABASE_PATH` 覆盖数据库文件位置。备份时至少应同时保存 `enterprise.db`、`config.yaml` 和 `workspaces/`。
+
+OneBot 使用反向 WebSocket。个人渠道页会显示带当前 Agent 标识的连接 URL；OneBot 客户端必须把该渠道配置的 `access_token` 作为 `Authorization: Bearer <token>` 或 `X-Access-Token` 请求头发送。服务端按 Agent 独立校验 token，不接受仅靠 `X-Agent-Id` 切换工作区。
 
 生产环境应由反向代理终止 HTTPS，并限制应用端口只对受信网络开放。
 

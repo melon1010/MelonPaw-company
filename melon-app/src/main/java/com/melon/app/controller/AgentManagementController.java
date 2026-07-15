@@ -6,6 +6,7 @@ import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.agent.WorkspaceManager;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.ConfigManager;
+import com.melon.core.provider.ProviderManager;
 import com.melon.app.service.SkillService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
@@ -23,6 +25,7 @@ import java.util.Map;
 import static com.melon.core.util.ValueUtils.booleanValue;
 import static com.melon.core.util.ValueUtils.stringList;
 import static com.melon.core.util.ValueUtils.trimmedStringValue;
+import static com.melon.app.auth.EnterprisePermissions.SYSTEM_MANAGE;
 
 /**
  * Agent 管理 CRUD. 对应 Python /api/agents.
@@ -36,17 +39,20 @@ public class AgentManagementController {
     private final MultiAgentManager multiAgentManager;
     private final SkillService skillService;
     private final EnterpriseAgentAccessService agentAccessService;
+    private final ProviderManager providerManager;
 
     public AgentManagementController(ConfigManager configManager,
                                      WorkspaceManager workspaceManager,
                                      MultiAgentManager multiAgentManager,
                                      SkillService skillService,
-                                     EnterpriseAgentAccessService agentAccessService) {
+                                     EnterpriseAgentAccessService agentAccessService,
+                                     ProviderManager providerManager) {
         this.configManager = configManager;
         this.workspaceManager = workspaceManager;
         this.multiAgentManager = multiAgentManager;
         this.skillService = skillService;
         this.agentAccessService = agentAccessService;
+        this.providerManager = providerManager;
     }
 
     @GetMapping
@@ -78,7 +84,9 @@ public class AgentManagementController {
     }
 
     @PostMapping
-    public Mono<ResponseEntity<?>> create(@RequestBody(required = false) Map<String, Object> body) {
+    public Mono<ResponseEntity<?>> create(
+            @RequestBody(required = false) Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
             String id = sanitizeId(trimmedStringValue(value(body, "id", "agent_id", "name"), "agent"));
             Map<String, AgentConfig> agents = mutableAgents();
@@ -91,7 +99,11 @@ public class AgentManagementController {
             agent.setEnabled(booleanValue(body != null ? body.get("enabled") : null, true));
             String workspaceDirValue = trimmedStringValue(body != null ? body.get("workspace_dir") : null, "");
             if (!workspaceDirValue.isBlank()) {
-                agent.setWorkspaceDir(workspaceDirValue);
+                try {
+                    agent.setWorkspaceDir(validateManagedWorkspacePath(workspaceDirValue));
+                } catch (SecurityException e) {
+                    return ResponseEntity.status(403).body(Map.of("detail", e.getMessage()));
+                }
             }
             applyActiveModel(agent, body != null ? body.get("active_model") : null);
             if (body != null && body.get("system_prompt_files") instanceof List<?> files) {
@@ -117,8 +129,14 @@ public class AgentManagementController {
     }
 
     @PutMapping("/{id}")
-    public Mono<ResponseEntity<?>> update(@PathVariable String id, @RequestBody(required = false) Map<String, Object> body) {
+    public Mono<ResponseEntity<?>> update(
+            @PathVariable String id,
+            @RequestBody(required = false) Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
+            if (!agentAccessService.canAccess(principal, id)) {
+                return ResponseEntity.status(403).body(Map.of("detail", "Agent access denied"));
+            }
             AgentConfig agent = configManager.getConfig().getAgent(id);
             if (agent == null) {
                 return ResponseEntity.notFound().build();
@@ -129,7 +147,7 @@ public class AgentManagementController {
                 if (body.get("enabled") != null) agent.setEnabled(booleanValue(body.get("enabled"), true));
                 if (body.get("workspace_dir") != null) {
                     String workspaceDir = trimmedStringValue(body.get("workspace_dir"), "");
-                    agent.setWorkspaceDir(workspaceDir.isBlank() ? null : workspaceDir);
+                    agent.setWorkspaceDir(workspaceDir.isBlank() ? null : validateManagedWorkspacePath(workspaceDir));
                 }
                 if (body.get("active_model") != null) applyActiveModel(agent, body.get("active_model"));
                 if (body.get("system_prompt_files") instanceof List<?> files) {
@@ -150,8 +168,13 @@ public class AgentManagementController {
     }
 
     @DeleteMapping("/{id}")
-    public Mono<ResponseEntity<?>> delete(@PathVariable String id) {
+    public Mono<ResponseEntity<?>> delete(
+            @PathVariable String id,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
+            if (!agentAccessService.canAccess(principal, id)) {
+                return ResponseEntity.status(403).body(Map.of("detail", "Agent access denied"));
+            }
             if ("default".equals(id)) {
                 return ResponseEntity.status(409).body(Map.of("detail", "Default agent cannot be deleted"));
             }
@@ -175,8 +198,14 @@ public class AgentManagementController {
     }
 
     @PutMapping("/order")
-    public Mono<ResponseEntity<?>> reorder(@RequestBody(required = false) Map<String, Object> body) {
+    public Mono<ResponseEntity<?>> reorder(
+            @RequestBody(required = false) Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
+            if (!principal.hasPermission(SYSTEM_MANAGE)) {
+                return ResponseEntity.status(403).body(Map.of(
+                        "detail", "Only a system administrator can change the global Agent order"));
+            }
             List<String> requested = stringList(body != null ? body.get("agent_ids") : null);
             Map<String, AgentConfig> current = mutableAgents();
             LinkedHashMap<String, AgentConfig> ordered = new LinkedHashMap<>();
@@ -194,8 +223,14 @@ public class AgentManagementController {
     }
 
     @PatchMapping("/{id}/toggle")
-    public Mono<ResponseEntity<?>> toggle(@PathVariable String id, @RequestBody(required = false) Map<String, Object> body) {
+    public Mono<ResponseEntity<?>> toggle(
+            @PathVariable String id,
+            @RequestBody(required = false) Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
+            if (!agentAccessService.canAccess(principal, id)) {
+                return ResponseEntity.status(403).body(Map.of("detail", "Agent access denied"));
+            }
             if ("default".equals(id)) {
                 return ResponseEntity.status(409).body(Map.of("detail", "Default agent cannot be disabled"));
             }
@@ -247,13 +282,26 @@ public class AgentManagementController {
     }
 
     private Map<String, Object> activeModel(String active) {
-        if (active == null || active.isBlank()) {
-            return Map.of();
+        String effective = active;
+        String source = "AGENT_OVERRIDE";
+        if (effective == null || effective.isBlank()) {
+            Map<String, String> global = providerManager.getActiveModel();
+            String provider = global.get("provider_id");
+            String model = global.get("model");
+            if (provider != null && !provider.isBlank() && model != null && !model.isBlank()) {
+                effective = provider + ":" + model;
+                source = "GLOBAL_DEFAULT";
+            }
         }
-        int idx = active.indexOf(':');
-        return idx > 0 && idx < active.length() - 1
-                ? Map.of("provider_id", active.substring(0, idx), "model", active.substring(idx + 1))
-                : Map.of("provider_id", "dashscope", "model", active);
+        if (effective == null || effective.isBlank()) {
+            return Map.of("configured", false, "source", "UNCONFIGURED");
+        }
+        int idx = effective.indexOf(':');
+        return idx > 0 && idx < effective.length() - 1
+                ? Map.of("provider_id", effective.substring(0, idx),
+                        "model", effective.substring(idx + 1), "configured", true, "source", source)
+                : Map.of("provider_id", "dashscope", "model", effective,
+                        "configured", true, "source", source);
     }
 
     @SuppressWarnings("unchecked")
@@ -289,6 +337,14 @@ public class AgentManagementController {
 
     private boolean deleteWorkspaceIfSafe(Path workspaceDir) throws IOException {
         return workspaceManager.deleteWorkspaceIfUnderRoot(workspaceDir, configManager.resolveWorkspaceRootDir());
+    }
+
+    private String validateManagedWorkspacePath(String value) {
+        try {
+            return configManager.validateManagedWorkspacePath(value).toString();
+        } catch (IllegalArgumentException e) {
+            throw new SecurityException(e.getMessage(), e);
+        }
     }
 
     private String sanitizeId(String raw) {

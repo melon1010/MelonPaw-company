@@ -50,7 +50,7 @@ class AgentConfigPersistenceSecurityTest {
     }
 
     @Test
-    void migratesLegacyWorkspaceConfigBeforeSanitizingMetadata() throws Exception {
+    void ignoresLegacyWorkspaceRuntimeConfigAndSanitizesMetadataOnSave() throws Exception {
         Path configPath = tempDir.resolve("legacy-config.yaml");
         Path home = tempDir.resolve("legacy-home");
         Path workspace = home.resolve("workspaces").resolve("default");
@@ -77,16 +77,16 @@ class AgentConfigPersistenceSecurityTest {
         new ObjectMapper(new YAMLFactory()).writeValue(configPath.toFile(), root);
 
         ConfigManager migrated = manager(configPath, home);
-        assertEquals("legacy-secret", migrated.getConfig().getAgent("default")
-                .getChannels().get("dingtalk").get("client_secret"));
+        assertFalse(migrated.getConfig().getAgent("default").getChannels().containsKey("dingtalk"));
+        assertEquals("AUTO", migrated.getConfig().getAgent("default").getApproval().getLevel());
+        migrated.save();
         String metadata = Files.readString(workspace.resolve("agent.json"));
         assertFalse(metadata.contains("legacy-secret"));
         assertFalse(metadata.contains("\"config\""));
 
         ConfigManager reloaded = manager(configPath, home);
-        assertEquals("legacy-secret", reloaded.getConfig().getAgent("default")
-                .getChannels().get("dingtalk").get("client_secret"));
-        assertEquals("STRICT", reloaded.getConfig().getAgent("default").getApproval().getLevel());
+        assertFalse(reloaded.getConfig().getAgent("default").getChannels().containsKey("dingtalk"));
+        assertEquals("AUTO", reloaded.getConfig().getAgent("default").getApproval().getLevel());
     }
 
     private ConfigManager manager(Path configPath, Path home) {

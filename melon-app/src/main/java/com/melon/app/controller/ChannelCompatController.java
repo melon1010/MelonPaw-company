@@ -5,7 +5,7 @@ import com.melon.channels.ChannelAdapterRegistry;
 import com.melon.channels.ChannelConfigService;
 import com.melon.channels.ChannelHealth;
 import com.melon.channels.ChannelManager;
-import org.springframework.http.MediaType;
+import com.melon.channels.ChannelTypes;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
@@ -164,25 +164,15 @@ public class ChannelCompatController {
         channelManager.restart(agentId, channel).exceptionally(error -> null);
     }
 
-    @PostMapping(value = "/channels/voice/webhook",
-            consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE,
-            produces = MediaType.APPLICATION_XML_VALUE)
-    public Mono<ResponseEntity<String>> voiceWebhookForm(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                                         @RequestHeader Map<String, String> headers,
-                                                         @RequestParam Map<String, String> form) {
-        Map<String, Object> payload = new LinkedHashMap<>(form);
-        String currentAgent = agent(agentId);
-        return Mono.fromFuture(channelManager.handleWebhook(currentAgent, "voice", payload, headers))
-                .map(out -> ResponseEntity.ok(twiml(out.getText(), configService.runtimeConfig(currentAgent, "voice"))))
-                .subscribeOn(Schedulers.boundedElastic());
-    }
-
     @PostMapping("/channels/{channel}/webhook")
     public Mono<ResponseEntity<?>> webhook(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
                                            @PathVariable String channel,
                                            @RequestHeader Map<String, String> headers,
                                            @RequestBody(required = false) Map<String, Object> body) {
         Map<String, Object> payload = body != null ? body : Map.of();
+        if (!ChannelTypes.supported(channel)) {
+            return Mono.error(new IllegalArgumentException("Unsupported channel in domestic deployment: " + channel));
+        }
         ResponseEntity<?> challenge = challengeResponse(channel, payload);
         if (challenge != null) return Mono.just(challenge);
         return Mono.fromFuture(channelManager.handleWebhook(agent(agentId), channel,
@@ -204,24 +194,10 @@ public class ChannelCompatController {
     private ResponseEntity<?> challengeResponse(String channel, Map<String, Object> body) {
         Object challenge = body.get("challenge");
         if (challenge == null) return null;
-        if ("slack".equals(channel)) {
-            return ResponseEntity.ok(Map.of("challenge", challenge));
-        }
         if ("feishu".equals(channel)) {
             return ResponseEntity.ok(Map.of("challenge", challenge));
         }
         return ResponseEntity.ok(Map.of("challenge", challenge));
-    }
-
-    @GetMapping("/channels/{channel}/websocket")
-    public Mono<ResponseEntity<?>> websocket(@PathVariable String channel) {
-        boolean available = "onebot".equals(channel);
-        return Mono.just(ResponseEntity.ok(Map.of(
-                "channel", channel,
-                "available", available,
-                "url", available ? "/api/channels/onebot/websocket" : "",
-                "detail", available ? "Use WebSocket upgrade on this URL." : "This channel does not expose a Spring WebSocket endpoint."
-        )));
     }
 
     @GetMapping("/access-control")
@@ -355,23 +331,7 @@ public class ChannelCompatController {
 
     private Map<String, Object> runtimeConfig(String agentId, String channel, Map<String, String> params) {
         Map<String, Object> config = new LinkedHashMap<>(configService.runtimeConfig(agentId, channel));
-        if (params != null) {
-            params.forEach((key, value) -> {
-                if (!"token".equals(key)) config.put(key, value);
-            });
-        }
         return config;
-    }
-
-    private String twiml(String text, Map<String, Object> config) {
-        String language = stringValue(config.getOrDefault("language", "zh-CN"), "zh-CN");
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Say language=\""
-                + xml(language) + "\">" + xml(text) + "</Say><Gather input=\"speech\" method=\"POST\" speechTimeout=\"auto\"/></Response>";
-    }
-
-    private String xml(String value) {
-        return value == null ? "" : value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                .replace("\"", "&quot;").replace("'", "&apos;");
     }
 
     private Map<String, Object> entry(String channel, Map<String, Object> body) {

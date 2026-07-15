@@ -26,9 +26,12 @@ public class McpToolkitContributor implements ToolkitContributor {
     private static final Logger log = LoggerFactory.getLogger(McpToolkitContributor.class);
 
     private final McpClientManager mcpClientManager;
+    private final McpAccessPolicyService accessPolicyService;
 
-    public McpToolkitContributor(McpClientManager mcpClientManager) {
+    public McpToolkitContributor(McpClientManager mcpClientManager,
+                                 McpAccessPolicyService accessPolicyService) {
         this.mcpClientManager = mcpClientManager;
+        this.accessPolicyService = accessPolicyService;
     }
 
     @Override
@@ -48,7 +51,8 @@ public class McpToolkitContributor implements ToolkitContributor {
                 if (toolkit.getToolNames().contains(toolName)) {
                     toolName = safeToolName("mcp_" + server.getId() + "_" + tool.getName());
                 }
-                toolkit.registerAgentTool(new McpBridgeTool(server.getId(), server.getName(), tool, toolName, mcpClientManager));
+                toolkit.registerAgentTool(new McpBridgeTool(server.getId(), server.getName(), tool, toolName,
+                        mcpClientManager, accessPolicyService));
                 log.info("Registered MCP tool into agent toolkit: server={}, tool={}", server.getId(), toolName);
             }
         }
@@ -63,9 +67,10 @@ public class McpToolkitContributor implements ToolkitContributor {
         private final String serverId;
         private final String actualToolName;
         private final McpClientManager mcpClientManager;
+        private final McpAccessPolicyService accessPolicyService;
 
         McpBridgeTool(String serverId, String serverName, McpClientManager.McpTool tool, String registeredName,
-                      McpClientManager mcpClientManager) {
+                      McpClientManager mcpClientManager, McpAccessPolicyService accessPolicyService) {
             super(ToolBase.builder()
                     .name(registeredName)
                     .description(description(serverName, tool))
@@ -76,12 +81,21 @@ public class McpToolkitContributor implements ToolkitContributor {
             this.serverId = serverId;
             this.actualToolName = tool.getName();
             this.mcpClientManager = mcpClientManager;
+            this.accessPolicyService = accessPolicyService;
         }
 
         @Override
         public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
             Map<String, Object> input = new LinkedHashMap<>(param.getInput());
             return Mono.fromCallable(() -> {
+                        String effect = accessPolicyService.effect(
+                                serverId, actualToolName, param.getRuntimeContext());
+                        if (!"allow".equals(effect)) {
+                            String detail = "ask".equals(effect)
+                                    ? "MCP policy requires explicit approval; unattended execution is denied"
+                                    : "MCP policy denied this tool for the current channel and user";
+                            return ToolResultBlock.error(detail);
+                        }
                         Map<String, Object> result = mcpClientManager.callTool(serverId, actualToolName, input);
                         if (result.containsKey("error")) {
                             return ToolResultBlock.error(String.valueOf(result.get("error")));

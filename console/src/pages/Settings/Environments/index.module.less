@@ -202,8 +202,8 @@
   overflow: hidden;
 
   &:focus-within {
-    border-color: #ff7f16;
-    box-shadow: 0 0 0 2px rgba(97, 92, 237, 0.2);
+    border-color: var(--mp-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--mp-primary) 20%, transparent);
     transform: translateY(-1px);
   }
 }
@@ -232,7 +232,7 @@
   text-align: center;
 
   .inputGroup:focus-within & {
-    color: #ff7f16;
+    color: var(--mp-primary);
     background: #f0f0ff;
   }
 }
@@ -283,7 +283,7 @@
   border-radius: 4px;
 
   &:hover {
-    color: #ff7f16;
+    color: var(--mp-primary);
     background: #f0f0ff;
   }
 }
@@ -311,10 +311,10 @@
   color: #c0c0c0;
 
   &:hover {
-    color: #ff7f16;
+    color: var(--mp-primary);
     background: #f0f0ff;
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(97, 92, 237, 0.15);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--mp-primary) 15%, transparent);
   }
 }
 
@@ -364,11 +364,11 @@
   color: #999;
 
   &:hover {
-    color: #ff7f16;
-    border-color: #ff7f16;
+    color: var(--mp-primary);
+    border-color: var(--mp-primary);
     background: #f0f0ff;
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(97, 92, 237, 0.15);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--mp-primary) 15%, transparent);
   }
 
   svg {
@@ -469,8 +469,8 @@
     background: #2a2a2a;
 
     &:focus-within {
-      border-color: #ff7f16;
-      box-shadow: 0 0 0 2px rgba(97, 92, 237, 0.2);
+      border-color: var(--mp-primary);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--mp-primary) 20%, transparent);
     }
   }
 
@@ -481,8 +481,8 @@
     background: rgba(255, 255, 255, 0.04);
 
     .inputGroup:focus-within & {
-      color: #ff7f16;
-      background: rgba(97, 92, 237, 0.1);
+      color: var(--mp-primary);
+      background: color-mix(in srgb, var(--mp-primary) 10%, transparent);
     }
   }
 
@@ -510,8 +510,8 @@
     color: rgba(255, 255, 255, 0.3);
 
     &:hover {
-      color: #ff7f16;
-      background: rgba(97, 92, 237, 0.12);
+      color: var(--mp-primary);
+      background: color-mix(in srgb, var(--mp-primary) 12%, transparent);
     }
   }
 
@@ -520,8 +520,8 @@
     color: rgba(255, 255, 255, 0.2);
 
     &:hover {
-      color: #ff7f16;
-      background: rgba(97, 92, 237, 0.12);
+      color: var(--mp-primary);
+      background: color-mix(in srgb, var(--mp-primary) 12%, transparent);
     }
   }
 
@@ -547,9 +547,9 @@
     color: rgba(255, 255, 255, 0.35);
 
     &:hover {
-      color: #ff7f16;
-      border-color: #ff7f16;
-      background: rgba(97, 92, 237, 0.1);
+      color: var(--mp-primary);
+      border-color: var(--mp-primary);
+      background: color-mix(in srgb, var(--mp-primary) 10%, transparent);
     }
   }
 
@@ -565,8 +565,8 @@
       background: transparent;
 
       &:hover {
-        color: #ff7f16;
-        background: rgba(97, 92, 237, 0.12);
+        color: var(--mp-primary);
+        background: color-mix(in srgb, var(--mp-primary) 12%, transparent);
       }
     }
 

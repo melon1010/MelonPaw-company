@@ -15,9 +15,9 @@
 
   &:hover,
   &.triggerActive {
-    border-color: #ff7f16;
-    color: #ff7f16;
-    box-shadow: 0 2px 8px rgba(97, 92, 237, 0.12);
+    border-color: var(--mp-primary);
+    color: var(--mp-primary);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--mp-primary) 12%, transparent);
   }
 
   @media (max-width: 768px) {
@@ -166,7 +166,7 @@
   }
 
   &.tabButtonActive {
-    color: #ff7f16;
+    color: var(--mp-primary);
 
     &::after {
       content: "";
@@ -175,7 +175,7 @@
       left: 20%;
       right: 20%;
       height: 2px;
-      background: #ff7f16;
+      background: var(--mp-primary);
       border-radius: 1px;
     }
   }
@@ -248,17 +248,17 @@
   border-radius: 6px;
 
   &:hover {
-    background: rgba(97, 92, 237, 0.06);
+    background: color-mix(in srgb, var(--mp-primary) 6%, transparent);
     color: #333;
   }
 
   &.modelItemActive {
-    background: rgba(255, 127, 22, 0.08);
-    color: #ff7f16;
+    background: color-mix(in srgb, var(--mp-primary) 8%, transparent);
+    color: var(--mp-primary);
     font-weight: 500;
 
     .modelName {
-      color: #ff7f16;
+      color: var(--mp-primary);
     }
   }
 }
@@ -307,7 +307,7 @@
 .checkIcon {
   flex-shrink: 0;
   font-size: 14px;
-  color: #ff7f16;
+  color: var(--mp-primary);
 }
 
 .emptyTip {
@@ -452,8 +452,8 @@
 
     &:hover,
     &.triggerActive {
-      color: #ff7f16;
-      box-shadow: 0 2px 8px rgba(97, 92, 237, 0.2);
+      color: var(--mp-primary);
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--mp-primary) 20%, transparent);
     }
   }
 
@@ -499,7 +499,7 @@
     }
 
     &.tabButtonActive {
-      color: #ff7f16;
+      color: var(--mp-primary);
     }
   }
 
@@ -523,16 +523,16 @@
     color: rgba(255, 255, 255, 0.85);
 
     &:hover {
-      background: rgba(97, 92, 237, 0.15);
+      background: color-mix(in srgb, var(--mp-primary) 15%, transparent);
       color: rgba(255, 255, 255, 0.85);
     }
 
     &.modelItemActive {
-      background: rgba(255, 127, 22, 0.12);
-      color: #ff7f16;
+      background: color-mix(in srgb, var(--mp-primary) 12%, transparent);
+      color: var(--mp-primary);
 
       .modelName {
-        color: #ff7f16;
+        color: var(--mp-primary);
       }
     }
   }
@@ -554,7 +554,7 @@
   }
 
   .checkIcon {
-    color: #ff7f16;
+    color: var(--mp-primary);
   }
 
   .proBanner {
@@ -606,6 +606,148 @@
 
     &:hover {
       color: rgba(255, 255, 255, 0.65);
+    }
+  }
+}
+
+/* Company theme precedence for the lazy-loaded model chooser. */
+.trigger {
+  color: var(--mp-text-secondary);
+  border-radius: 4px;
+
+  &:hover,
+  &.triggerActive {
+    color: var(--mp-primary);
+    border-color: var(--mp-primary);
+    box-shadow: 0 0 0 2px var(--mp-focus-ring);
+  }
+}
+
+.panel {
+  color: var(--mp-text);
+  background: var(--mp-surface);
+  border-color: var(--mp-border);
+  border-radius: 6px;
+  box-shadow: var(--mp-shadow-popover);
+}
+
+.searchWrapper,
+.tabBar,
+.moreToggle {
+  border-color: var(--mp-border);
+}
+
+.searchIcon,
+.providerHeader,
+.collapseIcon,
+.moreToggle,
+.emptyTip,
+.connectHint {
+  color: var(--mp-text-tertiary);
+}
+
+.searchInput,
+.modelItem {
+  color: var(--mp-text);
+}
+
+.tabButton {
+  color: var(--mp-text-tertiary);
+  letter-spacing: 0;
+
+  &:hover {
+    color: var(--mp-text-secondary);
+  }
+
+  &.tabButtonActive {
+    color: var(--mp-primary);
+
+    &::after {
+      background: var(--mp-primary);
+    }
+  }
+}
+
+.modelItem {
+  border-radius: 4px;
+
+  &:hover {
+    color: var(--mp-text);
+    background: var(--mp-surface-subtle);
+  }
+
+  &.modelItemActive {
+    color: var(--mp-primary);
+    background: var(--mp-primary-soft);
+
+    .modelName {
+      color: var(--mp-primary);
+    }
+  }
+}
+
+.freeTag,
+.visionTag {
+  border-radius: 3px;
+}
+
+.checkIcon {
+  color: var(--mp-primary);
+}
+
+.connectEntry,
+.connectIcon {
+  color: var(--mp-info);
+}
+
+.connectEntry:hover {
+  background: color-mix(in srgb, var(--mp-info) 9%, transparent);
+}
+
+:global(.dark-mode) {
+  .trigger {
+    color: var(--mp-text-secondary);
+
+    &:hover,
+    &.triggerActive {
+      color: var(--mp-primary);
+      box-shadow: 0 0 0 2px var(--mp-focus-ring);
+    }
+  }
+
+  .panel {
+    background: var(--mp-surface);
+    border-color: var(--mp-border);
+    box-shadow: var(--mp-shadow-popover);
+  }
+
+  .searchWrapper,
+  .tabBar,
+  .moreToggle {
+    border-color: var(--mp-border);
+  }
+
+  .searchInput,
+  .modelItem {
+    color: var(--mp-text);
+  }
+
+  .tabButton.tabButtonActive,
+  .checkIcon {
+    color: var(--mp-primary);
+  }
+
+  .modelItem:hover {
+    color: var(--mp-text);
+    background: var(--mp-surface-subtle);
+  }
+
+  .modelItem.modelItemActive {
+    color: var(--mp-primary);
+    background: var(--mp-primary-soft);
+
+    .modelName {
+      color: var(--mp-primary);
     }
   }
 }

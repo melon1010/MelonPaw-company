@@ -52,8 +52,8 @@
   &:hover {
     background-color: var(--colorBgBase, #fff);
     background-image: linear-gradient(
-      var(--color-fill-tertiary, rgba(43, 18, 0, 0.03)),
-      var(--color-fill-tertiary, rgba(43, 18, 0, 0.03))
+      var(--color-fill-tertiary, color-mix(in srgb, var(--mp-primary) 3%, transparent)),
+      var(--color-fill-tertiary, color-mix(in srgb, var(--mp-primary) 3%, transparent))
     );
 
     .actions {
@@ -73,7 +73,7 @@
   }
 
   &.active {
-    background: var(--color-fill-secondary, rgba(43, 18, 0, 0.08));
+    background: var(--color-fill-secondary, color-mix(in srgb, var(--mp-primary) 8%, transparent));
   }
 
   &.editing .content {
@@ -91,7 +91,7 @@
   margin-bottom: 2px;
 
   &:hover {
-    background: var(--color-fill-tertiary, rgba(43, 18, 0, 0.05));
+    background: var(--color-fill-tertiary, color-mix(in srgb, var(--mp-primary) 5%, transparent));
 
     .moreBtn {
       opacity: 1;
@@ -104,7 +104,7 @@
   }
 
   &.active {
-    background: var(--color-fill-secondary, rgba(43, 18, 0, 0.08));
+    background: var(--color-fill-secondary, color-mix(in srgb, var(--mp-primary) 8%, transparent));
 
     .name {
       font-weight: 500;
@@ -112,7 +112,7 @@
     }
 
     &:hover {
-      background: var(--color-fill-secondary, rgba(43, 18, 0, 0.1));
+      background: var(--color-fill-secondary, color-mix(in srgb, var(--mp-primary) 10%, transparent));
     }
   }
 
@@ -298,7 +298,7 @@
     font-weight: 500;
     line-height: 18px;
     color: var(--colorTextSecondary, rgba(26, 23, 22, 0.55));
-    background: var(--color-fill-tertiary, rgba(43, 18, 0, 0.06));
+    background: var(--color-fill-tertiary, color-mix(in srgb, var(--mp-primary) 6%, transparent));
     min-width: 0;
     opacity: 1;
   }
@@ -338,7 +338,7 @@
   }
 
   &[data-pinned="true"] {
-    color: var(--colorPrimary, #ff9d4d);
+    color: var(--colorPrimary, var(--mp-primary));
   }
 }
 
@@ -370,7 +370,7 @@
   transition: background 0.15s;
 
   &:hover {
-    background: var(--color-fill-secondary, rgba(43, 18, 0, 0.08));
+    background: var(--color-fill-secondary, color-mix(in srgb, var(--mp-primary) 8%, transparent));
   }
 }
 
@@ -395,7 +395,7 @@
   transition: all 0.15s;
 
   &:hover {
-    background: var(--color-fill-secondary, rgba(43, 18, 0, 0.08));
+    background: var(--color-fill-secondary, color-mix(in srgb, var(--mp-primary) 8%, transparent));
     color: var(--colorText, rgba(26, 23, 22, 0.88));
   }
 }
@@ -475,7 +475,7 @@
     color: rgba(255, 255, 255, 0.72);
 
     &[data-pinned="true"] {
-      color: var(--colorPrimary, #ff9d4d);
+      color: var(--colorPrimary, var(--mp-primary));
     }
   }
 

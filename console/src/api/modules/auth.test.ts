@@ -73,6 +73,18 @@ describe("authApi.bootstrap", () => {
     expect(fetch).toHaveBeenCalledWith("/api/auth/bootstrap", expect.anything());
   });
 
+  it("includes the optional bootstrap token", async () => {
+    mockFetch(200, { token: "t", username: "bob" });
+    await authApi.bootstrap("bob", "pass", "Bob", "bootstrap-secret");
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body);
+    expect(body).toEqual({
+      username: "bob",
+      password: "pass",
+      display_name: "Bob",
+      bootstrap_token: "bootstrap-secret",
+    });
+  });
+
   it("throws detail error on registration failure", async () => {
     mockFetch(409, { detail: "Username already exists" });
     await expect(authApi.bootstrap("bob", "pass")).rejects.toThrow(

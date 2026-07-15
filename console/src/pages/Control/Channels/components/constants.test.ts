@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { CHANNEL_LABELS, getChannelLabel } from "./constants";
 
 describe("CHANNEL_LABELS", () => {
-  it("contains known channels: discord, dingtalk, console", () => {
-    expect(CHANNEL_LABELS["discord"]).toBe("Discord");
+  it("contains known domestic channels: wechat, dingtalk, console", () => {
+    expect(CHANNEL_LABELS["wechat"]).toBe("WeChat");
     expect(CHANNEL_LABELS["dingtalk"]).toBe("DingTalk");
     expect(CHANNEL_LABELS["console"]).toBe("Console");
   });
@@ -11,7 +11,7 @@ describe("CHANNEL_LABELS", () => {
 
 describe("getChannelLabel", () => {
   it("returns the English label for a known channel without t", () => {
-    expect(getChannelLabel("discord")).toBe("Discord");
+    expect(getChannelLabel("wechat")).toBe("WeChat");
   });
 
   it("formats snake_case custom channel key to Title Case", () => {
@@ -27,9 +27,9 @@ describe("getChannelLabel", () => {
       (key: string, opts?: { defaultValue?: string }) =>
         opts?.defaultValue ?? key,
     );
-    getChannelLabel("discord", t as any);
-    expect(t).toHaveBeenCalledWith("channels.channelNames.discord", {
-      defaultValue: "Discord",
+    getChannelLabel("wechat", t as any);
+    expect(t).toHaveBeenCalledWith("channels.channelNames.wechat", {
+      defaultValue: "WeChat",
     });
   });
 });

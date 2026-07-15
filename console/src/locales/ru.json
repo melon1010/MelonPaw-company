@@ -1584,7 +1584,7 @@
     "exemptFileExtensionsPlaceholder": ".md, .txt, .json",
     "exemptToolNames": "Исключенные инструменты",
     "exemptToolNamesTooltip": "Результаты этих инструментов будут использовать порог для новых сообщений",
-    "exemptToolNamesPlaceholder": "browser_use, read_file",
+    "exemptToolNamesPlaceholder": "get_current_time, memory_search",
     "language": "Язык агента",
     "languageTooltip": "Язык файлов персонажа агента (SOUL.md, AGENTS.md и др.). При смене языка MD-файлы будут скопированы на выбранном языке.",
     "languageConfirmTitle": "Смена языка агента",

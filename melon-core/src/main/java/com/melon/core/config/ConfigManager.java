@@ -55,16 +55,8 @@ public class ConfigManager {
     public MelonConfig load() {
         if (Files.exists(configPath)) {
             try {
-                boolean migrateGlobalConfig = shouldMigrateGlobalConfig();
                 config = yamlMapper.readValue(configPath.toFile(), MelonConfig.class);
                 config = mergeDefaults(config);
-                if (migrateGlobalConfig) {
-                    loadLegacyWorkspaceAgentConfigs();
-                }
-                config = mergeDefaults(config);
-                if (migrateGlobalConfig) {
-                    save();
-                }
                 log.info("Config loaded from {}", configPath);
             } catch (IOException e) {
                 log.error("Failed to load config, using defaults", e);
@@ -76,31 +68,6 @@ public class ConfigManager {
             save();
         }
         return config;
-    }
-
-    @SuppressWarnings("unchecked")
-    private boolean shouldMigrateGlobalConfig() {
-        try {
-            Map<String, Object> root = yamlMapper.readValue(configPath.toFile(), Map.class);
-            Object agents = root.get("agents");
-            if (!(agents instanceof Map<?, ?> agentMap)) {
-                return false;
-            }
-            for (Object value : agentMap.values()) {
-                if (!(value instanceof Map<?, ?> item)) {
-                    continue;
-                }
-                java.util.Set<String> keys = item.keySet().stream()
-                        .map(String::valueOf)
-                        .collect(java.util.stream.Collectors.toSet());
-                if (java.util.Set.of("name", "description", "enabled", "workspace_dir").containsAll(keys)) {
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Failed to inspect global config for migration: {}", configPath, e);
-        }
-        return false;
     }
 
     /**
@@ -175,49 +142,6 @@ public class ConfigManager {
         return loaded;
     }
 
-    @SuppressWarnings("unchecked")
-    private void loadLegacyWorkspaceAgentConfigs() {
-        if (config.getAgents() == null || config.getAgents().isEmpty()) {
-            return;
-        }
-        Map<String, AgentConfig> mergedAgents = new LinkedHashMap<>();
-        for (var entry : config.getAgents().entrySet()) {
-            String agentId = entry.getKey();
-            AgentConfig globalAgent = entry.getValue();
-            AgentConfig agent = globalAgent;
-            Path agentJson = resolveWorkspaceDir(agentId).resolve("agent.json");
-            if (Files.exists(agentJson)) {
-                try {
-                    Map<String, Object> raw = jsonMapper.readValue(agentJson.toFile(), Map.class);
-                    Object node = raw.get("config");
-                    if (!(node instanceof Map<?, ?>)) {
-                        mergedAgents.put(agentId, globalAgent);
-                        continue;
-                    }
-                    AgentConfig workspaceAgent = jsonMapper.convertValue(node, AgentConfig.class);
-                    agent = mergeAgentIndex(globalAgent, workspaceAgent);
-                } catch (Exception e) {
-                    log.warn("Failed to load workspace agent config: {}", agentJson, e);
-                }
-            }
-            mergedAgents.put(agentId, agent);
-        }
-        config.setAgents(mergedAgents);
-    }
-
-    private AgentConfig mergeAgentIndex(AgentConfig globalAgent, AgentConfig workspaceAgent) {
-        if (workspaceAgent == null) {
-            return globalAgent;
-        }
-        if (globalAgent != null) {
-            workspaceAgent.setName(globalAgent.getName());
-            workspaceAgent.setDescription(globalAgent.getDescription());
-            workspaceAgent.setWorkspaceDir(globalAgent.getWorkspaceDir());
-            workspaceAgent.setEnabled(globalAgent.isEnabled());
-        }
-        return workspaceAgent;
-    }
-
     private void saveWorkspaceAgentConfigs() throws IOException {
         if (config.getAgents() == null) {
             return;
@@ -234,7 +158,8 @@ public class ConfigManager {
             data.put("workspace_dir", workspaceDir.toString());
             data.put("active_model", agent.getActiveModel() != null ? agent.getActiveModel() : "");
             data.put("approval_level", agent.getApproval() != null ? agent.getApproval().getLevel() : "AUTO");
-            jsonMapper.writerWithDefaultPrettyPrinter().writeValue(workspaceDir.resolve("agent.json").toFile(), data);
+            Path agentJson = com.melon.core.util.SafePathUtil.resolveSafe(workspaceDir, "agent.json");
+            jsonMapper.writerWithDefaultPrettyPrinter().writeValue(agentJson.toFile(), data);
         }
     }
 
@@ -321,7 +246,7 @@ public class ConfigManager {
         List<String> removedTools = List.of(
                 "desktop_screenshot", "delegate_external_agent", "list_agents",
                 "chat_with_agent", "submit_to_agent", "check_agent_task", "spawn_subagent",
-                "materialize_skill");
+                "materialize_skill", "browser_use");
         removedTools.forEach(current::remove);
         Map<String, Boolean> asyncTools = new LinkedHashMap<>(
                 tools.getAsyncExecutionTools() != null ? tools.getAsyncExecutionTools() : Map.of());
@@ -368,7 +293,7 @@ public class ConfigManager {
             throw new IllegalArgumentException("Unknown agent: " + id);
         }
         if (agent != null && agent.getWorkspaceDir() != null && !agent.getWorkspaceDir().isBlank()) {
-            return expandPath(agent.getWorkspaceDir());
+            return validateManagedWorkspacePath(agent.getWorkspaceDir());
         }
         Path root = resolveWorkspaceRootDir().toAbsolutePath().normalize();
         Path workspace = root.resolve(id).normalize();
@@ -393,6 +318,30 @@ public class ConfigManager {
             return expandPath(config.getPaths().getWorkspaceRoot()).normalize();
         }
         return resolveHomeDir().resolve("workspaces").normalize();
+    }
+
+    /**
+     * All model-visible workspaces must stay below the managed root. This is
+     * enforced at resolution time as well as at the HTTP management boundary,
+     * so a hand-edited config cannot mount an arbitrary host directory.
+     */
+    public Path validateManagedWorkspacePath(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("Workspace path is required");
+        }
+        Path root = resolveWorkspaceRootDir().toAbsolutePath().normalize();
+        Path candidate = expandPath(value).toAbsolutePath().normalize();
+        if (candidate.equals(root) || !candidate.startsWith(root)) {
+            throw new IllegalArgumentException("Workspace path must stay under the managed workspace root");
+        }
+        Path current = root;
+        for (Path segment : root.relativize(candidate)) {
+            current = current.resolve(segment);
+            if (Files.isSymbolicLink(current)) {
+                throw new IllegalArgumentException("Workspace path cannot contain symbolic links");
+            }
+        }
+        return candidate;
     }
 
     public Path resolveSkillPoolDir() {

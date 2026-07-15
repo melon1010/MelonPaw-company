@@ -1569,7 +1569,7 @@
     "exemptFileExtensionsPlaceholder": ".md, .txt, .json",
     "exemptToolNames": "除外ツール名",
     "exemptToolNamesTooltip": "これらのツールの結果には最新メッセージの圧縮しきい値が使用されます",
-    "exemptToolNamesPlaceholder": "browser_use, read_file",
+    "exemptToolNamesPlaceholder": "get_current_time, memory_search",
     "language": "エージェント言語",
     "languageTooltip": "エージェントのペルソナファイル（SOUL.md、AGENTS.md など）の言語。変更すると選択した言語のMDファイルが再コピーされます。",
     "languageConfirmTitle": "エージェント言語の変更",

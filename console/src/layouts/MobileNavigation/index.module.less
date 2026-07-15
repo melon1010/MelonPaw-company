@@ -18,12 +18,14 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     align-items: stretch;
-    background: rgba(255, 255, 255, 0.98);
-    border-top: 1px solid #dfe4e8;
+    background: color-mix(in srgb, var(--mp-surface) 96%, transparent);
+    border-top: 1px solid var(--mp-border);
+    box-shadow: 0 -4px 16px rgba(28, 41, 38, 0.08);
   }
 
   .navItem,
   .navItemActive {
+    position: relative;
     min-width: 0;
     height: 48px;
     display: flex;
@@ -33,7 +35,7 @@
     gap: 2px;
     border: 0;
     background: transparent;
-    color: #66747b;
+    color: var(--mp-text-tertiary);
     font-size: 10px;
     line-height: 14px;
 
@@ -46,7 +48,18 @@
   }
 
   .navItemActive {
-    color: #0f766e;
+    color: var(--mp-primary);
+
+    &::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 22px;
+      height: 2px;
+      background: var(--mp-primary);
+      transform: translateX(-50%);
+    }
   }
 
   .moreDrawer {
@@ -66,10 +79,10 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    border: 1px solid #e1e6e9;
-    border-radius: 6px;
-    background: #fff;
-    color: #263238;
+    border: 1px solid var(--mp-border);
+    border-radius: 4px;
+    background: var(--mp-surface);
+    color: var(--mp-text);
     font-size: 13px;
     text-align: left;
   }
@@ -80,7 +93,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-top: 1px solid #e6eaed;
+    border-top: 1px solid var(--mp-border);
   }
 
   .identity {
@@ -96,12 +109,12 @@
     }
 
     span {
-      color: #263238;
+      color: var(--mp-text);
       font-weight: 600;
     }
 
     small {
-      color: #7a878d;
+      color: var(--mp-text-tertiary);
     }
   }
 
@@ -110,33 +123,33 @@
     height: 38px;
     display: grid;
     place-items: center;
-    border: 1px solid #e1e6e9;
-    border-radius: 6px;
-    background: #fff;
-    color: #66747b;
+    border: 1px solid var(--mp-border);
+    border-radius: 4px;
+    background: var(--mp-surface);
+    color: var(--mp-text-secondary);
   }
 }
 
 :global(.dark-mode) {
   @media (max-width: 768px) {
     .mobileNav {
-      background: rgba(24, 30, 32, 0.98);
-      border-top-color: rgba(255, 255, 255, 0.1);
+      background: color-mix(in srgb, var(--mp-surface) 96%, transparent);
+      border-top-color: var(--mp-border);
     }
 
     .navItem {
-      color: rgba(255, 255, 255, 0.58);
+      color: var(--mp-text-tertiary);
     }
 
     .navItemActive {
-      color: #5eead4;
+      color: var(--mp-primary);
     }
 
     .drawerItem,
     .logout {
-      background: #1d2426;
-      border-color: rgba(255, 255, 255, 0.1);
-      color: rgba(255, 255, 255, 0.82);
+      background: var(--mp-surface);
+      border-color: var(--mp-border);
+      color: var(--mp-text);
     }
   }
 }

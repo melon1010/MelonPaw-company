@@ -8,7 +8,6 @@ import { useToolGuard, type MergedRule } from "./useToolGuard";
 const BUILTIN_TOOLS = [
   "execute_shell_command",
   "execute_python_code",
-  "browser_use",
   "view_image",
   "read_file",
   "write_file",

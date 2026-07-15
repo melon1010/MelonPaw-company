@@ -8,7 +8,6 @@ public final class ToolsConfigSelfCheck {
             "edit_file",
             "grep_search",
             "glob_search",
-            "browser_use",
             "view_image",
             "view_video",
             "send_file_to_user",
@@ -39,6 +38,7 @@ public final class ToolsConfigSelfCheck {
         assertRemoved(tools, "check_agent_task");
         assertRemoved(tools, "spawn_subagent");
         assertRemoved(tools, "materialize_skill");
+        assertRemoved(tools, "browser_use");
         assertHiddenOrMissing(tools, "execute");
         assertHiddenOrMissing(tools, "grep_files");
         assertHiddenOrMissing(tools, "glob_files");

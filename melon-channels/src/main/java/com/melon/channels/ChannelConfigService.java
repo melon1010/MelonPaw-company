@@ -6,10 +6,19 @@ import com.melon.core.config.ConfigManager;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class ChannelConfigService {
 
     private static final String MASK = "********";
+    private static final String INTERNAL_STATE_DIR = "_channel_state_dir";
+    private static final Set<String> SERVER_MANAGED_KEYS = Set.of(
+            "type", "isBuiltin", "implemented", "available", "supports_qrcode",
+            "supports_streaming", "requires_webhook", INTERNAL_STATE_DIR, "bot_token_file",
+            "endpoint", "base_url", "api_base", "portal_host", "ws_url", "backup_ws_url",
+            "send_url", "websocket_url", "api_domain", "reply_url", "webhook_url",
+            "outgoing_webhook", "http_proxy", "proxy", "media_dir", "domain"
+    );
 
     private final ConfigManager configManager;
     private final ChannelAdapterRegistry registry;
@@ -41,12 +50,15 @@ public class ChannelConfigService {
             result.put(type, publicConfig(type, stored.get(type)));
         }
         for (var entry : stored.entrySet()) {
-            result.putIfAbsent(entry.getKey(), publicConfig(entry.getKey(), entry.getValue()));
+            if (ChannelTypes.supported(entry.getKey())) {
+                result.putIfAbsent(entry.getKey(), publicConfig(entry.getKey(), entry.getValue()));
+            }
         }
         return result;
     }
 
     public Map<String, Object> get(String agentId, String channel) {
+        requireSupported(channel);
         return list(agentId).getOrDefault(channel, publicConfig(channel, Map.of()));
     }
 
@@ -61,14 +73,20 @@ public class ChannelConfigService {
     }
 
     public Map<String, Object> update(String agentId, String channel, Map<String, Object> body) {
+        requireSupported(channel);
         AgentConfig agent = agent(agentId);
         if (agent == null) return publicConfig(channel, body);
         Map<String, Map<String, Object>> channels = new LinkedHashMap<>(
                 agent.getChannels() != null ? agent.getChannels() : Map.of());
         Map<String, Object> previous = new LinkedHashMap<>(channels.getOrDefault(channel, defaultConfig(channel)));
         Map<String, Object> merged = new LinkedHashMap<>(previous);
+        SERVER_MANAGED_KEYS.forEach(merged::remove);
         if (body != null) {
-            body.forEach((key, value) -> merged.put(key, preserveSecret(previous, key, value)));
+            body.forEach((key, value) -> {
+                if (!SERVER_MANAGED_KEYS.contains(key) && !key.startsWith("_")) {
+                    merged.put(key, preserveSecret(previous, key, value));
+                }
+            });
         }
         migrateLegacyAccessFields(agentId, channel, merged, body != null ? body : Map.of());
         merged.put("type", channel);
@@ -79,12 +97,18 @@ public class ChannelConfigService {
     }
 
     public Map<String, Object> runtimeConfig(String agentId, String channel) {
+        requireSupported(channel);
         AgentConfig agent = agent(agentId);
-        if (agent == null || agent.getChannels() == null) return defaultConfig(channel);
-        return new LinkedHashMap<>(agent.getChannels().getOrDefault(channel, defaultConfig(channel)));
+        Map<String, Object> runtime = agent == null || agent.getChannels() == null
+                ? defaultConfig(channel)
+                : new LinkedHashMap<>(agent.getChannels().getOrDefault(channel, defaultConfig(channel)));
+        SERVER_MANAGED_KEYS.forEach(runtime::remove);
+        runtime.put(INTERNAL_STATE_DIR, channelStateDir(agentId, channel));
+        return runtime;
     }
 
     public Map<String, Object> typeMeta(String type) {
+        requireSupported(type);
         ChannelAdapter adapter = registry.get(type);
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("type", type);
@@ -99,6 +123,7 @@ public class ChannelConfigService {
     private Map<String, Object> publicConfig(String channel, Map<String, Object> raw) {
         Map<String, Object> config = new LinkedHashMap<>(defaultConfig(channel));
         if (raw != null) config.putAll(raw);
+        SERVER_MANAGED_KEYS.forEach(config::remove);
         config.put("type", channel);
         config.put("isBuiltin", ChannelTypes.BUILTIN.contains(channel));
         ChannelAdapter adapter = registry.get(channel);
@@ -114,6 +139,12 @@ public class ChannelConfigService {
             }
         }
         return config;
+    }
+
+    private void requireSupported(String channel) {
+        if (!ChannelTypes.supported(channel)) {
+            throw new IllegalArgumentException("Unsupported channel in domestic deployment: " + channel);
+        }
     }
 
     private Map<String, Object> defaultConfig(String channel) {
@@ -141,14 +172,6 @@ public class ChannelConfigService {
     private void channelDefaults(String channel, Map<String, Object> config) {
         switch (channel) {
             case "console" -> config.put("media_dir", "");
-            case "imessage" -> {
-                config.put("db_path", "~/Library/Messages/chat.db"); config.put("poll_sec", 1.0);
-                config.put("media_dir", ""); config.put("max_decoded_size", 10 * 1024 * 1024);
-            }
-            case "discord" -> {
-                config.put("bot_token", ""); config.put("http_proxy", ""); config.put("http_proxy_auth", "");
-                config.put("accept_bot_messages", false); config.put("streaming_enabled", false); config.put("media_dir", "");
-            }
             case "dingtalk" -> {
                 config.put("client_id", ""); config.put("client_secret", ""); config.put("message_type", "markdown");
                 config.put("cron_message_type", "markdown"); config.put("card_template_id", ""); config.put("card_template_key", "content");
@@ -166,33 +189,6 @@ public class ChannelConfigService {
                 config.put("markdown_enabled", true); config.put("media_dir", ""); config.put("max_reconnect_attempts", 100);
                 config.put("portal_host", "q.qq.com");
             }
-            case "telegram" -> {
-                config.put("bot_token", ""); config.put("base_url", ""); config.put("http_proxy", ""); config.put("http_proxy_auth", "");
-                config.put("show_typing", null); config.put("streaming_enabled", false);
-            }
-            case "slack" -> {
-                config.put("bot_token", ""); config.put("app_token", ""); config.put("proxy", "");
-                config.put("bot_user_id", ""); config.put("require_mention", true);
-                config.put("streaming_enabled", false); config.put("media_dir", "");
-            }
-            case "mqtt" -> {
-                config.put("host", ""); config.put("port", null); config.put("transport", "");
-                config.put("clean_session", true); config.put("qos", 2); config.put("username", null); config.put("password", null);
-                config.put("subscribe_topic", ""); config.put("publish_topic", "");
-                config.put("tls_enabled", false); config.put("tls_ca_certs", null); config.put("tls_certfile", null); config.put("tls_keyfile", null);
-            }
-            case "matrix" -> {
-                config.put("homeserver", ""); config.put("user_id", ""); config.put("access_token", "");
-                config.put("auth_method", "token");
-                config.put("group_allow_from", List.of()); config.put("groups", Map.of()); config.put("encryption", false);
-                config.put("vision_enabled", true); config.put("history_limit", 50); config.put("password", "");
-                config.put("device_name", "melonpaw-worker"); config.put("sync_timeout_ms", 30000);
-                config.put("mention_pill_in_body", false); config.put("outbound_structured_mentions", true);
-            }
-            case "mattermost" -> {
-                config.put("url", ""); config.put("bot_token", ""); config.put("media_dir", "");
-                config.put("show_typing", null); config.put("thread_follow_without_mention", false);
-            }
             case "wecom" -> {
                 config.put("bot_id", ""); config.put("secret", ""); config.put("media_dir", "");
                 config.put("welcome_text", ""); config.put("share_session_in_group", true);
@@ -200,28 +196,12 @@ public class ChannelConfigService {
                 config.put("ws_url", ""); config.put("api_base", ""); config.put("reply_url", "");
             }
             case "wechat" -> {
-                config.put("bot_token", ""); config.put("bot_token_file", ""); config.put("base_url", "");
+                config.put("bot_token", ""); config.put("base_url", "");
                 config.put("media_dir", ""); config.put("message_merge_enabled", false); config.put("message_merge_delay_ms", 0);
             }
             case "onebot" -> {
-                config.put("ws_host", "0.0.0.0"); config.put("ws_port", 6199); config.put("access_token", "");
+                config.put("access_token", "");
                 config.put("share_session_in_group", false);
-            }
-            case "voice" -> {
-                config.put("twilio_account_sid", ""); config.put("twilio_auth_token", ""); config.put("phone_number", "");
-                config.put("phone_number_sid", ""); config.put("tts_provider", "google"); config.put("tts_voice", "en-US-Journey-D");
-                config.put("stt_provider", "deepgram"); config.put("language", "en-US");
-                config.put("welcome_greeting", "Hi! This is melonPaw. How can I help you?");
-            }
-            case "sip" -> {
-                config.put("sip_mode", "livekit"); config.put("sip_host", "0.0.0.0"); config.put("sip_port", 5061);
-                config.put("sip_username", ""); config.put("sip_password", ""); config.put("sip_server", "");
-                config.put("sip_transport", "UDP"); config.put("rtp_port_low", 10000); config.put("rtp_port_high", 20000);
-                config.put("dashscope_api_key", ""); config.put("tts_provider", "aliyun"); config.put("tts_voice", "");
-                config.put("stt_provider", "aliyun"); config.put("language", "zh-CN"); config.put("welcome_greeting", "你好，我是melonPaw");
-                config.put("call_timeout", 120.0); config.put("livekit_url", ""); config.put("livekit_api_key", "");
-                config.put("livekit_api_secret", ""); config.put("livekit_sip_trunk_id", ""); config.put("livekit_room_name", "sip-inbound");
-                config.put("livekit_output_sample_rate", 24000); config.put("max_concurrent_calls", 5);
             }
             case "xiaoyi" -> {
                 config.put("ak", ""); config.put("sk", ""); config.put("agent_id", "");
@@ -283,6 +263,19 @@ public class ChannelConfigService {
     private AgentConfig agent(String agentId) {
         String id = agentId == null || agentId.isBlank() ? "default" : agentId;
         return configManager.getConfig().getAgents().get(id);
+    }
+
+    private String channelStateDir(String agentId, String channel) {
+        // Resolve the workspace first to validate that the agent exists and its id/path is managed.
+        configManager.resolveWorkspaceDir(agentId);
+        return configManager.resolveHomeDir()
+                .resolve("runtime")
+                .resolve("channels")
+                .resolve(agentId)
+                .resolve(channel)
+                .toAbsolutePath()
+                .normalize()
+                .toString();
     }
 
     private Map<String, Object> copy(Map<?, ?> raw) {

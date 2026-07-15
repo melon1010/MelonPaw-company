@@ -128,7 +128,7 @@ public class ProjectSpaceController {
             }
             return ResponseEntity.ok(Map.of(
                     "project_id", projectId,
-                    "editable", canEditWorkspace(project, principal),
+                    "editable", canEditAnyWorkspaceDocument(project, principal),
                     "documents", workspaceService.list(projectId)
             ));
         });
@@ -146,7 +146,7 @@ public class ProjectSpaceController {
             if (project == null) {
                 return ResponseEntity.notFound().build();
             }
-            if (!canEditWorkspace(project, principal)) {
+            if (!canEditWorkspaceDocument(project, principal, fileName)) {
                 return ResponseEntity.status(403).body(Map.of(
                         "detail", "Project workspace is read-only for this member"));
             }
@@ -155,7 +155,7 @@ public class ProjectSpaceController {
         });
     }
 
-    private boolean canEditWorkspace(
+    private boolean canEditAnyWorkspaceDocument(
             EnterpriseIdentityStore.ProjectSpaceRecord project,
             EnterprisePrincipal principal) {
         if (principal.hasPermission("projects:manage")) {
@@ -164,6 +164,19 @@ public class ProjectSpaceController {
         return "OWNER".equals(project.memberRole())
                 || "MANAGER".equals(project.memberRole())
                 || "MEMBER".equals(project.memberRole());
+    }
+
+    private boolean canEditWorkspaceDocument(
+            EnterpriseIdentityStore.ProjectSpaceRecord project,
+            EnterprisePrincipal principal,
+            String fileName) {
+        if (principal.hasPermission("projects:manage")
+                || "OWNER".equals(project.memberRole())
+                || "MANAGER".equals(project.memberRole())) {
+            return true;
+        }
+        return "MEMBER".equals(project.memberRole())
+                && "KNOWLEDGE.md".equalsIgnoreCase(fileName == null ? "" : fileName.trim());
     }
 
     private void requireProjectManager(String projectId, EnterprisePrincipal principal) {

@@ -1,15 +1,36 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "@/test/common_setup";
 import AgentSelector from "./index";
 
-const { mockSetSelectedAgent, mockSetAgents, mockListAgents, mockNavigate } =
-  vi.hoisted(() => ({
-    mockSetSelectedAgent: vi.fn(),
-    mockSetAgents: vi.fn(),
-    mockListAgents: vi.fn(),
-    mockNavigate: vi.fn(),
-  }));
+const {
+  mockSetSelectedAgent,
+  mockSetAgents,
+  mockListAgents,
+  mockNavigate,
+  mockStoreState,
+  mockAuthState,
+  mockT,
+} = vi.hoisted(() => ({
+  mockSetSelectedAgent: vi.fn(),
+  mockSetAgents: vi.fn(),
+  mockListAgents: vi.fn(),
+  mockNavigate: vi.fn(),
+  mockStoreState: {
+    selectedAgent: "default",
+    agents: [] as Array<{
+      id: string;
+      name: string;
+      enabled: boolean;
+      description: string;
+    }>,
+  },
+  mockAuthState: {
+    roles: ["EMPLOYEE"] as string[],
+    permissions: ["agents:use"] as string[],
+  },
+  mockT: vi.fn((key: string) => key),
+}));
 
 vi.mock("@/api/modules/agents", () => ({
   agentsApi: { listAgents: mockListAgents },
@@ -17,15 +38,27 @@ vi.mock("@/api/modules/agents", () => ({
 
 vi.mock("@/stores/agentStore", () => ({
   useAgentStore: vi.fn(() => ({
-    selectedAgent: "default",
-    agents: [],
+    selectedAgent: mockStoreState.selectedAgent,
+    agents: mockStoreState.agents,
     setSelectedAgent: mockSetSelectedAgent,
     setAgents: mockSetAgents,
   })),
 }));
 
+vi.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({
+    user: {
+      id: "user-1",
+      username: "employee",
+      enabled: true,
+      roles: mockAuthState.roles,
+      permissions: mockAuthState.permissions,
+    },
+  }),
+}));
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (k: string) => k }),
+  useTranslation: () => ({ t: mockT }),
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -42,6 +75,11 @@ const mockAgentsData = {
 
 describe("AgentSelector", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockStoreState.selectedAgent = "default";
+    mockStoreState.agents = [];
+    mockAuthState.roles = ["EMPLOYEE"];
+    mockAuthState.permissions = ["agents:use"];
     mockListAgents.mockResolvedValue(mockAgentsData);
   });
 
@@ -76,5 +114,38 @@ describe("AgentSelector", () => {
     mockListAgents.mockRejectedValue(new Error("network error"));
     expect(() => renderWithProviders(<AgentSelector />)).not.toThrow();
     await waitFor(() => expect(mockListAgents).toHaveBeenCalled());
+  });
+
+  it("replaces a persisted inaccessible agent with the first enabled authorized agent", async () => {
+    mockStoreState.selectedAgent = "agent-from-another-user";
+    mockStoreState.agents = mockAgentsData.agents;
+
+    renderWithProviders(<AgentSelector />);
+
+    await waitFor(() =>
+      expect(mockSetSelectedAgent).toHaveBeenCalledWith("agent-1"),
+    );
+  });
+
+  it("only shows the management link to users who can manage agents", async () => {
+    mockStoreState.selectedAgent = "agent-1";
+    mockStoreState.agents = mockAgentsData.agents;
+    const { unmount } = renderWithProviders(<AgentSelector />);
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    await waitFor(() =>
+      expect(screen.getAllByText("Agent One")).not.toHaveLength(0),
+    );
+    expect(
+      screen.queryByRole("button", { name: "agent.management" }),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    mockAuthState.permissions = ["agents:manage"];
+    renderWithProviders(<AgentSelector />);
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+
+    expect(
+      await screen.findByRole("button", { name: "agent.management" }),
+    ).toBeInTheDocument();
   });
 });

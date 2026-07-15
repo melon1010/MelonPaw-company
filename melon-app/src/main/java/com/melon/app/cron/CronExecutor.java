@@ -242,16 +242,19 @@ public class CronExecutor {
         Map<String, Object> meta = new LinkedHashMap<>(map(dispatch != null ? dispatch.get("meta") : null));
         String channel = value(stringValue(dispatch != null ? dispatch.get("channel") : null), "console");
         String userId = value(stringValue(target.get("user_id")), "default");
+        String executionUserId = value(stringValue(meta.get("execution_user_id")), userId);
         String sessionId = value(stringValue(target.get("session_id")), "cron-" + taskId);
         meta.put("source", "cron");
         meta.put("task_id", taskId);
         meta.put("channel", channel);
+        meta.put("execution_user_id", executionUserId);
         meta.putAll(target);
 
         ChannelInboundMessage inbound = new ChannelInboundMessage();
         inbound.setAgentId(agentId);
         inbound.setChannel(channel);
         inbound.setUserId(userId);
+        inbound.setExecutionUserId(executionUserId);
         inbound.setSessionId(sessionId);
         inbound.setContent(message);
         inbound.setChannelMeta(meta);

@@ -9,11 +9,13 @@ import com.melon.channels.ChannelInboundMessage;
 import com.melon.channels.ChannelMessageRenderer;
 import com.melon.channels.ChannelOutboundMessage;
 import com.melon.core.config.ConfigManager;
+import com.melon.core.util.OutboundNetworkPolicy;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.UserMessage;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.http.HttpClient;
@@ -31,6 +33,8 @@ import java.util.concurrent.CompletableFuture;
 
 @Component
 public class ChannelRuntimeProcessor {
+
+    private static final long MAX_ATTACHMENT_BYTES = 25L * 1024L * 1024L;
 
     private final AgentRunner agentRunner;
     private final ChatManager chatManager;
@@ -55,10 +59,11 @@ public class ChannelRuntimeProcessor {
     private ChannelOutboundMessage run(ChannelInboundMessage inbound) {
         String agentId = value(inbound.getAgentId(), "default");
         String channel = value(inbound.getChannel(), "console");
-        String userId = value(inbound.getUserId(), "default");
+        String channelUserId = value(inbound.getUserId(), "default");
+        String userId = value(inbound.getExecutionUserId(), channelUserId);
         String sessionId = value(inbound.getSessionId(), channel + "-" + userId);
         Map<String, Object> channelConfig = channelConfigService.runtimeConfig(agentId, channel);
-        inbound.setAttachments(normalizeAttachments(agentId, inbound, channelConfig));
+        inbound.setAttachments(normalizeAttachments(agentId, inbound));
         String text = agentText(inbound);
         List<Map<String, Object>> frontendContext = new ArrayList<>();
         frontendContext.add(userMessage(inbound.getContent(), inbound.getAttachments()));
@@ -138,12 +143,12 @@ public class ChannelRuntimeProcessor {
         return text.toString();
     }
 
-    private List<Map<String, Object>> normalizeAttachments(String agentId, ChannelInboundMessage inbound, Map<String, Object> config) {
+    private List<Map<String, Object>> normalizeAttachments(String agentId, ChannelInboundMessage inbound) {
         List<Map<String, Object>> raw = new ArrayList<>(inbound.getAttachments() != null ? inbound.getAttachments() : List.of());
         raw.addAll(extractAttachments(inbound.getChannelMeta()));
         List<Map<String, Object>> normalized = new ArrayList<>();
         for (Map<String, Object> attachment : raw) {
-            Map<String, Object> block = normalizeAttachment(agentId, inbound.getChannel(), attachment, config);
+            Map<String, Object> block = normalizeAttachment(agentId, attachment);
             if (!block.isEmpty()) normalized.add(block);
         }
         return normalized;
@@ -167,22 +172,15 @@ public class ChannelRuntimeProcessor {
         return result;
     }
 
-    private Map<String, Object> normalizeAttachment(String agentId, String channel, Map<String, Object> attachment, Map<String, Object> config) {
+    private Map<String, Object> normalizeAttachment(String agentId, Map<String, Object> attachment) {
         if (attachment == null || attachment.isEmpty()) return Map.of();
         Map<String, Object> copy = new LinkedHashMap<>(attachment);
         String name = fileName(copy);
         String mediaType = mediaType(copy, name);
         String url = sourceUrl(copy);
-        if ("matrix".equals(channel) && url.startsWith("mxc://")) {
-            url = matrixMediaUrl(url, config);
-        }
         String path = "";
-        if ("telegram".equals(channel) && firstPresent(copy, "file_id", "fileId") != null) {
-            path = downloadTelegramFile(agentId, stringValue(firstPresent(copy, "file_id", "fileId")), name, config);
-        } else if ("mattermost".equals(channel) && firstPresent(copy, "file_id", "id") != null && url.isBlank()) {
-            path = downloadMattermostFile(agentId, stringValue(firstPresent(copy, "file_id", "id")), name, config);
-        } else if (isRemote(url)) {
-            path = downloadRemote(agentId, url, name, config, downloadHeaders(channel, config));
+        if (isRemote(url)) {
+            path = downloadRemote(agentId, url, name);
             copy.put("original_url", url);
         } else if (!url.isBlank()) {
             path = filePathText(url);
@@ -200,69 +198,58 @@ public class ChannelRuntimeProcessor {
         return block;
     }
 
-    private String downloadTelegramFile(String agentId, String fileId, String name, Map<String, Object> config) {
+    private String downloadRemote(String agentId, String url, String name) {
+        Path target = null;
         try {
-            String token = stringValue(config.get("bot_token"));
-            if (token.isBlank() || fileId.isBlank()) return "";
-            String base = trimSlash(stringValue(config.get("base_url")));
-            if (base.isBlank()) base = "https://api.telegram.org";
-            HttpResponse<String> fileInfo = HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(15)).build()
-                    .send(HttpRequest.newBuilder(URI.create(base + "/bot" + token + "/getFile?file_id=" + java.net.URLEncoder.encode(fileId, StandardCharsets.UTF_8)))
-                            .timeout(java.time.Duration.ofSeconds(30)).GET().build(), HttpResponse.BodyHandlers.ofString());
-            Map<String, Object> body = com.melon.core.util.JsonUtils.fromJson(fileInfo.body(), Map.class);
-            Object result = body != null ? body.get("result") : null;
-            if (!(result instanceof Map<?, ?> resultMap)) return "";
-            String filePath = stringValue(resultMap.get("file_path"));
-            if (filePath.isBlank()) return "";
-            String fileUrl = base + "/file/bot" + token + "/" + filePath;
-            String resolvedName = name;
-            if ("channel-file".equals(name)) {
-                String tail = filePath.substring(filePath.lastIndexOf('/') + 1);
-                if (!tail.isBlank()) resolvedName = tail;
-            }
-            return downloadRemote(agentId, fileUrl, resolvedName, config, Map.of());
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
-
-    private String downloadMattermostFile(String agentId, String fileId, String name, Map<String, Object> config) {
-        String base = trimSlash(stringValue(config.get("url")));
-        if (base.isBlank() || fileId.isBlank()) return "";
-        return downloadRemote(agentId, base + "/api/v4/files/" + fileId,
-                name, config, Map.of("Authorization", "Bearer " + stringValue(config.get("bot_token"))));
-    }
-
-    private String downloadRemote(String agentId, String url, String name, Map<String, Object> config, Map<String, String> headers) {
-        try {
-            Path mediaDir = mediaDir(agentId, config);
+            URI remoteUri = validatedRemoteUri(url);
+            Path mediaDir = mediaDir(agentId);
             Files.createDirectories(mediaDir);
-            Path target = mediaDir.resolve(UUID.randomUUID().toString().replace("-", "") + "_" + safeFileName(name)).normalize();
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(URI.create(url))
+            target = mediaDir.resolve(UUID.randomUUID().toString().replace("-", "") + "_" + safeFileName(name)).normalize();
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(remoteUri)
                     .timeout(java.time.Duration.ofSeconds(45))
                     .GET();
-            if (headers != null) headers.forEach(requestBuilder::header);
             HttpRequest request = requestBuilder.build();
             HttpResponse<InputStream> response = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .followRedirects(HttpClient.Redirect.NEVER)
                     .connectTimeout(java.time.Duration.ofSeconds(15))
                     .build()
                     .send(request, HttpResponse.BodyHandlers.ofInputStream());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) return url;
             try (InputStream in = response.body()) {
-                Files.copy(in, target);
+                if (response.statusCode() < 200 || response.statusCode() >= 300) return url;
+                long declaredLength = response.headers().firstValueAsLong("Content-Length").orElse(-1L);
+                if (declaredLength > MAX_ATTACHMENT_BYTES) return url;
+                try (OutputStream out = Files.newOutputStream(target)) {
+                    byte[] buffer = new byte[8192];
+                    long total = 0L;
+                    int read;
+                    while ((read = in.read(buffer)) >= 0) {
+                        total += read;
+                        if (total > MAX_ATTACHMENT_BYTES) {
+                            throw new IllegalArgumentException("Channel attachment exceeds 25 MiB");
+                        }
+                        out.write(buffer, 0, read);
+                    }
+                }
             }
             return target.toAbsolutePath().normalize().toString();
         } catch (Exception ignored) {
+            if (target != null) {
+                try {
+                    Files.deleteIfExists(target);
+                } catch (Exception ignoredDelete) {
+                    // Best-effort cleanup of a rejected or partial download.
+                }
+            }
             return url;
         }
     }
 
-    private Path mediaDir(String agentId, Map<String, Object> config) {
-        String configured = stringValue(config != null ? config.get("media_dir") : null);
-        return configured.isBlank()
-                ? configManager.resolveWorkspaceDir(agentId).resolve("media")
-                : Path.of(configured).toAbsolutePath().normalize();
+    URI validatedRemoteUri(String url) {
+        return OutboundNetworkPolicy.requirePublicHttpUri(url);
+    }
+
+    private Path mediaDir(String agentId) {
+        return configManager.resolveWorkspaceDir(agentId).resolve("media");
     }
 
     private String sourceUrl(Map<String, Object> attachment) {
@@ -323,34 +310,6 @@ public class ChannelRuntimeProcessor {
 
     private boolean isRemote(String value) {
         return value != null && (value.startsWith("http://") || value.startsWith("https://"));
-    }
-
-    private Map<String, String> downloadHeaders(String channel, Map<String, Object> config) {
-        if ("slack".equals(channel)) {
-            String token = stringValue(config.get("bot_token"));
-            return token.isBlank() ? Map.of() : Map.of("Authorization", "Bearer " + token);
-        }
-        if ("matrix".equals(channel)) {
-            String token = stringValue(config.get("access_token"));
-            return token.isBlank() ? Map.of() : Map.of("Authorization", "Bearer " + token);
-        }
-        return Map.of();
-    }
-
-    private String matrixMediaUrl(String mxcUrl, Map<String, Object> config) {
-        String homeserver = trimSlash(stringValue(config.get("homeserver")));
-        if (homeserver.isBlank() || !mxcUrl.startsWith("mxc://")) return mxcUrl;
-        String rest = mxcUrl.substring("mxc://".length());
-        int slash = rest.indexOf('/');
-        if (slash <= 0 || slash == rest.length() - 1) return mxcUrl;
-        String server = rest.substring(0, slash);
-        String mediaId = rest.substring(slash + 1);
-        return homeserver + "/_matrix/media/v3/download/" + server + "/" + mediaId;
-    }
-
-    private String trimSlash(String value) {
-        while (value != null && value.endsWith("/")) value = value.substring(0, value.length() - 1);
-        return value == null ? "" : value;
     }
 
     private Map<String, Object> toStringMap(Map<?, ?> source) {

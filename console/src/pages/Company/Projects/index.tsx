@@ -33,7 +33,7 @@ import {
 } from "../../../api";
 import type { AuthUser } from "../../../api/modules/auth";
 import { useAuth } from "../../../contexts/AuthContext";
-import { canManageProjects, isSystemAdmin } from "../../../auth/authorization";
+import { canManageProjects } from "../../../auth/authorization";
 import { PageHeader } from "../../../components/PageHeader";
 import { useAppMessage } from "../../../hooks/useAppMessage";
 import styles from "../company.module.less";
@@ -49,6 +49,18 @@ function formatTime(value?: string | null): string {
   if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+}
+
+export function canManageProject(
+  user: AuthUser | null,
+  project: Pick<ProjectSpace, "member_role"> | null | undefined,
+): boolean {
+  return Boolean(
+    project &&
+      (canManageProjects(user) ||
+        project.member_role === "OWNER" ||
+        project.member_role === "MANAGER"),
+  );
 }
 
 export default function ProjectSpaces() {
@@ -93,13 +105,9 @@ export default function ProjectSpaces() {
     void loadProjects();
   }, [loadProjects]);
 
-  const canCreate = canManageProjects(user);
-  const canManageSelected = Boolean(
-    selectedProject &&
-      (isSystemAdmin(user) ||
-        selectedProject.member_role === "OWNER" ||
-        selectedProject.member_role === "MANAGER"),
-  );
+  const canManageAllProjects = canManageProjects(user);
+  const canCreate = canManageAllProjects;
+  const canManageSelected = canManageProject(user, selectedProject);
 
   const openCreate = () => {
     setEditing(null);
@@ -294,10 +302,7 @@ export default function ProjectSpaces() {
       key: "actions",
       width: 310,
       render: (_, row) => {
-        const canManage =
-          isSystemAdmin(user) ||
-          row.member_role === "OWNER" ||
-          row.member_role === "MANAGER";
+        const canManage = canManageProject(user, row);
         return (
           <Space size={4}>
             <Button

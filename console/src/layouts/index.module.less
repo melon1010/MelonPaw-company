@@ -10,7 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #f9f8f4;
+  background: var(--mp-canvas);
 
   :global {
     .qwenpaw-space-item {
@@ -52,6 +52,300 @@
   }
 }
 
+// Company console shell v2. Header owns context and account actions; the
+// sidebar is intentionally reserved for navigation.
+.header {
+  height: 64px;
+  min-height: 64px;
+  gap: 18px;
+  padding: 0 20px;
+  background: var(--mp-surface) !important;
+  border-top: 0;
+  border-bottom: 1px solid var(--mp-border);
+}
+
+.headerLeft {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logoWrapper {
+  flex: 0 0 auto;
+}
+
+.companyBrandMark {
+  width: 36px;
+  height: 36px;
+  flex-basis: 36px;
+  border: 0;
+  border-radius: 7px;
+  background: #20252b;
+}
+
+.companyBrandName {
+  color: var(--mp-text);
+  font-size: 15px;
+  line-height: 18px;
+  font-weight: 720;
+}
+
+.companyBrandMeta {
+  color: var(--mp-text-tertiary);
+  font-size: 10px;
+  line-height: 13px;
+  font-weight: 600;
+}
+
+.headerIconButton {
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface-subtle) !important;
+  border: 1px solid var(--mp-border) !important;
+  border-radius: 6px !important;
+
+  &:hover {
+    color: var(--mp-primary) !important;
+    background: var(--mp-primary-soft) !important;
+    border-color: color-mix(in srgb, var(--mp-primary) 35%, var(--mp-border)) !important;
+  }
+}
+
+.sidebarTrigger {
+  margin-left: 2px;
+}
+
+.headerAgentContext {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 16px;
+  border-left: 1px solid var(--mp-border);
+}
+
+.headerContextLabel {
+  color: var(--mp-text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.headerRight {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.headerAccount {
+  height: 40px;
+  min-width: 150px;
+  max-width: 240px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 9px 4px 5px;
+  color: var(--mp-text);
+  background: var(--mp-surface);
+  border: 1px solid var(--mp-border);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+
+  &:hover {
+    background: var(--mp-primary-soft);
+    border-color: color-mix(in srgb, var(--mp-primary) 38%, var(--mp-border));
+  }
+}
+
+.headerAccountAvatar {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--mp-primary);
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.headerAccountText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+
+  strong,
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: var(--mp-text);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 680;
+  }
+
+  span {
+    color: var(--mp-text-tertiary);
+    font-size: 9px;
+    line-height: 12px;
+  }
+}
+
+.headerAccountChevron {
+  color: var(--mp-text-tertiary);
+}
+
+.accountMenuIdentity {
+  min-width: 184px;
+  display: flex;
+  flex-direction: column;
+  padding: 3px 2px;
+
+  strong {
+    color: var(--mp-text);
+    font-size: 13px;
+  }
+
+  span {
+    color: var(--mp-text-tertiary);
+    font-size: 10px;
+  }
+}
+
+.sider,
+.siderDark {
+  height: calc(100vh - 64px) !important;
+  padding: 12px 10px 14px;
+  background: var(--mp-sidebar) !important;
+  border-right: 0 !important;
+
+  .agentSelectorContainer {
+    position: static;
+    z-index: auto;
+    margin-bottom: 5px;
+    background: transparent !important;
+    border-radius: 0;
+  }
+
+  .stickyChatButton,
+  .simpleNavItem {
+    height: 40px;
+    border-radius: 5px;
+  }
+
+  .stickyChatButtonActive,
+  .simpleNavItemActive,
+  .collapsedNavItemActive,
+  .simpleSessionItemActive {
+    color: #fff !important;
+    background: var(--mp-sidebar-active) !important;
+  }
+
+  .stickyChatButtonActive::before,
+  .simpleNavItemActive::before {
+    display: none;
+  }
+
+  :global {
+    .qwenpaw-menu-item {
+      height: 40px !important;
+      border-radius: 5px !important;
+    }
+
+    .qwenpaw-menu-item-selected {
+      color: #fff !important;
+      background: var(--mp-sidebar-active) !important;
+      box-shadow: none;
+    }
+  }
+}
+
+@media (max-width: 1100px) {
+  .companyVersion,
+  .headerContextLabel {
+    display: none;
+  }
+
+  .headerAgentContext {
+    padding-left: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    height: 56px;
+    min-height: 56px;
+    gap: 8px;
+    padding: 0 10px;
+    border-top: 0;
+  }
+
+  .headerLeft {
+    gap: 8px;
+  }
+
+  .companyBrandCopy,
+  .sidebarTrigger,
+  .headerAccountText,
+  .headerAccountChevron {
+    display: none;
+  }
+
+  .companyBrandMark {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .headerAgentContext {
+    flex: 1;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .headerRight {
+    gap: 6px;
+  }
+
+  .headerIconButton {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+  }
+
+  .headerAccount {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    display: grid;
+    grid-template-columns: 28px;
+    padding: 3px;
+  }
+
+  .headerAccountAvatar {
+    width: 28px;
+    height: 28px;
+  }
+}
+
 .headerTitle {
   font-size: 18px;
   font-weight: 500;
@@ -63,7 +357,7 @@
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 .sider {
-  background: #f9f8f4 !important;
+  background: var(--mp-canvas) !important;
   overflow: auto;
   height: calc(100vh - 64px) !important;
   padding: 0 16px;
@@ -92,7 +386,7 @@
   // Agent-scoped section: selector + Chat + Control + Workspace
   .agentScopedSection {
     flex-shrink: 0;
-    background: rgba(43, 18, 0, 0.02);
+    background: color-mix(in srgb, var(--mp-primary) 2%, transparent);
     border-radius: 12px;
     border: 1px solid rgba(0, 0, 0, 0.06);
     padding: 4px;
@@ -110,7 +404,7 @@
     z-index: 10;
     margin-bottom: 4px;
     // Opaque background so scrolled content is hidden behind
-    background: #f9f7f3;
+    background: var(--mp-canvas);
     border-radius: 12px 12px 0 0;
   }
 
@@ -137,7 +431,7 @@
   }
 
   .stickyChatButtonActive {
-    background: rgba(43, 18, 0, 0.08);
+    background: color-mix(in srgb, var(--mp-primary) 8%, transparent);
   }
 
   // Menu takes remaining space
@@ -276,7 +570,7 @@
 
     /* Selected item */
     .qwenpaw-menu-item-selected {
-      background: rgba(43, 18, 0, 0.08) !important;
+      background: color-mix(in srgb, var(--mp-primary) 8%, transparent) !important;
       color: inherit !important;
       display: flex !important;
       align-items: center !important;
@@ -326,8 +620,8 @@
   }
 
   .stickyChatButtonActive {
-    background: rgba(255, 127, 22, 0.5);
-    color: #ff7f16;
+    background: color-mix(in srgb, var(--mp-primary) 50%, transparent);
+    color: var(--mp-primary);
   }
 
   :global {
@@ -360,8 +654,8 @@
 
     /* Selected item */
     .qwenpaw-menu-item-selected {
-      background: rgba(255, 127, 22, 0.5) !important;
-      color: #ff7f16 !important;
+      background: color-mix(in srgb, var(--mp-primary) 50%, transparent) !important;
+      color: var(--mp-primary) !important;
     }
   }
 }
@@ -522,7 +816,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
-  background: #f9f8f4; // match sider background so scrolled content is hidden
+  background: var(--mp-canvas); // match sider background so scrolled content is hidden
 }
 
 .collapseToggle {
@@ -532,13 +826,13 @@
 
   &:hover {
     background: rgba(0, 0, 0, 0.06) !important;
-    color: #ff7f16 !important;
+    color: var(--mp-primary) !important;
   }
 }
 
 .modeToggleActive {
-  color: #ff7f16 !important;
-  background: rgba(255, 127, 22, 0.08);
+  color: var(--mp-primary) !important;
+  background: color-mix(in srgb, var(--mp-primary) 8%, transparent);
 }
 
 // ─── Simple mode: flat nav + session list ─────────────────────────────────────
@@ -553,15 +847,15 @@
   margin: 4px 0;
   border: none;
   border-radius: 8px;
-  background: rgba(255, 127, 22, 0.08);
-  color: #ff7f16;
+  background: color-mix(in srgb, var(--mp-primary) 8%, transparent);
+  color: var(--mp-primary);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;
 
   &:hover {
-    background: rgba(255, 127, 22, 0.14);
+    background: color-mix(in srgb, var(--mp-primary) 14%, transparent);
   }
 }
 
@@ -597,7 +891,7 @@
 }
 
 .simpleNavItemActive {
-  background: rgba(43, 18, 0, 0.08);
+  background: color-mix(in srgb, var(--mp-primary) 8%, transparent);
   color: rgba(0, 0, 0, 0.88);
 }
 
@@ -655,7 +949,7 @@
 }
 
 .simpleSessionItemActive {
-  background: rgba(43, 18, 0, 0.08);
+  background: color-mix(in srgb, var(--mp-primary) 8%, transparent);
 }
 
 .simpleSessionItemDisabled {
@@ -818,7 +1112,7 @@
 }
 
 .simpleSessionActionBtnActive {
-  color: #ff7f16 !important;
+  color: var(--mp-primary) !important;
 }
 
 .simpleSessionLoading {
@@ -865,7 +1159,7 @@
 }
 
 .collapsedNavItemActive {
-  background: rgba(43, 18, 0, 0.08) !important;
+  background: color-mix(in srgb, var(--mp-primary) 8%, transparent) !important;
   color: rgba(0, 0, 0, 0.88) !important;
 }
 
@@ -993,13 +1287,13 @@
 
     &:hover {
       background: rgba(255, 255, 255, 0.08);
-      color: #ff7f16;
+      color: var(--mp-primary);
     }
   }
 
   .modeToggleActive {
-    color: #ff7f16 !important;
-    background: rgba(255, 127, 22, 0.12);
+    color: var(--mp-primary) !important;
+    background: color-mix(in srgb, var(--mp-primary) 12%, transparent);
   }
 
   .collapsedNavItem {
@@ -1012,7 +1306,7 @@
   }
 
   .collapsedNavItemActive {
-    background: rgba(255, 127, 22, 0.5) !important;
+    background: color-mix(in srgb, var(--mp-primary) 50%, transparent) !important;
     color: rgba(255, 255, 255, 0.88) !important;
   }
 }
@@ -1029,15 +1323,15 @@
   margin: 4px 0;
   border: none;
   border-radius: 8px;
-  background: rgba(255, 127, 22, 0.08);
-  color: #ff7f16;
+  background: color-mix(in srgb, var(--mp-primary) 8%, transparent);
+  color: var(--mp-primary);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;
 
   &:hover {
-    background: rgba(255, 127, 22, 0.14);
+    background: color-mix(in srgb, var(--mp-primary) 14%, transparent);
   }
 }
 
@@ -1073,7 +1367,7 @@
 }
 
 .simpleNavItemActive {
-  background: rgba(43, 18, 0, 0.08);
+  background: color-mix(in srgb, var(--mp-primary) 8%, transparent);
   color: rgba(0, 0, 0, 0.88);
 }
 
@@ -1131,7 +1425,7 @@
 }
 
 .simpleSessionItemActive {
-  background: rgba(43, 18, 0, 0.08);
+  background: color-mix(in srgb, var(--mp-primary) 8%, transparent);
 }
 
 .simpleSessionItemDisabled {
@@ -1180,7 +1474,7 @@
 }
 
 .simpleSessionActionBtnActive {
-  color: #ff7f16 !important;
+  color: var(--mp-primary) !important;
 }
 
 .simpleSessionLoading {
@@ -1195,11 +1489,11 @@
 .siderSimple {
   :global(.dark-mode) & {
     .simpleNewChat {
-      background: rgba(255, 127, 22, 0.12);
-      color: #ff7f16;
+      background: color-mix(in srgb, var(--mp-primary) 12%, transparent);
+      color: var(--mp-primary);
 
       &:hover {
-        background: rgba(255, 127, 22, 0.2);
+        background: color-mix(in srgb, var(--mp-primary) 20%, transparent);
       }
     }
 
@@ -1213,8 +1507,8 @@
     }
 
     .simpleNavItemActive {
-      background: rgba(255, 127, 22, 0.5);
-      color: #ff7f16;
+      background: color-mix(in srgb, var(--mp-primary) 50%, transparent);
+      color: var(--mp-primary);
     }
 
     .simpleSessionHeader {
@@ -1278,5 +1572,290 @@
   .simpleNavItemActive {
     color: #5eead4 !important;
     background: rgba(45, 212, 191, 0.14) !important;
+  }
+}
+
+// Enterprise shell final layer. Keep this last so legacy compatibility rules
+// cannot reintroduce the upstream cream/orange visual language.
+.mainLayout {
+  background: var(--mp-canvas);
+}
+
+.header {
+  height: 60px;
+  min-height: 60px;
+  padding: 0 22px;
+  background: var(--mp-surface) !important;
+  border-top: 3px solid var(--mp-primary);
+  border-bottom: 1px solid var(--mp-border);
+  box-shadow: none;
+}
+
+.logoWrapper {
+  gap: 12px;
+}
+
+.companyBrand {
+  gap: 10px;
+}
+
+.companyBrandMark {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: #173d35;
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.companyBrandCopy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.companyBrandName {
+  color: var(--mp-text);
+  font-size: 15px;
+  line-height: 18px;
+  font-weight: 720;
+}
+
+.companyBrandMeta {
+  color: var(--mp-text-tertiary);
+  font-size: 10px;
+  line-height: 13px;
+  font-weight: 550;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.companyVersion {
+  align-self: center;
+  padding-left: 12px;
+  color: var(--mp-text-tertiary);
+  border-left: 1px solid var(--mp-border);
+  font-variant-numeric: tabular-nums;
+}
+
+.headerIdentity {
+  max-width: 300px;
+  margin: 0;
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface-subtle) !important;
+  border-color: var(--mp-border) !important;
+  border-radius: 3px !important;
+}
+
+.headerDivider {
+  height: 22px;
+  width: 0;
+  border: 0;
+  border-left: 1px solid var(--mp-border);
+  transform: none;
+}
+
+.sider,
+.siderDark {
+  height: calc(100vh - 60px) !important;
+  padding: 12px 8px 0;
+  color: var(--mp-sidebar-text);
+  background: var(--mp-sidebar) !important;
+  border-right: 1px solid #263631 !important;
+
+  .agentScopedSection {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .agentSelectorContainer,
+  .collapseToggleContainer {
+    background: var(--mp-sidebar) !important;
+  }
+
+  .stickyChatButton,
+  .simpleNavItem {
+    position: relative;
+    height: 38px;
+    color: var(--mp-sidebar-text) !important;
+    border-radius: 4px;
+
+    &:hover {
+      color: #fff !important;
+      background: var(--mp-sidebar-hover) !important;
+    }
+  }
+
+  .stickyChatButtonActive,
+  .simpleNavItemActive,
+  .collapsedNavItemActive,
+  .simpleSessionItemActive {
+    color: #fff !important;
+    background: var(--mp-sidebar-active) !important;
+  }
+
+  .stickyChatButtonActive::before,
+  .simpleNavItemActive::before {
+    content: "";
+    position: absolute;
+    top: 9px;
+    bottom: 9px;
+    left: 0;
+    width: 3px;
+    background: #67b79f;
+  }
+
+  .simpleNewChat {
+    color: #fff !important;
+    background: var(--mp-primary) !important;
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--mp-primary-hover) !important;
+    }
+  }
+
+  .simpleSessionHeader,
+  .simpleSessionTime {
+    color: var(--mp-sidebar-muted);
+  }
+
+  .simpleSessionName {
+    color: var(--mp-sidebar-text);
+  }
+
+  .simpleSessionItem {
+    border-radius: 4px;
+
+    &:hover {
+      background: var(--mp-sidebar-hover);
+    }
+  }
+
+  .simpleSessionActionBtn,
+  .collapseToggle {
+    color: var(--mp-sidebar-muted);
+
+    &:hover {
+      color: #fff !important;
+      background: var(--mp-sidebar-hover) !important;
+    }
+  }
+
+  .modeToggleActive,
+  .simpleSessionActionBtnActive {
+    color: #79ceb7 !important;
+    background: var(--mp-sidebar-hover) !important;
+  }
+
+  .collapsedNavItem {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    color: var(--mp-sidebar-muted);
+    border-radius: 4px;
+
+    &:hover {
+      color: #fff;
+      background: var(--mp-sidebar-hover);
+    }
+  }
+
+  .collapsedNavItemActive {
+    color: #fff !important;
+    background: var(--mp-sidebar-active) !important;
+    box-shadow: inset 3px 0 0 #67b79f;
+  }
+
+  :global {
+    .qwenpaw-menu {
+      color: var(--mp-sidebar-text) !important;
+      background: transparent !important;
+    }
+
+    .qwenpaw-menu-submenu-title {
+      height: 30px !important;
+      color: var(--mp-sidebar-muted) !important;
+      font-size: 11px !important;
+      font-weight: 650 !important;
+      line-height: 30px !important;
+    }
+
+    .qwenpaw-menu-item {
+      position: relative;
+      height: 38px !important;
+      margin-block: 2px !important;
+      color: var(--mp-sidebar-text) !important;
+      border-radius: 4px !important;
+
+      &:hover {
+        color: #fff !important;
+        background: var(--mp-sidebar-hover) !important;
+      }
+    }
+
+    .qwenpaw-menu-item-selected {
+      color: #fff !important;
+      background: var(--mp-sidebar-active) !important;
+      box-shadow: inset 3px 0 0 #67b79f;
+    }
+  }
+}
+
+:global(.dark-mode) {
+  .header {
+    color: var(--mp-text);
+    background: var(--mp-surface) !important;
+    border-bottom-color: var(--mp-border) !important;
+  }
+
+  .companyBrandName {
+    color: var(--mp-text);
+  }
+
+  .companyVersion,
+  .companyBrandMeta {
+    color: var(--mp-text-tertiary);
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    height: 56px;
+    min-height: 56px;
+    padding: 0 12px;
+    border-top-width: 2px;
+  }
+
+  .companyBrandMark {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  .companyBrandName {
+    max-width: 170px;
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+  }
+
+  .companyBrandMeta {
+    display: none;
+  }
+
+  .sider,
+  .siderDark {
+    display: none !important;
   }
 }

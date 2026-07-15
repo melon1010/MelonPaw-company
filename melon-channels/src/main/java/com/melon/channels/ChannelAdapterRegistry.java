@@ -11,29 +11,31 @@ public class ChannelAdapterRegistry implements AutoCloseable {
         register(new BasicChannelAdapter("console", true, false, true, false));
         register(new HttpChannelAdapter("dingtalk", true, true, true));
         register(new HttpChannelAdapter("feishu", true, true, true));
-        register(new IMessageChannelAdapter());
-        register(new HttpChannelAdapter("discord", false, true, false));
-        register(new HttpChannelAdapter("telegram", false, true, false));
         register(new QQChannelAdapter());
         register(new WeChatChannelAdapter());
         register(new WeComChannelAdapter());
         register(new YuanbaoChannelAdapter());
-        register(new HttpChannelAdapter("matrix", false, false, false));
-        register(new SipChannelAdapter());
         register(new XiaoYiChannelAdapter());
-        register(new HttpChannelAdapter("slack", false, true, false));
-        register(new MqttChannelAdapter());
-        register(new HttpChannelAdapter("mattermost", false, false, false));
         register(new OneBotChannelAdapter());
-        register(new VoiceChannelAdapter());
     }
 
     public void register(ChannelAdapter adapter) {
-        adapters.put(adapter.type(), adapter);
+        if (adapter == null || !ChannelTypes.supported(adapter.type())) {
+            throw new IllegalArgumentException("Unsupported channel in domestic deployment");
+        }
+        adapters.put(adapter.type().trim().toLowerCase(), adapter);
     }
 
     public ChannelAdapter get(String type) {
-        return adapters.computeIfAbsent(type, key -> new HttpChannelAdapter(key, false, false, true));
+        String normalized = type == null ? "" : type.trim().toLowerCase();
+        if (!ChannelTypes.supported(normalized)) {
+            throw new IllegalArgumentException("Unsupported channel in domestic deployment: " + type);
+        }
+        ChannelAdapter adapter = adapters.get(normalized);
+        if (adapter == null) {
+            throw new IllegalStateException("Domestic channel adapter is not registered: " + normalized);
+        }
+        return adapter;
     }
 
     public Map<String, ChannelAdapter> all() {

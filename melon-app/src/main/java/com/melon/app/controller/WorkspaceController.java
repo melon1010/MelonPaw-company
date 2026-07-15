@@ -1,6 +1,7 @@
 package com.melon.app.controller;
 
 import com.melon.app.auth.EnterpriseAgentAccessService;
+import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.agent.WorkspaceManager;
 import com.melon.app.service.FileGuardService;
@@ -9,34 +10,48 @@ import com.melon.core.config.AgentConfig;
 import com.melon.core.config.ConfigManager;
 import com.melon.core.config.LightContextConfig;
 import com.melon.core.util.JsonUtils;
+import com.melon.core.util.OutboundNetworkPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.multipart.FilePart;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.time.Duration;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+
+import static com.melon.app.auth.EnterprisePermissions.SYSTEM_MANAGE;
 
 /**
  * 工作区 API. 对应 Python /api/workspace.
@@ -47,6 +62,10 @@ public class WorkspaceController {
 
     private static final Logger log = LoggerFactory.getLogger(WorkspaceController.class);
     private static final int MAX_PERSONAL_DOCUMENT_BYTES = 1024 * 1024;
+    static final long MAX_WORKSPACE_UPLOAD_BYTES = 100L * 1024L * 1024L;
+    static final long MAX_TRANSCRIPTION_UPLOAD_BYTES = 25L * 1024L * 1024L;
+    static final int MAX_TRANSCRIPTION_RESPONSE_BYTES = 1024 * 1024;
+    private static final int FILE_STREAM_BUFFER_BYTES = 64 * 1024;
     private static final Set<String> PERSONAL_WORKSPACE_DOCUMENTS = Set.of(
             "AGENTS.md", "BOOTSTRAP.md", "HEARTBEAT.md", "MEMORY.md", "PROFILE.md", "SOUL.md"
     );
@@ -59,6 +78,7 @@ public class WorkspaceController {
     private final WorkspaceMemoryService workspaceMemoryService;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
+            .followRedirects(HttpClient.Redirect.NEVER)
             .build();
 
     public WorkspaceController(ConfigManager configManager, WorkspaceManager workspaceManager,
@@ -77,8 +97,10 @@ public class WorkspaceController {
      * 获取工作区信息 (路径、AGENTS.md 内容、目录列表).
      */
     @GetMapping
-    public Mono<ResponseEntity<?>> getWorkspace(@RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
-        return Mono.fromCallable(() -> {
+    public Mono<ResponseEntity<?>> getWorkspace(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.<ResponseEntity<?>>fromCallable(() -> {
             try {
                 String id = AgentRequestSupport.agentId(agentId);
                 AgentConfig agentConfig = configManager.getConfig().getAgent(id);
@@ -88,11 +110,11 @@ public class WorkspaceController {
 
                 Path workspaceDir = configManager.resolveWorkspaceDir(id);
                 Map<String, Object> result = new LinkedHashMap<>();
-                result.put("path", workspaceDir.toString());
+                result.put("path", workspaceResponsePath(id, workspaceDir, principal));
 
                 // Read AGENTS.md
-                Path agentsMd = workspaceDir.resolve("AGENTS.md");
-                if (Files.exists(agentsMd)) {
+                Path agentsMd = resolveInside(workspaceDir, "AGENTS.md");
+                if (Files.isRegularFile(agentsMd, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
                     result.put("agents_md", Files.readString(agentsMd));
                 } else {
                     result.put("agents_md", "");
@@ -124,7 +146,8 @@ public class WorkspaceController {
      */
     @PutMapping
     public Mono<ResponseEntity<?>> updateWorkspace(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                                   @RequestBody Map<String, String> body) {
+                                                   @RequestBody Map<String, String> body,
+                                                   @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
             try {
                 String id = AgentRequestSupport.agentId(agentId);
@@ -133,21 +156,27 @@ public class WorkspaceController {
                     return ResponseEntity.notFound().build();
                 }
 
+                String newDir = body.get("path");
+                if (newDir != null && !newDir.isBlank()
+                        && (principal == null || !principal.hasPermission(SYSTEM_MANAGE))) {
+                    return ResponseEntity.status(403).body(Map.of(
+                            "detail", "Only a system administrator can assign a host workspace path"));
+                }
+
                 Path workspaceDir = configManager.resolveWorkspaceDir(id);
                 Files.createDirectories(workspaceDir);
 
                 // Update AGENTS.md if provided
                 String agentsMd = body.get("agents_md");
                 if (agentsMd != null) {
-                    Path agentsMdFile = workspaceDir.resolve("AGENTS.md");
+                    Path agentsMdFile = resolveInside(workspaceDir, "AGENTS.md");
                     Files.writeString(agentsMdFile, agentsMd);
                     log.info("AGENTS.md updated at {}", agentsMdFile);
                 }
 
                 // Update workspace dir if provided
-                String newDir = body.get("path");
                 if (newDir != null && !newDir.isBlank()) {
-                    agentConfig.setWorkspaceDir(newDir);
+                    agentConfig.setWorkspaceDir(configManager.validateManagedWorkspacePath(newDir).toString());
                     configManager.save();
                     log.info("Workspace dir updated to: {}", newDir);
                 }
@@ -165,7 +194,9 @@ public class WorkspaceController {
      * 初始化工作区 (创建目录结构和默认文件).
      */
     @PostMapping("/init")
-    public Mono<ResponseEntity<?>> initWorkspace(@RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
+    public Mono<ResponseEntity<?>> initWorkspace(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
             try {
                 String id = AgentRequestSupport.agentId(agentId);
@@ -177,7 +208,9 @@ public class WorkspaceController {
                 Path workspaceDir = configManager.resolveWorkspaceDir(id);
                 workspaceManager.initWorkspace(workspaceDir);
 
-                return ResponseEntity.ok(Map.of("status", "initialized", "path", workspaceDir.toString()));
+                return ResponseEntity.ok(Map.of(
+                        "status", "initialized",
+                        "path", workspaceResponsePath(id, workspaceDir, principal)));
             } catch (Exception e) {
                 log.error("Failed to init workspace", e);
                 return ResponseEntity.internalServerError()
@@ -418,22 +451,27 @@ public class WorkspaceController {
     }
 
     @GetMapping("/audio-mode")
-    public Mono<ResponseEntity<?>> getAudioMode() {
-        return Mono.just(ResponseEntity.ok(Map.of("audio_mode", stringValue(transcriptionConfig().get("audio_mode"), "auto"))));
+    public Mono<ResponseEntity<?>> getAudioMode(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
+        return Mono.just(ResponseEntity.ok(Map.of(
+                "audio_mode", stringValue(transcriptionConfig(agentId).get("audio_mode"), "auto"))));
     }
 
     @PutMapping("/audio-mode")
-    public Mono<ResponseEntity<?>> updateAudioMode(@RequestBody(required = false) Map<String, Object> body) {
-        Map<String, Object> config = transcriptionConfig();
+    public Mono<ResponseEntity<?>> updateAudioMode(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> config = transcriptionConfig(agentId);
         String audioMode = stringValue(body != null ? body.get("audio_mode") : null, "auto");
         config.put("audio_mode", audioMode);
-        saveTranscriptionConfig(config);
+        saveTranscriptionConfig(agentId, config);
         return Mono.just(ResponseEntity.ok(Map.of("audio_mode", audioMode)));
     }
 
     @GetMapping("/transcription-providers")
-    public Mono<ResponseEntity<?>> transcriptionProviders() {
-        Map<String, Object> config = transcriptionConfig();
+    public Mono<ResponseEntity<?>> transcriptionProviders(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
+        Map<String, Object> config = transcriptionConfig(agentId);
         return Mono.just(ResponseEntity.ok(Map.of(
                 "providers", transcriptionProvidersPayload(config),
                 "configured_provider_id", stringValue(config.get("provider_id"), "")
@@ -441,31 +479,37 @@ public class WorkspaceController {
     }
 
     @PutMapping("/transcription-provider")
-    public Mono<ResponseEntity<?>> updateTranscriptionProvider(@RequestBody(required = false) Map<String, Object> body) {
-        Map<String, Object> config = transcriptionConfig();
+    public Mono<ResponseEntity<?>> updateTranscriptionProvider(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> config = transcriptionConfig(agentId);
         if (body != null) {
             for (String key : List.of("provider_id", "base_url", "api_key", "model", "name")) {
                 if (body.containsKey(key)) config.put(key, body.get(key));
             }
         }
         String providerId = stringValue(config.get("provider_id"), "");
-        saveTranscriptionConfig(config);
+        saveTranscriptionConfig(agentId, config);
         return Mono.just(ResponseEntity.ok(Map.of("provider_id", providerId)));
     }
 
     @GetMapping("/transcription-provider-type")
-    public Mono<ResponseEntity<?>> transcriptionProviderType() {
+    public Mono<ResponseEntity<?>> transcriptionProviderType(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
         return Mono.just(ResponseEntity.ok(Map.of(
-                "transcription_provider_type", stringValue(transcriptionConfig().get("transcription_provider_type"), "disabled")
+                "transcription_provider_type", stringValue(
+                        transcriptionConfig(agentId).get("transcription_provider_type"), "disabled")
         )));
     }
 
     @PutMapping("/transcription-provider-type")
-    public Mono<ResponseEntity<?>> updateTranscriptionProviderType(@RequestBody(required = false) Map<String, Object> body) {
-        Map<String, Object> config = transcriptionConfig();
+    public Mono<ResponseEntity<?>> updateTranscriptionProviderType(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> config = transcriptionConfig(agentId);
         String type = stringValue(body != null ? body.get("transcription_provider_type") : null, "disabled");
         config.put("transcription_provider_type", type);
-        saveTranscriptionConfig(config);
+        saveTranscriptionConfig(agentId, config);
         return Mono.just(ResponseEntity.ok(Map.of("transcription_provider_type", type)));
     }
 
@@ -475,8 +519,10 @@ public class WorkspaceController {
     }
 
     @PostMapping(value = "/transcribe", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Mono<ResponseEntity<?>> transcribeDisabled(@RequestPart("file") FilePart filePart) {
-        Map<String, Object> config = transcriptionConfig();
+    public Mono<ResponseEntity<?>> transcribeDisabled(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @RequestPart("file") FilePart filePart) {
+        Map<String, Object> config = transcriptionConfig(agentId);
         if (!"whisper_api".equals(stringValue(config.get("transcription_provider_type"), "disabled"))) {
             return Mono.just(transcriptionDisabledResponse());
         }
@@ -486,13 +532,14 @@ public class WorkspaceController {
         } catch (IOException e) {
             return Mono.error(e);
         }
-        return filePart.transferTo(path)
-                .then(Mono.<ResponseEntity<?>>fromCallable(() -> forwardExternalTranscription(path, filePart.filename(), config)))
+        return storeFilePart(filePart, path, MAX_TRANSCRIPTION_UPLOAD_BYTES)
+                .then(Mono.<ResponseEntity<?>>fromCallable(
+                                () -> forwardExternalTranscription(path, filePart.filename(), config))
+                        .subscribeOn(Schedulers.boundedElastic()))
+                .onErrorResume(PayloadTooLargeException.class,
+                        error -> Mono.just(payloadTooLargeResponse(error)))
                 .doFinally(signal -> {
-                    try {
-                        Files.deleteIfExists(path);
-                    } catch (Exception ignored) {
-                    }
+                    deleteQuietly(path);
                 });
     }
 
@@ -504,44 +551,65 @@ public class WorkspaceController {
         if (baseUrl.isBlank()) {
             return transcriptionDisabledResponse("External transcription base_url is not configured");
         }
+        URI endpoint = OutboundNetworkPolicy.requirePublicHttpUri(transcriptionEndpoint(baseUrl));
         String boundary = "melon-" + java.util.UUID.randomUUID();
-        byte[] body = transcriptionMultipartBody(file, filename, model, boundary);
+        HttpRequest.BodyPublisher body = transcriptionMultipartBody(file, filename, model, boundary);
 
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(transcriptionEndpoint(baseUrl)))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(endpoint)
                 .timeout(Duration.ofMinutes(3))
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                .POST(HttpRequest.BodyPublishers.ofByteArray(body));
+                .POST(body);
         if (!apiKey.isBlank()) {
             builder.header("Authorization", "Bearer " + apiKey);
         }
-        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<InputStream> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        String responseBody;
+        try (InputStream input = response.body()) {
+            try {
+                responseBody = readLimitedResponse(input, MAX_TRANSCRIPTION_RESPONSE_BYTES);
+            } catch (RemoteResponseTooLargeException e) {
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of(
+                        "detail", Map.of(
+                                "code", "TRANSCRIPTION_RESPONSE_TOO_LARGE",
+                                "message", e.getMessage(),
+                                "max_size_bytes", MAX_TRANSCRIPTION_RESPONSE_BYTES)
+                ));
+            }
+        }
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             return ResponseEntity.status(response.statusCode()).body(Map.of(
-                    "detail", Map.of("code", "TRANSCRIPTION_DISABLED", "message", response.body())
+                    "detail", Map.of("code", "TRANSCRIPTION_DISABLED", "message", responseBody)
             ));
         }
-        Map<String, Object> parsed = JsonUtils.fromJson(response.body(), Map.class);
+        Map<String, Object> parsed = JsonUtils.fromJson(responseBody, Map.class);
         String text = parsed != null ? stringValue(parsed.get("text"), "") : "";
         return ResponseEntity.ok(Map.of("text", text));
     }
 
-    private byte[] transcriptionMultipartBody(Path file, String filename, String model, String boundary) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        writeMultipartField(out, boundary, "model", model);
-        out.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
-        out.write(("Content-Disposition: form-data; name=\"file\"; filename=\"" + safeFilename(filename) + "\"\r\n").getBytes(StandardCharsets.UTF_8));
-        out.write("Content-Type: application/octet-stream\r\n\r\n".getBytes(StandardCharsets.UTF_8));
-        out.write(Files.readAllBytes(file));
-        out.write("\r\n".getBytes(StandardCharsets.UTF_8));
-        out.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-        return out.toByteArray();
+    private HttpRequest.BodyPublisher transcriptionMultipartBody(
+            Path file, String filename, String model, String boundary) throws IOException {
+        String prefix = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"model\"\r\n\r\n"
+                + model + "\r\n"
+                + "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"file\"; filename=\""
+                + safeFilename(filename) + "\"\r\n"
+                + "Content-Type: application/octet-stream\r\n\r\n";
+        String suffix = "\r\n--" + boundary + "--\r\n";
+        return HttpRequest.BodyPublishers.concat(
+                HttpRequest.BodyPublishers.ofByteArray(prefix.getBytes(StandardCharsets.UTF_8)),
+                HttpRequest.BodyPublishers.ofFile(file),
+                HttpRequest.BodyPublishers.ofByteArray(suffix.getBytes(StandardCharsets.UTF_8))
+        );
     }
 
-    private void writeMultipartField(ByteArrayOutputStream out, String boundary, String name, String value) throws IOException {
-        out.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
-        out.write(("Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n").getBytes(StandardCharsets.UTF_8));
-        out.write(value.getBytes(StandardCharsets.UTF_8));
-        out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+    private String readLimitedResponse(InputStream input, int maxBytes) throws IOException {
+        byte[] bytes = input.readNBytes(maxBytes + 1);
+        if (bytes.length > maxBytes) {
+            throw new RemoteResponseTooLargeException(
+                    "Transcription provider response exceeds " + maxBytes + " bytes");
+        }
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     private ResponseEntity<?> transcriptionDisabledResponse() {
@@ -604,8 +672,8 @@ public class WorkspaceController {
         return result;
     }
 
-    private Map<String, Object> transcriptionConfig() {
-        Map<String, Object> config = new LinkedHashMap<>(JsonUtils.loadAsMap(transcriptionConfigFile()));
+    private Map<String, Object> transcriptionConfig(String agentId) {
+        Map<String, Object> config = new LinkedHashMap<>(JsonUtils.loadAsMap(transcriptionConfigFile(agentId)));
         config.putIfAbsent("audio_mode", "auto");
         config.putIfAbsent("transcription_provider_type", "disabled");
         config.putIfAbsent("provider_id", "");
@@ -613,12 +681,14 @@ public class WorkspaceController {
         return config;
     }
 
-    private void saveTranscriptionConfig(Map<String, Object> config) {
-        JsonUtils.save(transcriptionConfigFile(), config);
+    private void saveTranscriptionConfig(String agentId, Map<String, Object> config) {
+        JsonUtils.save(transcriptionConfigFile(agentId), config);
     }
 
-    private Path transcriptionConfigFile() {
-        return configManager.resolveHomeDir().resolve("transcription.json");
+    private Path transcriptionConfigFile(String agentId) {
+        return configManager.resolveWorkspaceDir(AgentRequestSupport.agentId(agentId))
+                .resolve(".melon")
+                .resolve("transcription.json");
     }
 
     private Map<String, Object> providerConfig(String providerId) {
@@ -733,26 +803,25 @@ public class WorkspaceController {
 
     @GetMapping("/download")
     public Mono<ResponseEntity<?>> downloadWorkspace(@RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
-        return Mono.fromCallable(() -> {
+        return Mono.<ResponseEntity<?>>fromCallable(() -> {
             Path workspace = resolveWorkspace(agentId);
-            Path zip = Files.createTempFile("melonpaw-workspace-", ".zip");
-            try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(zip))) {
-                if (Files.exists(workspace)) {
-                    try (var stream = Files.walk(workspace)) {
-                        for (Path path : stream.filter(p -> !Files.isDirectory(p)).toList()) {
-                            String entryName = workspace.relativize(path).toString().replace('\\', '/');
-                            zos.putNextEntry(new ZipEntry(entryName));
-                            Files.copy(path, zos);
-                            zos.closeEntry();
-                        }
-                    }
-                }
+            Path zip = createWorkspaceArchive(workspace);
+            boolean handedOff = false;
+            try {
+                long contentLength = Files.size(zip);
+                Flux<DataBuffer> body = streamFileAndDelete(zip);
+                ResponseEntity<?> response = ResponseEntity.ok()
+                        .header(HttpHeaders.CONTENT_DISPOSITION,
+                                "attachment; filename=\"melonpaw-company-workspace.zip\"")
+                        .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                        .contentLength(contentLength)
+                        .body(body);
+                handedOff = true;
+                return response;
+            } finally {
+                if (!handedOff) deleteQuietly(zip);
             }
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"melonpaw-company-workspace.zip\"")
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(new ByteArrayResource(Files.readAllBytes(zip)));
-        });
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -766,8 +835,136 @@ public class WorkspaceController {
         } catch (IOException e) {
             return Mono.just(ResponseEntity.internalServerError().body(Map.of("detail", e.getMessage())));
         }
-        return filePart.transferTo(target)
-                .thenReturn(ResponseEntity.ok(Map.of("success", true, "message", "uploaded", "path", filePart.filename())));
+        return storeFilePart(filePart, target, MAX_WORKSPACE_UPLOAD_BYTES)
+                .<ResponseEntity<?>>map(size -> ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "message", "uploaded",
+                        "path", filePart.filename(),
+                        "size", size)))
+                .onErrorResume(PayloadTooLargeException.class,
+                        error -> Mono.just(payloadTooLargeResponse(error)));
+    }
+
+    Path createWorkspaceArchive(Path workspace) throws IOException {
+        Path zip = Files.createTempFile("melonpaw-workspace-", ".zip");
+        boolean complete = false;
+        try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(zip))) {
+            if (Files.isDirectory(workspace, LinkOption.NOFOLLOW_LINKS)) {
+                try (var stream = Files.walk(workspace)) {
+                    var paths = stream
+                            .filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
+                            .iterator();
+                    while (paths.hasNext()) {
+                        Path path = paths.next();
+                        String entryName = workspace.relativize(path).toString().replace('\\', '/');
+                        zos.putNextEntry(new ZipEntry(entryName));
+                        Files.copy(path, zos);
+                        zos.closeEntry();
+                    }
+                }
+            }
+            complete = true;
+            return zip;
+        } finally {
+            if (!complete) deleteQuietly(zip);
+        }
+    }
+
+    Flux<DataBuffer> streamFileAndDelete(Path file) {
+        return DataBufferUtils.read(file, DefaultDataBufferFactory.sharedInstance, FILE_STREAM_BUFFER_BYTES)
+                .concatWith(Flux.defer(() -> {
+                    deleteQuietly(file);
+                    return Flux.empty();
+                }))
+                .doOnError(error -> deleteQuietly(file))
+                .doOnCancel(() -> deleteQuietly(file))
+                .doFinally(signal -> deleteQuietly(file));
+    }
+
+    private Mono<Long> storeFilePart(FilePart filePart, Path target, long maxBytes) {
+        long declared = filePart.headers().getContentLength();
+        if (declared > maxBytes) {
+            return Mono.error(new PayloadTooLargeException(maxBytes));
+        }
+
+        Path temporary;
+        try {
+            Files.createDirectories(target.getParent());
+            temporary = Files.createTempFile(target.getParent(), ".melon-upload-", ".tmp");
+        } catch (IOException e) {
+            return Mono.error(e);
+        }
+
+        AtomicLong total = new AtomicLong();
+        Flux<DataBuffer> limited = filePart.content()
+                .<DataBuffer>handle((buffer, sink) -> {
+                    int chunkBytes = buffer.readableByteCount();
+                    long current = total.get();
+                    if (chunkBytes > maxBytes - current) {
+                        DataBufferUtils.release(buffer);
+                        sink.error(new PayloadTooLargeException(maxBytes));
+                        return;
+                    }
+                    total.addAndGet(chunkBytes);
+                    sink.next(buffer);
+                })
+                .doOnDiscard(DataBuffer.class, DataBufferUtils::release);
+
+        return DataBufferUtils.write(limited, temporary,
+                        StandardOpenOption.WRITE,
+                        StandardOpenOption.TRUNCATE_EXISTING)
+                .then(Mono.fromCallable(() -> {
+                    moveReplacing(temporary, target);
+                    return total.get();
+                }))
+                .doFinally(signal -> deleteQuietly(temporary));
+    }
+
+    private void moveReplacing(Path source, Path target) throws IOException {
+        try {
+            Files.move(source, target,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private ResponseEntity<?> payloadTooLargeResponse(PayloadTooLargeException error) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(Map.of(
+                "detail", Map.of(
+                        "code", "PAYLOAD_TOO_LARGE",
+                        "message", error.getMessage(),
+                        "max_size_bytes", error.maxBytes())
+        ));
+    }
+
+    private static void deleteQuietly(Path path) {
+        if (path == null) return;
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException e) {
+            log.warn("Failed to delete temporary file: {}", path, e);
+        }
+    }
+
+    private static final class PayloadTooLargeException extends RuntimeException {
+        private final long maxBytes;
+
+        private PayloadTooLargeException(long maxBytes) {
+            super("Upload exceeds the " + maxBytes + " byte limit");
+            this.maxBytes = maxBytes;
+        }
+
+        private long maxBytes() {
+            return maxBytes;
+        }
+    }
+
+    private static final class RemoteResponseTooLargeException extends IOException {
+        private RemoteResponseTooLargeException(String message) {
+            super(message);
+        }
     }
 
     @GetMapping("/system-prompt-files")
@@ -806,10 +1003,24 @@ public class WorkspaceController {
         return configManager.resolveWorkspaceDir(AgentRequestSupport.agentId(agentId));
     }
 
+    private String workspaceResponsePath(String agentId, Path workspaceDir, EnterprisePrincipal principal) {
+        return principal != null && principal.hasPermission(SYSTEM_MANAGE)
+                ? workspaceDir.toString()
+                : "workspace://" + agentId;
+    }
+
     private Path resolveInside(Path root, String path) {
-        Path normalized = root.resolve(path).normalize();
-        if (!normalized.startsWith(root.normalize())) {
+        Path normalizedRoot = root.toAbsolutePath().normalize();
+        Path normalized = normalizedRoot.resolve(path == null ? "" : path).normalize();
+        if (!normalized.startsWith(normalizedRoot) || Files.isSymbolicLink(normalizedRoot)) {
             throw new IllegalArgumentException("Invalid path");
+        }
+        Path current = normalizedRoot;
+        for (Path segment : normalizedRoot.relativize(normalized)) {
+            current = current.resolve(segment);
+            if (Files.isSymbolicLink(current)) {
+                throw new IllegalArgumentException("Workspace paths cannot contain symbolic links");
+            }
         }
         return normalized;
     }
@@ -857,6 +1068,7 @@ public class WorkspaceController {
         if (!file.startsWith(workspace.normalize())) {
             throw new IllegalArgumentException("Invalid path");
         }
+        resolveInside(workspace, fileName);
         return file;
     }
 

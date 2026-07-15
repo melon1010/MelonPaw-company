@@ -21,7 +21,17 @@ describe("enterprise route authorization", () => {
   });
 
   it("gives an employee isolated personal resources without operator controls", () => {
-    const employee = user(["EMPLOYEE"], ["projects:read", "agents:use"]);
+    const employee = user(
+      ["EMPLOYEE"],
+      [
+        "projects:read",
+        "agents:use",
+        "workspace:personal",
+        "skills:personal",
+        "channels:personal",
+        "automations:personal",
+      ],
+    );
     expect(canAccessRoute("company.projects", employee)).toBe(true);
     expect(canAccessRoute("company.project-workspace", employee)).toBe(true);
     expect(canAccessRoute("company.tasks", employee)).toBe(true);
@@ -29,7 +39,21 @@ describe("enterprise route authorization", () => {
     expect(canAccessRoute("core.channels", employee)).toBe(true);
     expect(canAccessRoute("core.workspace", employee)).toBe(true);
     expect(canAccessRoute("core.skills", employee)).toBe(true);
-    expect(canAccessRoute("core.tools", employee)).toBe(false);
+    expect(canAccessRoute("core.cron-jobs", employee)).toBe(true);
+    expect(canAccessRoute("core.heartbeat", employee)).toBe(true);
+    expect(canAccessRoute("core.tools", employee)).toBe(true);
+    expect(canAccessRoute("core.mcp", employee)).toBe(false);
+    expect(canAccessRoute("core.agent-config", employee)).toBe(false);
+  });
+
+  it("supports non-conversational personal automation roles", () => {
+    const automationUser = user(["AUTOMATION_USER"], [
+      "automations:personal",
+    ]);
+    expect(canAccessRoute("core.cron-jobs", automationUser)).toBe(true);
+    expect(canAccessRoute("core.heartbeat", automationUser)).toBe(true);
+    expect(canAccessRoute("core.chat", automationUser)).toBe(false);
+    expect(canAccessRoute("core.workspace", automationUser)).toBe(false);
   });
 
   it("uses backend permission codes for service operators", () => {

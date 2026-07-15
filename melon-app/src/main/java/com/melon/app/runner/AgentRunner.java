@@ -17,10 +17,13 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import org.reactivestreams.Subscription;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 
@@ -35,6 +38,7 @@ public class AgentRunner {
 
     private final MultiAgentManager multiAgentManager;
     private final ApprovalService approvalService;
+    private final ConcurrentMap<String, java.util.Set<Subscription>> activeExecutions = new ConcurrentHashMap<>();
 
     public AgentRunner(MultiAgentManager multiAgentManager, ApprovalService approvalService) {
         this.multiAgentManager = multiAgentManager;
@@ -49,10 +53,17 @@ public class AgentRunner {
                                     Map<String, Object> envInfo) {
         log.info("Stream query: agent={}, user={}, session={}", agentId, userId, sessionId);
 
+        String executionKey = executionKey(agentId, userId, sessionId);
         return Flux.defer(() -> {
+                    AtomicReference<Subscription> tracked = new AtomicReference<>();
                     HarnessAgent agent = multiAgentManager.getOrCreate(agentId);
-                    RuntimeContext ctx = buildContext(userId, sessionId, envInfo);
-                    return streamWithApprovals(agent, msgs, ctx, agentId, sessionId);
+                    RuntimeContext ctx = buildContext(agentId, userId, sessionId, envInfo);
+                    return streamWithApprovals(agent, msgs, ctx, agentId, sessionId)
+                            .doOnSubscribe(subscription -> {
+                                tracked.set(subscription);
+                                registerExecution(executionKey, subscription);
+                            })
+                            .doFinally(signal -> unregisterExecution(executionKey, tracked.get()));
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnError(e -> log.error("Agent stream failed: agent={}, user={}, session={}", agentId, userId, sessionId, e));
@@ -66,54 +77,73 @@ public class AgentRunner {
                             Map<String, Object> envInfo) {
         log.info("Query: agent={}, user={}, session={}", agentId, userId, sessionId);
 
+        String executionKey = executionKey(agentId, userId, sessionId);
         return Mono.defer(() -> {
+                    AtomicReference<Subscription> tracked = new AtomicReference<>();
                     HarnessAgent agent = multiAgentManager.getOrCreate(agentId);
-                    RuntimeContext ctx = buildContext(userId, sessionId, envInfo);
-                    return agent.call(msgs, ctx);
+                    RuntimeContext ctx = buildContext(agentId, userId, sessionId, envInfo);
+                    return agent.call(msgs, ctx)
+                            .doOnSubscribe(subscription -> {
+                                tracked.set(subscription);
+                                registerExecution(executionKey, subscription);
+                            })
+                            .doFinally(signal -> unregisterExecution(executionKey, tracked.get()));
                 })
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    private RuntimeContext buildContext(String userId, String sessionId, Map<String, Object> envInfo) {
-        String sid = sessionId != null ? sessionId : "default";
-        String rootSessionId = sid;
-        if (envInfo != null && envInfo.get("root_session_id") != null) {
-            rootSessionId = String.valueOf(envInfo.get("root_session_id"));
+    /** Cancel the active Web/channel/automation execution for one authenticated scope. */
+    public boolean cancel(String agentId, String userId, String sessionId) {
+        java.util.Set<Subscription> subscriptions = activeExecutions.remove(executionKey(agentId, userId, sessionId));
+        if (subscriptions == null || subscriptions.isEmpty()) {
+            return false;
         }
+        subscriptions.forEach(Subscription::cancel);
+        return true;
+    }
+
+    private void registerExecution(String key, Subscription subscription) {
+        activeExecutions.computeIfAbsent(key, ignored -> ConcurrentHashMap.newKeySet()).add(subscription);
+    }
+
+    private void unregisterExecution(String key, Subscription subscription) {
+        if (subscription == null) return;
+        java.util.Set<Subscription> subscriptions = activeExecutions.get(key);
+        if (subscriptions == null) return;
+        subscriptions.remove(subscription);
+        if (subscriptions.isEmpty()) activeExecutions.remove(key, subscriptions);
+    }
+
+    private String executionKey(String agentId, String userId, String sessionId) {
+        return value(agentId, "default") + "\u0000" + value(userId, "default")
+                + "\u0000" + value(sessionId, "default");
+    }
+
+    private String value(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    RuntimeContext buildContext(String agentId, String userId, String sessionId,
+                                Map<String, Object> envInfo) {
+        String sid = sessionId != null ? sessionId : "default";
         RuntimeContext.Builder builder = RuntimeContext.builder()
                 .sessionId(sid)
                 .userId(userId);
 
         builder.put("session_id", sid);
-        builder.put("root_session_id", rootSessionId);
+        builder.put("root_session_id", sid);
+        builder.put("agent_id", value(agentId, "default"));
+        builder.put("root_agent_id", value(agentId, "default"));
         if (userId != null) {
             builder.put("user_id", userId);
         }
 
         if (envInfo != null) {
             envInfo.forEach((key, value) -> {
-                if (key != null && value != null) {
+                if (key != null && value != null && !isReservedContextKey(key)) {
                     builder.put(key, value);
                 }
             });
-            if (envInfo.get("agent_id") != null) {
-                builder.put("agent_id", envInfo.get("agent_id"));
-            }
-            if (envInfo.get("working_dir") != null) {
-                builder.put("working_dir", envInfo.get("working_dir"));
-            }
-            if (envInfo.get("channel") != null) {
-                builder.put("channel", envInfo.get("channel"));
-            }
-            if (envInfo.get("shell") != null) {
-                builder.put("shell", envInfo.get("shell"));
-            }
-            if (envInfo.get("project_dir") != null) {
-                builder.put("project_dir", envInfo.get("project_dir"));
-            }
-            if (envInfo.get("source") != null) {
-                builder.put("source", envInfo.get("source"));
-            }
         }
 
         return builder.build();
@@ -130,8 +160,10 @@ public class AgentRunner {
                         List<Map<String, Object>> requests = confirm.getToolCalls().stream()
                                 .map(toolCall -> normalizeApproval(agentId, sid, ctx, toolCall))
                                 .toList();
+                        String ownerUserId = ctx != null && ctx.getUserId() != null
+                                ? ctx.getUserId() : "";
                         pending.set(approvalService.openPendingApproval(
-                                agentId, sid, confirm.getToolCalls(), requests));
+                                agentId, sid, ownerUserId, confirm.getToolCalls(), requests));
                         sink.next(event);
                         return;
                     }
@@ -170,6 +202,10 @@ public class AgentRunner {
         approval.put("session_id", sid);
         approval.put("root_session_id", rootSid);
         approval.put("agent_id", aid);
+        String userId = ctx != null ? ctx.getUserId() : null;
+        if (userId != null && !userId.isBlank()) {
+            approval.put("owner_user_id", userId);
+        }
         approval.put("owner_agent_id", ownerAid);
         approval.put("tool_name", displayToolName);
         approval.put("tool_display_name", displayToolName);
@@ -182,6 +218,15 @@ public class AgentRunner {
         approval.put("created_at", System.currentTimeMillis() / 1000.0);
         approval.put("timeout_seconds", 300);
         return approval;
+    }
+
+    /** Request metadata must not be able to replace the authenticated execution identity. */
+    private boolean isReservedContextKey(String key) {
+        return switch (key) {
+            case "user_id", "session_id", "agent_id", "root_session_id", "root_agent_id",
+                    "working_dir", "project_dir" -> true;
+            default -> false;
+        };
     }
 
 }
