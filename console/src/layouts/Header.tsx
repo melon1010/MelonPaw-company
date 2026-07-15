@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Layout, Dropdown, Popover, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import { Button } from "@agentscope-ai/design";
@@ -11,10 +11,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
-import { hasPermission, primaryRole } from "../auth/authorization";
+import { primaryRole } from "../auth/authorization";
 import { Slot } from "../plugins/registry/Slot";
-import api from "../api";
-import AgentSelector from "../components/AgentSelector";
 import SidebarSettingsPanel from "./SidebarSettingsPanel";
 import { authApi } from "../api/modules/auth";
 import { clearAuthToken } from "../api/config";
@@ -33,19 +31,9 @@ export default function Header({
 }: HeaderProps) {
   const { t } = useTranslation();
   const { user, status: authStatus, clearSession } = useAuth();
-  const [version, setVersion] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  useEffect(() => {
-    api
-      .getVersion()
-      .then((response) => setVersion(response?.version || ""))
-      .catch(() => setVersion(""));
-  }, []);
-
   const role = user ? primaryRole(user) : "";
-  const canUseAgents =
-    hasPermission(user, "agents:use") || hasPermission(user, "agents:manage");
 
   const accountItems = useMemo<MenuProps["items"]>(() => {
     if (!user) return [];
@@ -86,21 +74,6 @@ export default function Header({
   return (
     <AntHeader className={styles.header}>
       <div className={styles.headerLeft}>
-        <div className={styles.logoWrapper}>
-          <Slot name="header.logo" kind="replace">
-            <div className={styles.companyBrand}>
-              <span className={styles.companyBrandMark}>
-                <img src="/company-mark.svg" alt="" />
-              </span>
-              <span className={styles.companyBrandCopy}>
-                <span className={styles.companyBrandName}>MelonPaw-Company</span>
-                <span className={styles.companyBrandMeta}>Company Console</span>
-              </span>
-            </div>
-          </Slot>
-          {version && <span className={styles.companyVersion}>v{version}</span>}
-        </div>
-
         <Tooltip
           title={
             sidebarCollapsed
@@ -108,33 +81,33 @@ export default function Header({
               : t("sidebar.collapse", "收起导航")
           }
         >
-          <Button
-            type="text"
+          <button
+            type="button"
             aria-label={
               sidebarCollapsed
                 ? t("sidebar.expand", "展开导航")
                 : t("sidebar.collapse", "收起导航")
             }
-            icon={
-              sidebarCollapsed ? (
+            className={styles.logoWrapper}
+            onClick={onToggleSidebar}
+          >
+            <span className={styles.logoDefault}>
+              <Slot name="header.logo" kind="replace">
+                <span className={styles.companyBrandMark}>
+                  <img src="/company-mark.svg" alt="" />
+                </span>
+              </Slot>
+            </span>
+            <span className={styles.logoToggleIcon} aria-hidden="true">
+              {sidebarCollapsed ? (
                 <PanelLeftOpen size={18} />
               ) : (
                 <PanelLeftClose size={18} />
-              )
-            }
-            onClick={onToggleSidebar}
-            className={`${styles.headerIconButton} ${styles.sidebarTrigger}`}
-          />
+              )}
+            </span>
+          </button>
         </Tooltip>
 
-        {canUseAgents && (
-          <div className={styles.headerAgentContext}>
-            <span className={styles.headerContextLabel}>
-              {t("agent.currentWorkspace")}
-            </span>
-            <AgentSelector variant="header" />
-          </div>
-        )}
       </div>
 
       <Slot name="header.left" kind="fill" />
@@ -146,9 +119,7 @@ export default function Header({
           onOpenChange={setSettingsOpen}
           placement="bottomRight"
           trigger="click"
-          content={
-            <SidebarSettingsPanel onClose={() => setSettingsOpen(false)} />
-          }
+          content={<SidebarSettingsPanel />}
         >
           <Button
             type="text"

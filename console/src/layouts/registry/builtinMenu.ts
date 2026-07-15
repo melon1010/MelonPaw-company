@@ -13,7 +13,7 @@
  *
  * ── Sticky chat button carve-out ───────────────────────────────────────────
  *  `core.chat` is NOT in this data. The sticky chat button lives outside the
- *  antd <Menu> (rendered next to AgentSelector with bespoke styling); see
+ *  antd <Menu> (rendered as a dedicated sticky action); see
  *  Sidebar.tsx. We don't model it as menu data because it has zero antd-Menu
  *  semantics in common with the rest of the sidebar entries.
  *
@@ -24,7 +24,6 @@
 import {
   Activity,
   BarChart3,
-  Bot,
   Bug,
   CalendarClock,
   Cpu,
@@ -226,15 +225,6 @@ export const BUILTIN_MENU: MenuItem[] = [
     icon: Users,
     route: "company.members",
     order: 5,
-  },
-  {
-    id: "core.agents",
-    location: "primary.settings",
-    parentId: "core.settings-group",
-    label: navLabel("nav.agents"),
-    icon: Bot,
-    route: "core.agents",
-    order: 10,
   },
   {
     id: "core.models",

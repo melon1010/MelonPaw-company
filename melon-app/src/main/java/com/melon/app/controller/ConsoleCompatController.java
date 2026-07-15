@@ -157,8 +157,7 @@ public class ConsoleCompatController {
             @AuthenticationPrincipal EnterprisePrincipal principal,
             @RequestBody(required = false) Map<String, Object> body) {
         Map<String, Object> payload = body != null ? body : Map.of();
-        String effectiveAgentId = agentAccessService.resolve(
-                principal, stringValue(payload.get("agent_id"), agentId));
+        String effectiveAgentId = agentAccessService.ensurePersonalAgent(principal);
         String chatId = stringValue(payload.get("chat_id"), stringValue(chatIdParam, ""));
         ChatSpec chat = chatManager.get(effectiveAgentId, chatId);
         String userId = principal.id();

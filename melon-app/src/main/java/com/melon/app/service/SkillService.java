@@ -58,6 +58,30 @@ public class SkillService {
         return listSkillDir(skillPoolDir());
     }
 
+    /** Validates a user-selected initial skill set against the shared pool. */
+    public List<String> validatePoolSkillNames(Collection<String> names) throws IOException {
+        if (names == null || names.isEmpty()) {
+            return List.of();
+        }
+        LinkedHashSet<String> validated = new LinkedHashSet<>();
+        for (String name : names) {
+            String safeName = normalizeSkillName(name);
+            requireSkillDir(skillPoolDir(), safeName);
+            validated.add(safeName);
+        }
+        return List.copyOf(validated);
+    }
+
+    /** Copies selected shared-pool skills into one isolated workspace and enables each copy. */
+    public List<String> syncPoolSkillsToWorkspace(String agentId, Collection<String> names) throws IOException {
+        List<String> validated = validatePoolSkillNames(names);
+        for (String name : validated) {
+            downloadPoolSkillToWorkspace(agentId, name, false);
+            enableSkill(agentId, name);
+        }
+        return validated;
+    }
+
     private List<Map<String, Object>> listSkillDir(Path skillsDir) {
         List<Map<String, Object>> skills = new ArrayList<>();
         if (!Files.exists(skillsDir)) {

@@ -41,6 +41,8 @@ export interface ProviderInfo {
   /** True when an API key is required for this provider. */
   require_api_key: boolean;
   api_key: string;
+  configured?: boolean;
+  api_key_configured?: boolean;
   base_url: string;
   generate_kwargs: Record<string, unknown>;
   /** Custom HTTP headers sent with every request to this provider. */

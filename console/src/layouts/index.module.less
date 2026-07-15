@@ -122,22 +122,6 @@
   margin-left: 2px;
 }
 
-.headerAgentContext {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding-left: 16px;
-  border-left: 1px solid var(--mp-border);
-}
-
-.headerContextLabel {
-  color: var(--mp-text-tertiary);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 .headerRight {
   flex: 0 0 auto;
   display: flex;
@@ -279,13 +263,8 @@
 }
 
 @media (max-width: 1100px) {
-  .companyVersion,
-  .headerContextLabel {
+  .companyVersion {
     display: none;
-  }
-
-  .headerAgentContext {
-    padding-left: 12px;
   }
 }
 
@@ -313,12 +292,6 @@
     width: 32px;
     height: 32px;
     flex-basis: 32px;
-  }
-
-  .headerAgentContext {
-    flex: 1;
-    padding-left: 0;
-    border-left: 0;
   }
 
   .headerRight {
@@ -397,7 +370,7 @@
       }
     }
   }
-  // AgentSelector + Chat container - sticky at top
+  // Chat action container - sticky at top
   .agentSelectorContainer {
     position: sticky;
     top: 0;
@@ -1592,7 +1565,53 @@
 }
 
 .logoWrapper {
-  gap: 12px;
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--mp-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--mp-primary);
+    background: var(--mp-primary-soft);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--mp-primary);
+    outline-offset: 2px;
+  }
+
+  &:hover .logoDefault {
+    opacity: 0;
+  }
+
+  &:hover .logoToggleIcon {
+    opacity: 1;
+  }
+}
+
+.logoDefault,
+.logoToggleIcon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition: opacity 0.15s ease;
+}
+
+.logoDefault {
+  opacity: 1;
+}
+
+.logoToggleIcon {
+  opacity: 0;
 }
 
 .companyBrand {
@@ -1903,12 +1922,6 @@
     width: 32px;
     height: 32px;
     flex-basis: 32px;
-  }
-
-  .headerAgentContext {
-    flex: 1;
-    padding-left: 0;
-    border-left: 0;
   }
 
   .headerAccount {

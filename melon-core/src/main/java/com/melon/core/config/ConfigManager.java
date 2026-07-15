@@ -29,6 +29,7 @@ public class ConfigManager {
     private final ObjectMapper jsonMapper;
     private Path configPath;
     private MelonConfig config;
+    private boolean lastLoadSuccessful = true;
     private String defaultHomeDir = "~/.melon";
 
     public ConfigManager() {
@@ -52,20 +53,22 @@ public class ConfigManager {
     /**
      * 加载配置. 如文件不存在则使用默认值并创建文件.
      */
-    public MelonConfig load() {
+    public synchronized MelonConfig load() {
         if (Files.exists(configPath)) {
             try {
                 config = yamlMapper.readValue(configPath.toFile(), MelonConfig.class);
                 config = mergeDefaults(config);
+                lastLoadSuccessful = true;
                 log.info("Config loaded from {}", configPath);
             } catch (IOException e) {
-                log.error("Failed to load config, using defaults", e);
-                config = mergeDefaults(new MelonConfig());
+                lastLoadSuccessful = false;
+                log.error("Failed to load config; keeping the last known-good configuration", e);
             }
         } else {
             log.info("Config file not found, creating with defaults at {}", configPath);
             config = mergeDefaults(new MelonConfig());
             save();
+            lastLoadSuccessful = true;
         }
         return config;
     }
@@ -93,8 +96,9 @@ public class ConfigManager {
     /**
      * 重载配置.
      */
-    public void reload() {
+    public synchronized boolean reload() {
         load();
+        return lastLoadSuccessful;
     }
 
     public MelonConfig getConfig() {

@@ -92,9 +92,12 @@ public class SecurityConfig {
                         .pathMatchers("/api/token-usage/**", "/api/config/security/audit-events")
                                 .hasAnyAuthority("audit:read", "agents:manage", "system:manage")
 
-                        // Employees may inspect only the effective model id for their already
-                        // resolved Agent; provider credentials and model administration stay global.
-                        .pathMatchers(HttpMethod.GET, "/api/models/active")
+                        // Employees may inspect the published model catalog and select an
+                        // effective model for their own runtime. Provider credentials and global
+                        // model administration stay system-scoped.
+                        .pathMatchers(HttpMethod.GET, "/api/models", "/api/models/active")
+                                .hasAuthority("agents:use")
+                        .pathMatchers(HttpMethod.PUT, "/api/models/active")
                                 .hasAuthority("agents:use")
 
                         // MCP server registration, OAuth material and direct server tool calls
@@ -115,6 +118,10 @@ public class SecurityConfig {
                                 .hasAuthority("agents:manage")
                         .pathMatchers(HttpMethod.DELETE, "/api/agents/**")
                                 .hasAuthority("agents:manage")
+                        .pathMatchers(HttpMethod.GET, "/api/skills/pool")
+                                .hasAnyAuthority(PERSONAL_SKILLS, AGENTS_MANAGE)
+                        .pathMatchers(HttpMethod.POST, "/api/skills/pool/refresh", "/api/skills/pool/download")
+                                .hasAnyAuthority(PERSONAL_SKILLS, AGENTS_MANAGE)
                         .pathMatchers("/api/skills/pool/**", "/api/skills/hub/**", "/api/skills/workspaces",
                                 "/api/workspace/running-config", "/api/workspace/running-config/**",
                                 "/api/agent-stats/**")
@@ -125,7 +132,7 @@ public class SecurityConfig {
                         .pathMatchers("/api/skills/**")
                                 .hasAnyAuthority(PERSONAL_SKILLS, AGENTS_MANAGE)
                         .pathMatchers("/api/tools/**")
-                                .hasAnyAuthority(AGENTS_USE, PERSONAL_WORKSPACE, AGENTS_MANAGE)
+                                .hasAuthority("system:manage")
                         .pathMatchers("/api/config/channels/**", "/api/channels/**",
                                 "/api/access-control/**")
                                 .hasAnyAuthority(PERSONAL_CHANNELS, AGENTS_MANAGE)
@@ -163,11 +170,9 @@ public class SecurityConfig {
                     try {
                         String requested = exchange.getRequest().getHeaders().getFirst("X-Agent-Id");
                         String path = exchange.getRequest().getPath().pathWithinApplication().value();
-                        String effective = principal.hasPermission(AGENTS_MANAGE)
-                                ? agentAccessService.resolve(principal, requested)
-                                : (isPersonalResourcePath(path)
-                                    ? agentAccessService.ensurePersonalAgent(principal)
-                                    : agentAccessService.resolve(principal, requested));
+                        String effective = isPersonalExecutionPath(path)
+                                ? agentAccessService.ensurePersonalAgent(principal)
+                                : agentAccessService.resolve(principal, requested);
                         var request = exchange.getRequest().mutate()
                                 .headers(headers -> headers.set("X-Agent-Id", effective))
                                 .build();
@@ -182,8 +187,15 @@ public class SecurityConfig {
                         : writeError(exchange, HttpStatus.FORBIDDEN, decision.deniedReason()));
     }
 
-    boolean isPersonalResourcePath(String path) {
-        return path.startsWith("/api/skills")
+    boolean isPersonalExecutionPath(String path) {
+        return path.startsWith("/api/chats")
+                || path.startsWith("/api/console/chat")
+                || path.startsWith("/api/console/upload")
+                || path.startsWith("/api/console/push-messages")
+                || path.startsWith("/api/console/inbox")
+                || path.startsWith("/api/commands/check")
+                || path.startsWith("/api/models/active")
+                || path.startsWith("/api/skills")
                 || path.startsWith("/api/tools")
                 || path.startsWith("/api/workspace")
                 || path.startsWith("/api/config/channels")
@@ -191,7 +203,8 @@ public class SecurityConfig {
                 || path.startsWith("/api/access-control")
                 || path.startsWith("/api/cron")
                 || path.startsWith("/api/config/heartbeat")
-                || path.startsWith("/api/files");
+                || path.startsWith("/api/files")
+                || path.startsWith("/api/agent-stats");
     }
 
     private boolean hasAgentScopedCapability(EnterprisePrincipal principal) {

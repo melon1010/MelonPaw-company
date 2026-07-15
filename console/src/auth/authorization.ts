@@ -79,6 +79,8 @@ export function canAccessRoute(
 ): boolean {
   if (!user) return false;
   if (isSystemAdmin(user)) return true;
+  // The root route contains only the authenticated landing redirect.
+  if (routeId === "core.root") return true;
   if (routeId === "company.workbench") return true;
   if (routeId === "company.members") {
     return (
@@ -112,11 +114,7 @@ export function canAccessRoute(
     );
   }
   if (routeId === "core.tools") {
-    return (
-      hasPermission(user, "agents:use") ||
-      hasPermission(user, "workspace:personal") ||
-      hasPermission(user, "agents:manage")
-    );
+    return hasPermission(user, "system:manage");
   }
   if (routeId === "core.channels") {
     return (
@@ -136,7 +134,7 @@ export function canAccessRoute(
       hasPermission(user, "approvals:decide")
     );
   }
-  if (routeId === "core.agents" || routeId === "core.skill-pool") {
+  if (routeId === "core.skill-pool") {
     return hasPermission(user, "agents:manage");
   }
   if (ADMIN_ROUTES.has(routeId)) return hasPermission(user, "system:manage");

@@ -84,11 +84,8 @@
   "sidebar": {
     "settings": {
       "language": "Bahasa",
-      "theme": "Tema",
-      "mode": "Mode"
-    },
-    "simpleMode": "Mode sederhana",
-    "fullMode": "Mode lengkap"
+      "theme": "Tema"
+    }
   },
   "login": {
     "title": "Masuk ke MelonPaw-Company",

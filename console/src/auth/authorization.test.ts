@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AuthUser } from "../api/modules/auth";
-import { canAccessRoute, canManageProjects } from "./authorization";
+import {
+  canAccessRoute,
+  canManageProjects,
+  filterMenuForUser,
+} from "./authorization";
 
 function user(roles: string[], permissions: string[]): AuthUser {
   return {
@@ -32,6 +36,8 @@ describe("enterprise route authorization", () => {
         "automations:personal",
       ],
     );
+    expect(canAccessRoute("core.root", employee)).toBe(true);
+    expect(canAccessRoute("company.workbench", employee)).toBe(true);
     expect(canAccessRoute("company.projects", employee)).toBe(true);
     expect(canAccessRoute("company.project-workspace", employee)).toBe(true);
     expect(canAccessRoute("company.tasks", employee)).toBe(true);
@@ -41,9 +47,23 @@ describe("enterprise route authorization", () => {
     expect(canAccessRoute("core.skills", employee)).toBe(true);
     expect(canAccessRoute("core.cron-jobs", employee)).toBe(true);
     expect(canAccessRoute("core.heartbeat", employee)).toBe(true);
-    expect(canAccessRoute("core.tools", employee)).toBe(true);
+    expect(canAccessRoute("core.tools", employee)).toBe(false);
+    expect(
+      filterMenuForUser(
+        [
+          {
+            id: "core.tools",
+            location: "primary.agentScoped",
+            label: () => "Tools",
+            route: "core.tools",
+          },
+        ],
+        employee,
+      ),
+    ).toEqual([]);
     expect(canAccessRoute("core.mcp", employee)).toBe(false);
     expect(canAccessRoute("core.agent-config", employee)).toBe(false);
+    expect(canAccessRoute("core.agents", employee)).toBe(false);
   });
 
   it("supports non-conversational personal automation roles", () => {
@@ -63,5 +83,11 @@ describe("enterprise route authorization", () => {
     );
     expect(canAccessRoute("core.channels", operator)).toBe(true);
     expect(canAccessRoute("core.models", operator)).toBe(false);
+    expect(canAccessRoute("core.tools", operator)).toBe(false);
+  });
+
+  it("reserves the system tools page for system management permission", () => {
+    const manager = user(["SERVICE_OPERATOR"], ["system:manage"]);
+    expect(canAccessRoute("core.tools", manager)).toBe(true);
   });
 });

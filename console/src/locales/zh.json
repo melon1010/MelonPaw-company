@@ -152,7 +152,17 @@
       "empty": "\u6682\u65e0\u4f01\u4e1a\u6210\u5458",
       "loadFailed": "\u6210\u5458\u4e0e\u89d2\u8272\u52a0\u8f7d\u5931\u8d25",
       "saved": "\u6210\u5458\u5df2\u4fdd\u5b58",
-      "saveFailed": "\u6210\u5458\u4fdd\u5b58\u5931\u8d25"
+      "saveFailed": "\u6210\u5458\u4fdd\u5b58\u5931\u8d25",
+      "defaultSkills": "\u9ed8\u8ba4\u6280\u80fd",
+      "defaultSkillsHint": "\u53ef\u9009\u3002\u9009\u4e2d\u7684\u6280\u80fd\u4f1a\u4ece\u5171\u4eab\u6280\u80fd\u6c60\u540c\u6b65\u5230\u65b0\u6210\u5458\u7684\u4e2a\u4eba\u5de5\u4f5c\u533a\u3002",
+      "defaultSkillsPlaceholder": "\u9009\u62e9\u9700\u8981\u521d\u59cb\u5316\u7684\u6280\u80fd",
+      "skillsLoadFailed": "\u5171\u4eab\u6280\u80fd\u6c60\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u4ecd\u53ef\u4e0d\u9009\u9ed8\u8ba4\u6280\u80fd\u521b\u5efa\u6210\u5458\u3002",
+      "delete": "\u5220\u9664\u6210\u5458",
+      "deleteTitle": "\u5220\u9664 {{name}}\uff1f",
+      "deleteConfirm": "\u8d26\u53f7 {{username}} \u53ca\u5176\u4e2a\u4eba\u5de5\u4f5c\u533a\u6570\u636e\u5c06\u88ab\u6c38\u4e45\u5220\u9664\u3002",
+      "deleted": "\u6210\u5458\u5df2\u5220\u9664",
+      "deleteFailed": "\u6210\u5458\u5220\u9664\u5931\u8d25",
+      "cannotDeleteSelf": "\u4e0d\u80fd\u5220\u9664\u5f53\u524d\u5df2\u767b\u5f55\u7684\u8d26\u53f7\u3002"
     }
   },
   "chunkError": {
@@ -194,11 +204,8 @@
   "sidebar": {
     "settings": {
       "language": "语言",
-      "theme": "主题",
-      "mode": "模式"
-    },
-    "simpleMode": "精简模式",
-    "fullMode": "完整模式"
+      "theme": "主题"
+    }
   },
   "debug": {
     "title": "调试",

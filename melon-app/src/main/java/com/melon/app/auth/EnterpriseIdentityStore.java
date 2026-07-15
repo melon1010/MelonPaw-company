@@ -227,6 +227,71 @@ public class EnterpriseIdentityStore {
         return updateUser(userId, displayName, null, passwordHash);
     }
 
+    /**
+     * Deletes an enterprise user and transfers project ownership to the administrator performing
+     * the operation. User roles, sessions, memberships and personal Agent bindings are removed by
+     * their database foreign keys in the same transaction.
+     */
+    public synchronized void deleteUser(String userId, String successorUserId) {
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("User id is required");
+        }
+        if (successorUserId == null || successorUserId.isBlank()) {
+            throw new IllegalArgumentException("A successor user is required");
+        }
+        if (userId.equals(successorUserId)) {
+            throw new IllegalArgumentException("Users cannot delete themselves");
+        }
+        try (Connection connection = open()) {
+            connection.setAutoCommit(false);
+            try {
+                StoredUser target = requireUser(connection, userId);
+                requireUser(connection, successorUserId);
+                if (target.roles().contains("SYSTEM_ADMIN")
+                        && target.enabled()
+                        && countEnabledSystemAdmins(connection) <= 1) {
+                    throw new IllegalArgumentException(
+                            "The last enabled system administrator cannot be deleted");
+                }
+                List<String> ownedProjects = new ArrayList<>();
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT project_id FROM enterprise_project_members "
+                                + "WHERE user_id = ? AND project_role = 'OWNER'")) {
+                    statement.setString(1, userId);
+                    try (ResultSet result = statement.executeQuery()) {
+                        while (result.next()) {
+                            ownedProjects.add(result.getString("project_id"));
+                        }
+                    }
+                }
+                for (String projectId : ownedProjects) {
+                    upsertProjectMember(connection, projectId, successorUserId, "OWNER");
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE enterprise_project_spaces SET created_by = ?, updated_at = ? "
+                                + "WHERE created_by = ?")) {
+                    statement.setString(1, successorUserId);
+                    statement.setString(2, Instant.now().toString());
+                    statement.setString(3, userId);
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM enterprise_users WHERE id = ?")) {
+                    statement.setString(1, userId);
+                    if (statement.executeUpdate() != 1) {
+                        throw new IllegalArgumentException("User not found: " + userId);
+                    }
+                }
+                connection.commit();
+            } catch (RuntimeException | SQLException e) {
+                rollback(connection);
+                throw e;
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("delete user", e);
+        }
+    }
+
     public synchronized void createSession(String tokenHash, String userId, Instant expiresAt) {
         String sql = "INSERT INTO enterprise_auth_sessions "
                 + "(id, user_id, token_hash, issued_at, expires_at) VALUES (?, ?, ?, ?, ?)";

@@ -70,6 +70,29 @@ class EnterpriseAgentAccessServiceTest {
     }
 
     @Test
+    void existingPersonalAgentDoesNotRewriteGlobalConfigOnEveryRequest() throws Exception {
+        EnterpriseIdentityStore store = new EnterpriseIdentityStore(tempDir.resolve("stable-config.db"));
+        AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
+        auth.bootstrap("admin", "Administrator", "StrongPassword123");
+        EnterprisePrincipal employee = auth.createUser(
+                "stable-user", "Stable User", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+
+        CountingConfigManager configManager = new CountingConfigManager();
+        configManager.setConfigPath(tempDir.resolve("stable-config.yaml"));
+        configManager.setHomeDir(tempDir.resolve("stable-home").toString());
+        configManager.load();
+        EnterpriseAgentAccessService access = new EnterpriseAgentAccessService(
+                store, configManager, new WorkspaceManager());
+
+        access.ensurePersonalAgent(employee);
+        int writesAfterProvisioning = configManager.saveCount;
+        access.ensurePersonalAgent(employee);
+        access.ensurePersonalAgent(employee);
+
+        assertEquals(writesAfterProvisioning, configManager.saveCount);
+    }
+
+    @Test
     void rejectsUnknownAgentsAndUnsafeSkillNames() throws Exception {
         EnterpriseIdentityStore store = new EnterpriseIdentityStore(tempDir.resolve("skills.db"));
         AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
@@ -145,5 +168,15 @@ class EnterpriseAgentAccessServiceTest {
         manager.setHomeDir(tempDir.resolve("home").toString());
         manager.load();
         return manager;
+    }
+
+    private static final class CountingConfigManager extends ConfigManager {
+        private int saveCount;
+
+        @Override
+        public synchronized void save() {
+            saveCount++;
+            super.save();
+        }
     }
 }

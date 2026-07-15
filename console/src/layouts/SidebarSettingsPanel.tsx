@@ -10,12 +10,9 @@ import {
   SparkJapanLine,
   SparkRusLine,
   SparkPtLine,
-  SparkFullscreenLine,
-  SparkExitFullscreenLine,
 } from "@agentscope-ai/icons";
 import { languageApi } from "../api/modules/language";
 import { useTheme, type ThemeMode } from "../contexts/ThemeContext";
-import { useSidebarModeStore } from "../stores/sidebarModeStore";
 import styles from "./sidebarSettingsPanel.module.less";
 
 // ── Language config ────────────────────────────────────────────────────────
@@ -31,17 +28,9 @@ const KNOWN_KEYS = new Set(LANGS.map((l) => l.key));
 
 // ── Component ─────────────────────────────────────────────────────────────
 
-interface SidebarSettingsPanelProps {
-  onClose?: () => void;
-}
-
-export default function SidebarSettingsPanel({
-  onClose,
-}: SidebarSettingsPanelProps) {
+export default function SidebarSettingsPanel() {
   const { t, i18n } = useTranslation();
   const { themeMode, setThemeMode } = useTheme();
-  const { mode: sidebarMode, toggleMode: toggleSidebarMode } =
-    useSidebarModeStore();
 
   const raw = i18n.resolvedLanguage || i18n.language;
   const currentLang = KNOWN_KEYS.has(raw) ? raw : raw.split("-")[0];
@@ -117,36 +106,6 @@ export default function SidebarSettingsPanel({
             </button>
           ))}
         </div>
-      </div>
-
-      {/* ── Mode ─────────────────────────────────────────── */}
-      <div className={styles.row}>
-        <span className={styles.label}>
-          {t("sidebar.settings.mode", "Mode")}
-        </span>
-        <button
-          className={`${styles.optBtn} ${styles.optBtnBlock}`}
-          onClick={() => {
-            toggleSidebarMode();
-            onClose?.();
-          }}
-        >
-          {sidebarMode === "simple" ? (
-            <>
-              <SparkFullscreenLine size={14} />
-              <span className={styles.optLabel}>
-                {t("sidebar.fullMode", "Full Mode")}
-              </span>
-            </>
-          ) : (
-            <>
-              <SparkExitFullscreenLine size={14} />
-              <span className={styles.optLabel}>
-                {t("sidebar.simpleMode", "Simple Mode")}
-              </span>
-            </>
-          )}
-        </button>
       </div>
     </div>
   );

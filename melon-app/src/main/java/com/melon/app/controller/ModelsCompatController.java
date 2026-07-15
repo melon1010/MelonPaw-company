@@ -42,11 +42,14 @@ public class ModelsCompatController {
     }
 
     @GetMapping
-    public Mono<ResponseEntity<?>> listModels() {
+    public Mono<ResponseEntity<?>> listModels(@AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.<ResponseEntity<?>>fromCallable(() -> {
+            boolean includeAdministrationDetails = principal != null
+                    && principal.hasPermission("system:manage");
             List<Map<String, Object>> providers = new ArrayList<>();
             for (String providerId : providerManager.listProviders()) {
-                providers.add(providerPayload(providerId, providerManager.listModels(providerId)));
+                Map<String, Object> provider = providerPayload(providerId, providerManager.listModels(providerId));
+                providers.add(includeAdministrationDetails ? provider : publishedProviderPayload(provider));
             }
             return ResponseEntity.ok(providers);
         });
@@ -227,23 +230,25 @@ public class ModelsCompatController {
             @RequestParam(value = "scope", defaultValue = "effective") String scope,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         boolean systemManager = principal != null && principal.hasPermission("system:manage");
-        String agentId = systemManager && queryAgentId != null && !queryAgentId.isBlank()
-                ? queryAgentId : headerAgentId;
-        String effectiveScope = systemManager ? scope : "effective";
-        return Mono.fromCallable(() -> ResponseEntity.ok(activeModels(agentId, effectiveScope)));
+        String effectiveScope = systemManager && "global".equalsIgnoreCase(scope)
+                ? "global" : "effective";
+        return Mono.fromCallable(() -> ResponseEntity.ok(activeModels(headerAgentId, effectiveScope)));
     }
 
     @PutMapping("/active")
     public Mono<ResponseEntity<?>> updateActiveModels(
             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
-            String targetAgentId = stringValue(body.getOrDefault("agent_id", agentId));
+            String targetAgentId = agentId;
             String active = activeModelFromBody(body);
-            String scope = stringValue(body.get("scope"), "agent");
+            boolean globalScope = principal != null
+                    && principal.hasPermission("system:manage")
+                    && "global".equalsIgnoreCase(stringValue(body.get("scope"), "agent"));
             if (!active.isBlank()) {
                 String[] parts = splitModel(active);
-                if ("global".equalsIgnoreCase(scope)) {
+                if (globalScope) {
                     providerManager.setActiveModel(parts[0], parts[1]);
                     if (configManager.getConfig().getAgents().containsKey(targetAgentId)) {
                         String agentModel = configManager.getConfig().getAgents().get(targetAgentId).getActiveModel();
@@ -267,6 +272,16 @@ public class ModelsCompatController {
             }
             return ResponseEntity.ok(activeModels(targetAgentId, "effective"));
         });
+    }
+
+    private Map<String, Object> publishedProviderPayload(Map<String, Object> provider) {
+        Map<String, Object> published = new LinkedHashMap<>(provider);
+        published.put("api_key", "");
+        published.put("api_key_prefix", "");
+        published.put("base_url", "");
+        published.put("generate_kwargs", Map.of());
+        published.put("custom_headers", Map.of());
+        return published;
     }
 
     @PostMapping("/custom-providers")

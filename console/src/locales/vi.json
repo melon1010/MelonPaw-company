@@ -93,11 +93,8 @@
   "sidebar": {
     "settings": {
       "language": "Ngôn ngữ",
-      "theme": "Giao diện",
-      "mode": "Chế độ"
-    },
-    "simpleMode": "Chế độ đơn giản",
-    "fullMode": "Chế độ đầy đủ"
+      "theme": "Giao diện"
+    }
   },
   "theme": {
     "dark": "Tối",

@@ -26,6 +26,7 @@ describe("companyApi", () => {
       password: "EmployeePassword123",
       enabled: true,
       roles: ["EMPLOYEE"],
+      default_skills: ["web-search", "documents"],
     };
 
     await companyApi.createUser(input);
@@ -33,6 +34,14 @@ describe("companyApi", () => {
     expect(request).toHaveBeenCalledWith("/admin/users", {
       method: "POST",
       body: JSON.stringify(input),
+    });
+  });
+
+  it("deletes an enterprise member by encoded id", async () => {
+    await companyApi.deleteUser("user/id");
+
+    expect(request).toHaveBeenCalledWith("/admin/users/user%2Fid", {
+      method: "DELETE",
     });
   });
 

@@ -1760,11 +1760,8 @@
   "sidebar": {
     "settings": {
       "language": "Язык",
-      "theme": "Тема",
-      "mode": "Режим"
-    },
-    "simpleMode": "Простой режим",
-    "fullMode": "Полный режим"
+      "theme": "Тема"
+    }
   },
   "chat": {
     "modelSelectTooltip": "Выбор модели",

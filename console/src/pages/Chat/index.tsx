@@ -34,7 +34,6 @@ import styles from "./index.module.less";
 import { IconButton } from "@agentscope-ai/design";
 import ChatActionGroup from "./components/ChatActionGroup";
 import ChatSessionDrawer from "./components/ChatSessionDrawer";
-import { useSidebarModeStore } from "../../stores/sidebarModeStore";
 import TurnUsageAction from "./components/TurnUsageAction";
 import {
   patchContextMaxInputLength,
@@ -1255,13 +1254,7 @@ export default function ChatPage() {
   const [approvalRequests, setApprovalRequests] = useState<
     Map<string, ApprovalMessageData>
   >(new Map());
-  const { mode: sidebarMode } = useSidebarModeStore();
-  const isFullMode = sidebarMode === "full";
-
-  // On mobile viewports the right-side history panel should always be
-  // available regardless of the sidebar mode setting.
   const isMobile = useIsMobile();
-  const effectiveIsFullMode = isFullMode || isMobile;
 
   // Right-side history panel state
   const [historyPanelOpen, setHistoryPanelOpen] = useState(() => {
@@ -2632,10 +2625,8 @@ export default function ChatPage() {
             <span style={{ flex: 1 }} />
             {canManageModels && <ModelSelector />}
             <ChatActionGroup
-              onToggleHistory={
-                effectiveIsFullMode ? toggleHistoryPanel : undefined
-              }
-              historyOpen={effectiveIsFullMode ? historyPanelOpen : false}
+              onToggleHistory={toggleHistoryPanel}
+              historyOpen={historyPanelOpen}
               isWideMode={isWideMode}
               onToggleWideMode={toggleWideMode}
             />
@@ -3127,8 +3118,8 @@ export default function ChatPage() {
       </div>
       {/* End of main chat area */}
 
-      {/* Right-side history panel (full mode only) */}
-      {effectiveIsFullMode && historyPanelOpen && (
+      {/* Right-side history panel */}
+      {historyPanelOpen && (
         <>
           {isMobile ? (
             <ChatSessionDrawer

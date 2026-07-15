@@ -107,7 +107,7 @@ mvn clean package
 .\scripts\build-sandbox.ps1
 ```
 
-Linux 可执行等价命令：
+Linux 和 macOS 可执行等价命令：
 
 ```bash
 docker build -t melonpaw-company-sandbox:latest docker/sandbox
@@ -178,7 +178,9 @@ mvn -pl melon-app spring-boot:run -Dspring-boot.run.profiles=local
 
 在 IntelliJ IDEA 的 Spring Boot Run/Debug Configuration 中把 Active profiles
 设置为 `local`，会加载 `application-local.yaml` 并使用 AgentScope
-`LocalFilesystemSpec`。该模式允许在宿主机执行命令，仅用于可信的本地开发；
+`LocalFilesystemSpec` 的跨平台适配层。Windows 使用 `cmd.exe`，Linux 和 macOS
+使用 `sh`；文件工具和命令工具共享同一个个人工作区，并统一使用 UTF-8 输出。
+该模式允许在宿主机执行命令，仅用于可信的本地开发；
 不启用 `local` profile 时，`application.yaml` 默认使用 Docker 沙箱。
 
 前端开发服务：

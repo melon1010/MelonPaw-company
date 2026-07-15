@@ -1745,11 +1745,8 @@
   "sidebar": {
     "settings": {
       "language": "言語",
-      "theme": "テーマ",
-      "mode": "モード"
-    },
-    "simpleMode": "シンプルモード",
-    "fullMode": "フルモード"
+      "theme": "テーマ"
+    }
   },
   "chat": {
     "modelSelectTooltip": "モデルを選択",

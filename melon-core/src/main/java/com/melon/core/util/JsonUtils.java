@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.UUID;
 
 /**
  * JSON 工具. 安全加载/保存 JSON 文件, 原子写入.
@@ -66,14 +67,29 @@ public final class JsonUtils {
      * 先写入临时文件, 再原子移动.
      */
     public static void save(Path jsonPath, Object value) {
+        Path tmp = null;
         try {
             Files.createDirectories(jsonPath.getParent());
-            Path tmp = jsonPath.resolveSibling(jsonPath.getFileName() + ".tmp");
+            tmp = jsonPath.resolveSibling(
+                    jsonPath.getFileName() + ".tmp-" + UUID.randomUUID());
             mapper.writerWithDefaultPrettyPrinter().writeValue(tmp.toFile(), value);
-            Files.move(tmp, jsonPath, StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Files.move(tmp, jsonPath,
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                Files.move(tmp, jsonPath, StandardCopyOption.REPLACE_EXISTING);
+            }
             log.debug("JSON saved to {}", jsonPath);
         } catch (IOException e) {
             log.error("Failed to save JSON to {}", jsonPath, e);
+        } finally {
+            if (tmp != null) {
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (IOException ignored) {
+                    // Best effort cleanup; the target write outcome was already logged.
+                }
+            }
         }
     }
 

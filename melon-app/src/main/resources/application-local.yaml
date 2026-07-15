@@ -6,4 +6,4 @@ spring:
 melon:
   execution:
     # Development only: execute and Skill scripts run on the IDE host process.
-    sandbox-mode: local
+    sandbox-mode: ${MELON_EXECUTION_SANDBOX:local}

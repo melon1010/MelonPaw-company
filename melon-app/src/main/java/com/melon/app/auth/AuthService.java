@@ -133,6 +133,10 @@ public class AuthService {
         return store.updateOwnProfile(userId, displayName, passwordHash);
     }
 
+    public void deleteUser(String userId, String successorUserId) {
+        store.deleteUser(userId, successorUserId);
+    }
+
     public EnterpriseIdentityStore store() {
         return store;
     }

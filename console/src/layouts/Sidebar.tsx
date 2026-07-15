@@ -10,7 +10,6 @@ import {
   syncSessionsGlobal,
   type ExtendedSession,
 } from "../stores/sessionListStore";
-import { useSidebarModeStore } from "../stores/sidebarModeStore";
 import { buildSessionPath, getSessionIdFromPath } from "../utils/sessionRoute";
 import sessionApi from "../pages/Chat/sessionApi";
 import styles from "./index.module.less";
@@ -49,10 +48,10 @@ function isMobileSidebarViewport() {
 }
 const INBOX_BADGE_POLLING_MS = 6000;
 
-// ── Simple mode whitelist ─────────────────────────────────────────────────
+// ── Mobile navigation whitelist ───────────────────────────────────────────
 
-/** Menu item IDs that remain visible in simple sidebar mode (no groups). */
-const SIMPLE_MODE_WHITELIST = new Set([
+/** Menu item IDs that remain visible in the compact mobile navigation. */
+const MOBILE_NAV_WHITELIST = new Set([
   "company.workbench",
   "company.projects",
   "company.members",
@@ -67,21 +66,21 @@ const SIMPLE_MODE_WHITELIST = new Set([
 ]);
 
 /**
- * Flatten a MenuItem tree into a leaf-only list for simple sidebar mode.
+ * Flatten a MenuItem tree into a leaf-only list for mobile navigation.
  * Groups are eliminated entirely — only whitelisted children survive
  * as top-level items.
  */
-function flattenMenuForSimpleMode(items: MenuItem[]): MenuItem[] {
+function flattenMenuForMobile(items: MenuItem[]): MenuItem[] {
   const result: MenuItem[] = [];
   for (const rawItem of items) {
     const item = rawItem as MenuItem & { __children?: MenuItem[] };
     if (item.__children && item.__children.length > 0) {
       for (const child of item.__children) {
-        if (SIMPLE_MODE_WHITELIST.has(child.id)) {
+        if (MOBILE_NAV_WHITELIST.has(child.id)) {
           result.push(child);
         }
       }
-    } else if (SIMPLE_MODE_WHITELIST.has(item.id)) {
+    } else if (MOBILE_NAV_WHITELIST.has(item.id)) {
       result.push(item);
     }
   }
@@ -113,9 +112,6 @@ export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
   const [isMobile, setIsMobile] = useState(isMobileSidebarViewport);
   const [hasInboxUnread, setHasInboxUnread] = useState(false);
 
-  // Sidebar mode: "simple" (only core items) or "full" (everything)
-  const { mode: sidebarMode } = useSidebarModeStore();
-
   // Menu + route snapshots from registry (builtin + plugin registrations merged).
   const rawAgentMenu = useMenuItems("primary.agentScoped");
   const rawSettingsMenu = useMenuItems("primary.settings");
@@ -129,44 +125,19 @@ export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
     [rawSettingsMenu, user],
   );
 
-  // Apply simple-mode filtering when enabled
-  const agentMenu = useMemo(
-    () =>
-      sidebarMode === "simple"
-        ? flattenMenuForSimpleMode(authorizedAgentMenu)
-        : authorizedAgentMenu,
-    [authorizedAgentMenu, sidebarMode],
-  );
-  const settingsMenu = useMemo(
-    () =>
-      sidebarMode === "simple"
-        ? flattenMenuForSimpleMode(authorizedSettingsMenu)
-        : authorizedSettingsMenu,
-    [authorizedSettingsMenu, sidebarMode],
-  );
+  const agentMenu = authorizedAgentMenu;
+  const settingsMenu = authorizedSettingsMenu;
 
-  // Flat nav entries for simple mode (icon + label + path)
-  const simpleFlatNav = useMemo(() => {
-    if (sidebarMode !== "simple" && !isMobile) return [];
-    const flatAgentMenu = isMobile
-      ? flattenMenuForSimpleMode(authorizedAgentMenu)
-      : agentMenu;
-    const flatSettingsMenu = isMobile
-      ? flattenMenuForSimpleMode(authorizedSettingsMenu)
-      : settingsMenu;
+  // Flat nav entries are retained only for narrow viewports.
+  const mobileFlatNav = useMemo(() => {
+    if (!isMobile) return [];
+    const flatAgentMenu = flattenMenuForMobile(authorizedAgentMenu);
+    const flatSettingsMenu = flattenMenuForMobile(authorizedSettingsMenu);
     return [
       ...flattenMenu(flatAgentMenu, routes, 16),
       ...flattenMenu(flatSettingsMenu, routes, 16),
     ];
-  }, [
-    agentMenu,
-    settingsMenu,
-    authorizedAgentMenu,
-    authorizedSettingsMenu,
-    routes,
-    sidebarMode,
-    isMobile,
-  ]);
+  }, [authorizedAgentMenu, authorizedSettingsMenu, routes, isMobile]);
 
   // ── Effects ──────────────────────────────────────────────────────────────
 
@@ -314,7 +285,15 @@ export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
         ? { ...entry, icon: decorateInboxIcon(entry.icon) }
         : entry,
     );
-  }, [agentMenu, settingsMenu, routes, chatPath, t, hasInboxUnread, canUseAgents]);
+  }, [
+    agentMenu,
+    settingsMenu,
+    routes,
+    chatPath,
+    t,
+    hasInboxUnread,
+    canUseAgents,
+  ]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -364,9 +343,9 @@ export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
   // `renderIcon` retained for tree-shaking awareness.
   void renderIcon;
 
-  // On mobile, the expanded sidebar shows sessions (like simple mode) instead
+  // On mobile, the expanded sidebar shows sessions instead
   // of the full menu — matching the desktop history panel UX.
-  const isSimpleExpanded = (sidebarMode === "simple" || isMobile) && !collapsed;
+  const isMobileExpanded = isMobile && !collapsed;
 
   return (
     <Sider
@@ -374,7 +353,7 @@ export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
       className={`${styles.sider}${
         collapsed ? ` ${styles.siderCollapsed}` : ""
       }${isDark ? ` ${styles.siderDark}` : ""}${
-        isSimpleExpanded ? ` ${styles.siderSimple}` : ""
+        isMobileExpanded ? ` ${styles.siderSimple}` : ""
       }`}
     >
       {collapsed ? (
@@ -413,13 +392,13 @@ export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
             );
           })}
         </nav>
-      ) : isSimpleExpanded ? (
+      ) : isMobileExpanded ? (
         <>
-          {/* Simple mode: flat nav items + session list */}
+          {/* Mobile: flat nav items + session list */}
           <div className={styles.agentScopedSection}>
             {/* Flat nav items (no groups) */}
             <div className={styles.simpleNavItems}>
-              {simpleFlatNav.map((entry) => {
+              {mobileFlatNav.map((entry) => {
                 const isInbox = entry.key === "core.inbox";
                 const isActive = selectedKey === entry.key;
                 return (
@@ -520,7 +499,6 @@ export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
           <Slot name="sider.bottom" kind="fill" />
         </>
       )}
-
     </Sider>
   );
 }

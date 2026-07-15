@@ -12,7 +12,6 @@ import io.agentscope.harness.agent.IsolationScope;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.memory.compaction.ToolResultEvictionConfig;
 import io.agentscope.harness.agent.memory.MemoryConfig;
-import io.agentscope.harness.agent.filesystem.spec.LocalFilesystemSpec;
 import io.agentscope.harness.agent.sandbox.impl.docker.DockerFilesystemSpec;
 import io.agentscope.harness.agent.sandbox.WorkspaceSpec;
 import io.agentscope.harness.agent.sandbox.layout.BindMountEntry;
@@ -135,13 +134,7 @@ public class MelonAgentFactory {
         if ("local".equals(sandboxMode)) {
             log.warn("Agent {} uses local shell execution. This is a development-only mode; "
                     + "enterprise deployments must use DockerFilesystemSpec.", agentId);
-            builder.filesystem(new LocalFilesystemSpec()
-                    .project(workspaceDir)
-                    .projectWritable(true)
-                    .mode(LocalFsMode.SANDBOXED)
-                    .isolationScope(IsolationScope.USER)
-                    .inheritEnv(false)
-                    .executeTimeoutSeconds(shellTimeoutSeconds(agentConfig)));
+            builder.filesystem(localFilesystem(workspaceDir, agentConfig));
         } else if ("docker".equals(sandboxMode)) {
             builder.filesystem(dockerFilesystem(workspaceDir));
         } else {
@@ -234,6 +227,34 @@ public class MelonAgentFactory {
         spec.workspaceSpec(workspaceSpec);
         spec.workspaceProjectionEnabled(false);
         return spec;
+    }
+
+    private CrossPlatformLocalFilesystemSpec localFilesystem(
+            Path workspaceDir, AgentConfig agentConfig) {
+        CrossPlatformLocalFilesystemSpec spec = new CrossPlatformLocalFilesystemSpec()
+                .project(workspaceDir)
+                .mode(LocalFsMode.SANDBOXED)
+                .inheritEnv(false)
+                .executeTimeoutSeconds(shellTimeoutSeconds(agentConfig));
+        spec.projectWritable(true);
+        // The application already assigns a dedicated workspace per personal Agent.
+        // Avoid a second user-id directory that would separate file tools from shell.
+        spec.isolationScope(IsolationScope.AGENT);
+        for (String name : localShellEnvironmentAllowlist()) {
+            String value = System.getenv(name);
+            if (value != null && !value.isBlank()) {
+                spec.env(name, value);
+            }
+        }
+        return spec;
+    }
+
+    private List<String> localShellEnvironmentAllowlist() {
+        return List.of(
+                "PATH", "Path", "PATHEXT", "SystemRoot", "ComSpec",
+                "HOME", "USERPROFILE", "TEMP", "TMP",
+                "LANG", "LC_ALL", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+                "http_proxy", "https_proxy", "no_proxy");
     }
 
     private String executionSandboxMode() {

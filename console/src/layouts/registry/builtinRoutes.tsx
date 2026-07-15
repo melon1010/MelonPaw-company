@@ -35,7 +35,6 @@ const SecurityPage = lazyWithRetry(() => import("../../pages/Settings/Security")
 const TokenUsagePage = lazyWithRetry(() => import("../../pages/Settings/TokenUsage"));
 const AgentStatsPage = lazyWithRetry(() => import("../../pages/Settings/AgentStats"));
 const VoiceTranscriptionPage = lazyWithRetry(() => import("../../pages/Settings/VoiceTranscription"));
-const AgentsPage = lazyWithRetry(() => import("../../pages/Settings/Agents"));
 const DebugPage = lazyWithRetry(() => import("../../pages/Settings/Debug"));
 const BackupsPage = lazyWithRetry(() => import("../../pages/Settings/Backups"));
 const PluginManagerPage = lazyWithRetry(() => import("../../pages/Settings/PluginManager"));
@@ -90,7 +89,6 @@ export const BUILTIN_ROUTES: Route[] = [
   { id: "core.tools", path: "/tools", component: ToolsPage },
   { id: "core.mcp", path: "/mcp", component: MCPPage },
   { id: "core.workspace", path: "/workspace", component: WorkspacePage },
-  { id: "core.agents", path: "/agents", component: AgentsPage },
   { id: "core.models", path: "/models", component: ModelsPage },
   {
     id: "core.environments",

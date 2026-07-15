@@ -22,7 +22,6 @@ import {
   Sparkles,
   Users,
   Files,
-  Bot,
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -122,12 +121,6 @@ export default function MobileNavigation() {
         path: "/members",
         label: t("enterprise.nav.members"),
         icon: Users,
-      },
-      {
-        id: "core.agents",
-        path: "/agents",
-        label: t("nav.agents"),
-        icon: Bot,
       },
       {
         id: "core.skill-pool",

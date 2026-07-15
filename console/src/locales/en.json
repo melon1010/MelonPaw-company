@@ -152,7 +152,17 @@
       "empty": "No company members",
       "loadFailed": "Failed to load members and roles",
       "saved": "Member saved",
-      "saveFailed": "Failed to save member"
+      "saveFailed": "Failed to save member",
+      "defaultSkills": "Default skills",
+      "defaultSkillsHint": "Optional. Selected skills are copied from the shared skill pool into the new member's workspace.",
+      "defaultSkillsPlaceholder": "Select skills to initialize",
+      "skillsLoadFailed": "The shared skill pool is unavailable. Members can still be created without default skills.",
+      "delete": "Delete member",
+      "deleteTitle": "Delete {{name}}?",
+      "deleteConfirm": "The account {{username}} and its personal workspace data will be permanently deleted.",
+      "deleted": "Member deleted",
+      "deleteFailed": "Failed to delete member",
+      "cannotDeleteSelf": "You cannot delete the currently signed-in account."
     }
   },
   "chunkError": {
@@ -194,11 +204,8 @@
   "sidebar": {
     "settings": {
       "language": "Language",
-      "theme": "Theme",
-      "mode": "Mode"
-    },
-    "simpleMode": "Simple Mode",
-    "fullMode": "Full Mode"
+      "theme": "Theme"
+    }
   },
   "debug": {
     "title": "Debug",

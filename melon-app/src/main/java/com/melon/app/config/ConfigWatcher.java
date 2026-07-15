@@ -126,8 +126,11 @@ public class ConfigWatcher {
 
         log.info("Config file change detected, reloading...");
         try {
-            configManager.reload();
-            log.info("Config reloaded successfully");
+            if (configManager.reload()) {
+                log.info("Config reloaded successfully");
+            } else {
+                log.warn("Config reload skipped; continuing with the last known-good configuration");
+            }
         } catch (Exception e) {
             log.error("Failed to reload config", e);
         }

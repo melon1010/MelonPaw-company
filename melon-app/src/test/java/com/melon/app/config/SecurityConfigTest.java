@@ -34,7 +34,7 @@ class SecurityConfigTest {
     void authenticatedRequestRunsFilterChainExactlyOnce() {
         EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
         EnterprisePrincipal principal = principal(Set.of("agents:use"));
-        when(accessService.resolve(principal, "requested-agent")).thenReturn("resolved-agent");
+        when(accessService.ensurePersonalAgent(principal)).thenReturn("personal-user-1");
 
         WebFilter filter = new SecurityConfig().agentScopeFilter(accessService);
         MockServerWebExchange exchange = MockServerWebExchange.from(
@@ -47,7 +47,7 @@ class SecurityConfigTest {
                 principal, "token", principal.authorities());
         filter.filter(exchange, filteredExchange -> {
                 invocations.incrementAndGet();
-                assertEquals("resolved-agent",
+                assertEquals("personal-user-1",
                         filteredExchange.getRequest().getHeaders().getFirst("X-Agent-Id"));
                 return Mono.empty();
             })
@@ -55,7 +55,7 @@ class SecurityConfigTest {
             .block();
 
         assertEquals(1, invocations.get());
-        verify(accessService).resolve(principal, "requested-agent");
+        verify(accessService).ensurePersonalAgent(principal);
     }
 
     @Test
@@ -117,10 +117,10 @@ class SecurityConfigTest {
     }
 
     @Test
-    void agentOperatorStillPassesThroughResourceOwnershipResolution() {
+    void agentOperatorUsesPersonalWorkspaceForPersonalResources() {
         EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
         EnterprisePrincipal principal = principal(Set.of(AGENTS_MANAGE));
-        when(accessService.resolve(principal, "managed-agent")).thenReturn("managed-agent");
+        when(accessService.ensurePersonalAgent(principal)).thenReturn("personal-user-1");
         WebFilter filter = new SecurityConfig().agentScopeFilter(accessService);
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/workspace")
@@ -130,7 +130,7 @@ class SecurityConfigTest {
 
         filter.filter(exchange, filteredExchange -> {
                     invocations.incrementAndGet();
-                    assertEquals("managed-agent",
+                    assertEquals("personal-user-1",
                             filteredExchange.getRequest().getHeaders().getFirst("X-Agent-Id"));
                     return Mono.empty();
                 })
@@ -138,7 +138,33 @@ class SecurityConfigTest {
                 .block();
 
         assertEquals(1, invocations.get());
-        verify(accessService).resolve(principal, "managed-agent");
+        verify(accessService).ensurePersonalAgent(principal);
+        verify(accessService, never()).resolve(principal, "managed-agent");
+    }
+
+    @Test
+    void systemAdministratorCannotSelectDefaultForInteractiveExecution() {
+        EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
+        EnterprisePrincipal principal = new EnterprisePrincipal(
+                "admin-1", "admin", "Administrator", true,
+                Set.of("SYSTEM_ADMIN"), Set.of(), "", "");
+        when(accessService.ensurePersonalAgent(principal)).thenReturn("personal-admin-1");
+        WebFilter filter = new SecurityConfig().agentScopeFilter(accessService);
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.post("/api/console/chat")
+                        .header("X-Agent-Id", "default")
+                        .build());
+
+        filter.filter(exchange, filteredExchange -> {
+                    assertEquals("personal-admin-1",
+                            filteredExchange.getRequest().getHeaders().getFirst("X-Agent-Id"));
+                    return Mono.empty();
+                })
+                .contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication(principal)))
+                .block();
+
+        verify(accessService).ensurePersonalAgent(principal);
+        verify(accessService, never()).resolve(principal, "default");
     }
 
     @Test

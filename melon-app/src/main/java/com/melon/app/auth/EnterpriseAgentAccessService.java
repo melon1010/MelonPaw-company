@@ -1,6 +1,8 @@
 package com.melon.app.auth;
 
 import com.melon.core.agent.WorkspaceManager;
+import com.melon.core.agent.AgentScopedStateStore;
+import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.BuiltinToolConfig;
 import com.melon.core.config.ConfigManager;
@@ -36,6 +38,7 @@ public class EnterpriseAgentAccessService {
     private final WorkspaceManager workspaceManager;
     private final ProviderManager providerManager;
     private final AuditLogService auditLogService;
+    private final MultiAgentManager multiAgentManager;
 
     @Autowired
     public EnterpriseAgentAccessService(
@@ -43,12 +46,23 @@ public class EnterpriseAgentAccessService {
             ConfigManager configManager,
             WorkspaceManager workspaceManager,
             ProviderManager providerManager,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            MultiAgentManager multiAgentManager) {
         this.identityStore = identityStore;
         this.configManager = configManager;
         this.workspaceManager = workspaceManager;
         this.providerManager = providerManager;
         this.auditLogService = auditLogService;
+        this.multiAgentManager = multiAgentManager;
+    }
+
+    public EnterpriseAgentAccessService(
+            EnterpriseIdentityStore identityStore,
+            ConfigManager configManager,
+            WorkspaceManager workspaceManager,
+            ProviderManager providerManager,
+            AuditLogService auditLogService) {
+        this(identityStore, configManager, workspaceManager, providerManager, auditLogService, null);
     }
 
     public EnterpriseAgentAccessService(
@@ -56,14 +70,14 @@ public class EnterpriseAgentAccessService {
             ConfigManager configManager,
             WorkspaceManager workspaceManager,
             ProviderManager providerManager) {
-        this(identityStore, configManager, workspaceManager, providerManager, null);
+        this(identityStore, configManager, workspaceManager, providerManager, null, null);
     }
 
     public EnterpriseAgentAccessService(
             EnterpriseIdentityStore identityStore,
             ConfigManager configManager,
             WorkspaceManager workspaceManager) {
-        this(identityStore, configManager, workspaceManager, null);
+        this(identityStore, configManager, workspaceManager, null, null, null);
     }
 
     public String resolve(EnterprisePrincipal principal, String requestedAgentId) {
@@ -157,11 +171,87 @@ public class EnterpriseAgentAccessService {
             workspaceManager.writeAgentJson(workspace, agentId, personal);
             configManager.save();
         } else {
-            enforcePersonalPolicy(existing);
-            applyGlobalModel(existing);
-            configManager.save();
+            boolean changed = enforcePersonalPolicy(existing);
+            changed |= applyGlobalModel(existing);
+            if (changed) {
+                configManager.save();
+            }
         }
         return agentId;
+    }
+
+    /**
+     * Removes a personal Agent from the live configuration before its identity is deleted. The
+     * returned plan retains enough information to restore the configuration if the database
+     * transaction fails. Workspace and state files are deliberately removed only after the user
+     * row and its authentication sessions have been deleted.
+     */
+    public synchronized PersonalAgentDeletion preparePersonalAgentDeletion(String userId) {
+        Path usersRoot = configManager.resolveWorkspaceRootDir()
+                .resolve("users").toAbsolutePath().normalize();
+        Path workspace = directChild(usersRoot, userId, "user workspace");
+        String agentId = identityStore.findPersonalAgentBinding(userId)
+                .map(EnterpriseIdentityStore.AgentBindingRecord::agentId)
+                .orElse(null);
+        AgentConfig removedConfig = agentId == null
+                ? null : configManager.getConfig().getAgent(agentId);
+        if (removedConfig != null) {
+            Path configuredWorkspace = configManager.resolveWorkspaceDir(agentId)
+                    .toAbsolutePath().normalize();
+            if (!workspace.equals(configuredWorkspace)) {
+                throw new SecurityException(
+                        "Personal Agent workspace does not match its managed user directory");
+            }
+            Map<String, AgentConfig> agents = new LinkedHashMap<>(configManager.getConfig().getAgents());
+            agents.remove(agentId);
+            configManager.getConfig().setAgents(agents);
+            try {
+                configManager.save();
+            } catch (RuntimeException e) {
+                agents.put(agentId, removedConfig);
+                configManager.getConfig().setAgents(agents);
+                throw e;
+            }
+            if (multiAgentManager != null) {
+                multiAgentManager.stop(agentId);
+            }
+        }
+        Path stateRoot = configManager.resolveStateDir().toAbsolutePath().normalize();
+        Path stateDirectory = agentId == null ? null : directChild(
+                stateRoot,
+                AgentScopedStateStore.scopedUserId(agentId, userId),
+                "Agent state directory");
+        return new PersonalAgentDeletion(agentId, userId, workspace, stateDirectory, removedConfig);
+    }
+
+    public synchronized void restorePersonalAgent(PersonalAgentDeletion deletion) {
+        if (deletion == null || deletion.agentId() == null || deletion.agentConfig() == null) {
+            return;
+        }
+        Map<String, AgentConfig> agents = new LinkedHashMap<>(configManager.getConfig().getAgents());
+        agents.put(deletion.agentId(), deletion.agentConfig());
+        configManager.getConfig().setAgents(agents);
+        configManager.save();
+    }
+
+    public PersonalAgentCleanupResult deletePersonalAgentFiles(PersonalAgentDeletion deletion) {
+        if (deletion == null) {
+            return new PersonalAgentCleanupResult(false, false);
+        }
+        try {
+            Path usersRoot = configManager.resolveWorkspaceRootDir()
+                    .resolve("users").toAbsolutePath().normalize();
+            boolean workspaceRemoved = workspaceManager.deleteWorkspaceIfUnderRoot(
+                    deletion.workspaceDirectory(), usersRoot);
+            boolean stateRemoved = false;
+            if (deletion.stateDirectory() != null) {
+                stateRemoved = workspaceManager.deleteWorkspaceIfUnderRoot(
+                        deletion.stateDirectory(), configManager.resolveStateDir());
+            }
+            return new PersonalAgentCleanupResult(workspaceRemoved, stateRemoved);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Failed to remove personal Agent files", e);
+        }
     }
 
     public boolean isPersonalAgent(String agentId) {
@@ -197,17 +287,29 @@ public class EnterpriseAgentAccessService {
         return personal;
     }
 
-    private void enforcePersonalPolicy(AgentConfig personal) {
+    private boolean enforcePersonalPolicy(AgentConfig personal) {
+        boolean changed = false;
         Map<String, BuiltinToolConfig> tools = personal.getTools().getBuiltinTools();
         if (tools != null) {
-            PERSONAL_BLOCKED_TOOLS.forEach(name -> {
+            for (String name : PERSONAL_BLOCKED_TOOLS) {
                 BuiltinToolConfig tool = tools.get(name);
-                if (tool != null) tool.setEnabled(false);
-            });
+                if (tool != null && tool.isEnabled()) {
+                    tool.setEnabled(false);
+                    changed = true;
+                }
+            }
         }
         Map<String, Boolean> asyncTools = new LinkedHashMap<>(personal.getTools().getAsyncExecutionTools());
-        PERSONAL_BLOCKED_TOOLS.forEach(name -> asyncTools.put(name, false));
-        personal.getTools().setAsyncExecutionTools(asyncTools);
+        for (String name : PERSONAL_BLOCKED_TOOLS) {
+            if (!Boolean.FALSE.equals(asyncTools.get(name))) {
+                asyncTools.put(name, false);
+                changed = true;
+            }
+        }
+        if (changed) {
+            personal.getTools().setAsyncExecutionTools(asyncTools);
+        }
+        return changed;
     }
 
     private boolean canUsePersonalAgent(EnterprisePrincipal principal) {
@@ -249,16 +351,21 @@ public class EnterpriseAgentAccessService {
         }
     }
 
-    private void applyGlobalModel(AgentConfig agent) {
+    private boolean applyGlobalModel(AgentConfig agent) {
         if (agent == null || providerManager == null) {
-            return;
+            return false;
         }
         Map<String, String> active = providerManager.getActiveModel();
         String provider = active.get("provider_id");
         String model = active.get("model");
         if (provider != null && !provider.isBlank() && model != null && !model.isBlank()) {
-            agent.setActiveModel(provider + ":" + model);
+            String activeModel = provider + ":" + model;
+            if (!activeModel.equals(agent.getActiveModel())) {
+                agent.setActiveModel(activeModel);
+                return true;
+            }
         }
+        return false;
     }
 
     private boolean isForeignPersonalAgent(EnterprisePrincipal principal, String agentId) {
@@ -270,5 +377,28 @@ public class EnterpriseAgentAccessService {
 
     private String normalize(String agentId) {
         return agentId == null || agentId.isBlank() ? "default" : agentId.trim();
+    }
+
+    private Path directChild(Path root, String child, String description) {
+        if (child == null || child.isBlank()) {
+            throw new IllegalArgumentException(description + " id is required");
+        }
+        Path normalizedRoot = root.toAbsolutePath().normalize();
+        Path target = normalizedRoot.resolve(child).normalize();
+        if (!normalizedRoot.equals(target.getParent())) {
+            throw new SecurityException("Invalid " + description);
+        }
+        return target;
+    }
+
+    public record PersonalAgentDeletion(
+            String agentId,
+            String userId,
+            Path workspaceDirectory,
+            Path stateDirectory,
+            AgentConfig agentConfig) {
+    }
+
+    public record PersonalAgentCleanupResult(boolean workspaceRemoved, boolean stateRemoved) {
     }
 }

@@ -96,7 +96,7 @@ public class SkillController {
     public Mono<ResponseEntity<?>> listSkillWorkspaces(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> ResponseEntity.ok(agentAccessService.accessibleAgentIds(principal).stream()
+        return Mono.fromCallable(() -> ResponseEntity.ok(List.of(agentAccessService.ensurePersonalAgent(principal)).stream()
                 .map(id -> Map.of(
                         "agent_id", id,
                         "agent_name", agentName(id),
@@ -107,15 +107,22 @@ public class SkillController {
     }
 
     @GetMapping("/pool")
-    public Mono<ResponseEntity<?>> listSkillPool(@RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
+    public Mono<ResponseEntity<?>> listSkillPool(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        boolean includeInternalDetails = principal != null
+                && principal.hasPermission("agents:manage");
         return Mono.fromCallable(() -> ResponseEntity.ok(
-                skillService.listPoolSkills().stream().map(this::poolSkillSpec).toList()
+                skillService.listPoolSkills().stream()
+                        .map(raw -> poolSkillSpec(raw, includeInternalDetails)).toList()
         ));
     }
 
     @PostMapping("/pool/refresh")
-    public Mono<ResponseEntity<?>> refreshSkillPool(@RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
-        return listSkillPool(agentId);
+    public Mono<ResponseEntity<?>> refreshSkillPool(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return listSkillPool(agentId, principal);
     }
 
     @GetMapping("/hub/search")
@@ -278,8 +285,7 @@ public class SkillController {
             @AuthenticationPrincipal EnterprisePrincipal principal,
             @RequestBody(required = false) Map<String, Object> body) {
         return Mono.fromCallable(() -> {
-            String requestedWorkspaceId = stringValue(body != null ? body.get("workspace_id") : null, agentId);
-            String workspaceId = resolveWorkspaceTarget(principal, agentId, requestedWorkspaceId);
+            String workspaceId = agentAccessService.ensurePersonalAgent(principal);
             String skillName = stringValue(body != null ? body.get("skill_name") : null, "");
             boolean overwrite = Boolean.TRUE.equals(body != null ? body.get("overwrite") : null);
             if (skillName.isBlank()) {
@@ -300,10 +306,7 @@ public class SkillController {
                 return ResponseEntity.badRequest().body(Map.of("detail", "skill_name is required"));
             }
             boolean overwrite = Boolean.TRUE.equals(body != null ? body.get("overwrite") : null);
-            List<String> targets = targetWorkspaceIds(body, agentId, principal).stream()
-                    .map(target -> resolveWorkspaceTarget(principal, agentId, target))
-                    .distinct()
-                    .toList();
+            List<String> targets = List.of(agentAccessService.ensurePersonalAgent(principal));
             List<Map<String, Object>> downloaded = new ArrayList<>();
             List<Map<String, Object>> conflicts = new ArrayList<>();
             for (String target : targets) {
@@ -582,11 +585,17 @@ public class SkillController {
         return spec;
     }
 
-    private Map<String, Object> poolSkillSpec(Map<String, Object> raw) {
+    private Map<String, Object> poolSkillSpec(Map<String, Object> raw, boolean includeInternalDetails) {
         Map<String, Object> spec = skillSpec(raw);
+        if (!includeInternalDetails) {
+            spec.remove("path");
+            spec.remove("config");
+        }
         spec.put("protected", Boolean.TRUE.equals(raw.get("protected")));
         spec.put("external", Boolean.TRUE.equals(raw.get("external")));
-        spec.put("external_path", stringValue(raw.get("external_path"), ""));
+        if (includeInternalDetails) {
+            spec.put("external_path", stringValue(raw.get("external_path"), ""));
+        }
         spec.put("version_text", stringValue(raw.get("version_text"), ""));
         spec.put("commit_text", stringValue(raw.get("commit_text"), ""));
         spec.put("builtin_language", stringValue(raw.get("builtin_language"), ""));
@@ -978,39 +987,6 @@ public class SkillController {
             return number.longValue();
         }
         return fallback;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<String> targetWorkspaceIds(Map<String, Object> body, String headerAgentId,
-                                            EnterprisePrincipal principal) {
-        if (body != null && Boolean.TRUE.equals(body.get("all_workspaces"))) {
-            return agentAccessService.accessibleAgentIds(principal);
-        }
-        Object targets = body != null ? body.get("targets") : null;
-        if (targets instanceof List<?> list && !list.isEmpty()) {
-            List<String> ids = new ArrayList<>();
-            for (Object item : list) {
-                if (item instanceof Map<?, ?> map) {
-                    ids.add(stringValue(map.get("workspace_id"), "default"));
-                }
-            }
-            if (!ids.isEmpty()) {
-                return ids;
-            }
-        }
-        return List.of(safeAgentId(headerAgentId));
-    }
-
-    /**
-     * Body-provided workspace ids are only hints. The access service applies
-     * the same personal-agent and break-glass rules as the HTTP agent scope
-     * filter, so skill transfer endpoints cannot be used as a scope bypass.
-     */
-    private String resolveWorkspaceTarget(EnterprisePrincipal principal, String headerAgentId,
-                                          String requestedAgentId) {
-        String requested = requestedAgentId == null || requestedAgentId.isBlank()
-                ? headerAgentId : requestedAgentId;
-        return agentAccessService.resolve(principal, requested);
     }
 
     private String safeAgentId(String agentId) {

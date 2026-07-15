@@ -1,10 +1,12 @@
 package com.melon.app.auth;
 
+import com.melon.app.service.SkillService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -15,6 +17,8 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -28,17 +32,25 @@ public class UserAdminController {
     private final AuthService authService;
     private final EnterpriseIdentityStore store;
     private final EnterpriseAgentAccessService agentAccessService;
+    private final SkillService skillService;
 
     @Autowired
     public UserAdminController(AuthService authService, EnterpriseIdentityStore store,
-                               EnterpriseAgentAccessService agentAccessService) {
+                               EnterpriseAgentAccessService agentAccessService,
+                               SkillService skillService) {
         this.authService = authService;
         this.store = store;
         this.agentAccessService = agentAccessService;
+        this.skillService = skillService;
+    }
+
+    public UserAdminController(AuthService authService, EnterpriseIdentityStore store,
+                               EnterpriseAgentAccessService agentAccessService) {
+        this(authService, store, agentAccessService, null);
     }
 
     public UserAdminController(AuthService authService, EnterpriseIdentityStore store) {
-        this(authService, store, null);
+        this(authService, store, null, null);
     }
 
     @GetMapping
@@ -63,6 +75,12 @@ public class UserAdminController {
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         return blocking(() -> {
             Set<String> roles = stringSet(body.get("roles"));
+            List<String> defaultSkills = initialSkillNames(body);
+            if (skillService != null) {
+                defaultSkills = skillService.validatePoolSkillNames(defaultSkills);
+            } else if (!defaultSkills.isEmpty()) {
+                throw new IllegalStateException("Skill service is unavailable");
+            }
             if (roles.isEmpty()) {
                 roles = Set.of("EMPLOYEE");
             }
@@ -80,9 +98,52 @@ public class UserAdminController {
                     EnterprisePermissions.PERSONAL_SKILLS,
                     EnterprisePermissions.PERSONAL_CHANNELS,
                     EnterprisePermissions.PERSONAL_AUTOMATIONS)) {
-                agentAccessService.ensurePersonalAgent(created);
+                try {
+                    String agentId = agentAccessService.ensurePersonalAgent(created);
+                    if (!defaultSkills.isEmpty()) {
+                        skillService.syncPoolSkillsToWorkspace(agentId, defaultSkills);
+                    }
+                } catch (Exception e) {
+                    rollbackProvisioning(created, principal);
+                    throw e;
+                }
             }
-            return ResponseEntity.status(201).body(created.toMap());
+            Map<String, Object> payload = new LinkedHashMap<>(created.toMap());
+            payload.put("initialized_skills", defaultSkills);
+            return ResponseEntity.status(201).body(payload);
+        });
+    }
+
+    @DeleteMapping("/{userId}")
+    @PreAuthorize("hasAuthority('users:manage')")
+    public Mono<ResponseEntity<?>> delete(
+            @PathVariable String userId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return blocking(() -> {
+            requireCanAdminister(principal, userId);
+            if (principal.id().equals(userId)) {
+                throw new IllegalArgumentException("Users cannot delete themselves");
+            }
+            EnterpriseAgentAccessService.PersonalAgentDeletion deletion = agentAccessService == null
+                    ? null : agentAccessService.preparePersonalAgentDeletion(userId);
+            try {
+                authService.deleteUser(userId, principal.id());
+            } catch (RuntimeException e) {
+                if (agentAccessService != null) {
+                    agentAccessService.restorePersonalAgent(deletion);
+                }
+                throw e;
+            }
+            EnterpriseAgentAccessService.PersonalAgentCleanupResult cleanup = agentAccessService == null
+                    ? new EnterpriseAgentAccessService.PersonalAgentCleanupResult(false, false)
+                    : agentAccessService.deletePersonalAgentFiles(deletion);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("deleted", true);
+            result.put("user_id", userId);
+            result.put("agent_id", deletion == null || deletion.agentId() == null ? "" : deletion.agentId());
+            result.put("workspace_removed", cleanup.workspaceRemoved());
+            result.put("state_removed", cleanup.stateRemoved());
+            return ResponseEntity.ok(result);
         });
     }
 
@@ -137,6 +198,18 @@ public class UserAdminController {
         }
     }
 
+    private void rollbackProvisioning(EnterprisePrincipal created, EnterprisePrincipal administrator) {
+        EnterpriseAgentAccessService.PersonalAgentDeletion deletion =
+                agentAccessService.preparePersonalAgentDeletion(created.id());
+        try {
+            authService.deleteUser(created.id(), administrator.id());
+        } catch (RuntimeException rollbackFailure) {
+            agentAccessService.restorePersonalAgent(deletion);
+            throw rollbackFailure;
+        }
+        agentAccessService.deletePersonalAgentFiles(deletion);
+    }
+
     private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
         return Mono.fromCallable(callable).subscribeOn(Schedulers.boundedElastic());
     }
@@ -151,6 +224,24 @@ public class UserAdminController {
             }
         }
         return result;
+    }
+
+    private List<String> initialSkillNames(Map<String, Object> body) {
+        if (body == null) {
+            return List.of();
+        }
+        Object value = body.containsKey("default_skills")
+                ? body.get("default_skills") : body.get("skill_names");
+        if (!(value instanceof Iterable<?> iterable)) {
+            return List.of();
+        }
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        for (Object item : iterable) {
+            if (item != null && !String.valueOf(item).isBlank()) {
+                result.add(String.valueOf(item).trim());
+            }
+        }
+        return List.copyOf(result);
     }
 
     private boolean booleanValue(Object value, boolean fallback) {

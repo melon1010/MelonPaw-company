@@ -64,6 +64,7 @@ export interface EnterpriseUserInput {
   password: string;
   enabled: boolean;
   roles: string[];
+  default_skills?: string[];
 }
 
 export const companyApi = {
@@ -143,6 +144,10 @@ export const companyApi = {
     request<AuthUser>(`/admin/users/${encodeURIComponent(userId)}/roles`, {
       method: "PUT",
       body: JSON.stringify({ roles }),
+    }),
+  deleteUser: (userId: string) =>
+    request<void>(`/admin/users/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
     }),
   listRoles: () => request<RoleCatalogue>("/roles"),
 };

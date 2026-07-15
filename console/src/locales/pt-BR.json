@@ -1935,11 +1935,8 @@
   "sidebar": {
     "settings": {
       "language": "Idioma",
-      "theme": "Tema",
-      "mode": "Modo"
-    },
-    "simpleMode": "Modo simples",
-    "fullMode": "Modo completo"
+      "theme": "Tema"
+    }
   },
   "chat": {
     "modelSelectTooltip": "Selecionar Modelo",

@@ -145,14 +145,15 @@ export default function ModelSelector() {
   // Eligible providers: configured + has models, OR is_free_tier
   const eligibleProviders: EligibleProvider[] = providers
     .filter((p) => {
+      const configured = p.api_key_configured ?? p.configured ?? !!p.api_key;
       const hasModels =
         (p.models?.length ?? 0) + (p.extra_models?.length ?? 0) > 0;
       // Free tier: always show (OAuth or needs-key)
       if (p.is_free_tier) return true;
       if (!hasModels) return false;
-      if (p.require_api_key === false) return !!p.base_url;
-      if (p.is_custom) return !!p.base_url;
-      if (p.require_api_key ?? true) return !!p.api_key;
+      if (p.require_api_key === false) return p.is_local || configured;
+      if (p.is_custom) return configured;
+      if (p.require_api_key ?? true) return configured;
       return true;
     })
     .map((p) => ({
@@ -165,7 +166,7 @@ export default function ModelSelector() {
       is_local: p.is_local,
       supports_oauth: p.supports_oauth,
       oauth_connected: p.oauth_connected,
-      has_api_key: !!p.api_key,
+      has_api_key: p.api_key_configured ?? p.configured ?? !!p.api_key,
       require_api_key: p.require_api_key,
     }));
 
