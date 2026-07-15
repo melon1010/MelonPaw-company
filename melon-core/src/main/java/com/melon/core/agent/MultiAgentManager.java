@@ -57,9 +57,20 @@ public class MultiAgentManager {
                              List<ToolkitContributor> toolkitContributors,
                              ProviderManager providerManager,
                              AgentStateStore stateStore) {
+        this(configManager, workspaceManager, tokenUsageCallback, toolkitContributors,
+                providerManager, stateStore, null);
+    }
+
+    public MultiAgentManager(ConfigManager configManager, WorkspaceManager workspaceManager,
+                             TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback,
+                             List<ToolkitContributor> toolkitContributors,
+                             ProviderManager providerManager,
+                             AgentStateStore stateStore,
+                             String executionSandboxMode) {
         this.configManager = configManager;
         this.providerManager = providerManager;
-        this.agentFactory = new MelonAgentFactory(this, tokenUsageCallback, toolkitContributors, providerManager);
+        this.agentFactory = new MelonAgentFactory(this, tokenUsageCallback, toolkitContributors,
+                providerManager, executionSandboxMode);
         this.workspaceManager = workspaceManager;
         this.stateStore = stateStore;
     }

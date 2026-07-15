@@ -25,6 +25,9 @@ public class AgentScopeConfig {
     @Value("${melon.home_dir:~/.melon}")
     private String melonHomeDir;
 
+    @Value("${melon.execution.sandbox-mode:docker}")
+    private String executionSandboxMode;
+
     @Bean
     public WorkspaceManager workspaceManager() {
         return new WorkspaceManager();
@@ -58,7 +61,7 @@ public class AgentScopeConfig {
                 (agentId, sessionId, modelName, usage, latencyMs) ->
                         tokenUsageService.recordUsage(sessionId, agentId, modelName,
                                 usage.promptTokens(), usage.completionTokens(), usage.totalTokens()),
-                contributors, providerManager, stateStore);
+                contributors, providerManager, stateStore, executionSandboxMode);
         mgr.init();
         return mgr;
     }

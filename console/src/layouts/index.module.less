@@ -1859,3 +1859,63 @@
     display: none !important;
   }
 }
+
+// Final shell precedence. Legacy layout rules above remain for component
+// compatibility, while these declarations define the shipped console frame.
+.header {
+  height: 64px;
+  min-height: 64px;
+  padding: 0 20px;
+  border-top: 0;
+}
+
+.sider,
+.siderDark {
+  height: calc(100vh - 64px) !important;
+
+  .stickyChatButtonActive::before,
+  .simpleNavItemActive::before {
+    display: none !important;
+  }
+
+  :global(.qwenpaw-menu-item-selected) {
+    box-shadow: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    height: 56px;
+    min-height: 56px;
+    gap: 8px;
+    padding: 0 10px;
+    border-top: 0;
+  }
+
+  .companyBrandCopy,
+  .sidebarTrigger,
+  .headerAccountText,
+  .headerAccountChevron {
+    display: none !important;
+  }
+
+  .companyBrandMark {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .headerAgentContext {
+    flex: 1;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .headerAccount {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    grid-template-columns: 28px;
+    padding: 3px;
+  }
+}

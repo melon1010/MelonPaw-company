@@ -173,8 +173,13 @@ API Key 和渠道密钥不得提交到仓库、工作区文档或日志中。Oll
 后端开发服务：
 
 ```bash
-mvn -pl melon-app spring-boot:run
+mvn -pl melon-app spring-boot:run -Dspring-boot.run.profiles=local
 ```
+
+在 IntelliJ IDEA 的 Spring Boot Run/Debug Configuration 中把 Active profiles
+设置为 `local`，会加载 `application-local.yaml` 并使用 AgentScope
+`LocalFilesystemSpec`。该模式允许在宿主机执行命令，仅用于可信的本地开发；
+不启用 `local` profile 时，`application.yaml` 默认使用 Docker 沙箱。
 
 前端开发服务：
 

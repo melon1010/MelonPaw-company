@@ -15,6 +15,10 @@ spring:
 
 melon:
   home_dir: ${MELON_HOME:~/.melonAI}
+  execution:
+    # Keep production fail-closed. IDEA development should enable the `local`
+    # Spring profile from application-local.yaml.
+    sandbox-mode: ${MELON_EXECUTION_SANDBOX:docker}
   enterprise:
     database-path: ${MELON_ENTERPRISE_DATABASE_PATH:}
     auth:

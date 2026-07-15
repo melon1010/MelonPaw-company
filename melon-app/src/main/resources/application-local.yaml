@@ -1,0 +1,9 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+
+melon:
+  execution:
+    # Development only: execute and Skill scripts run on the IDE host process.
+    sandbox-mode: local

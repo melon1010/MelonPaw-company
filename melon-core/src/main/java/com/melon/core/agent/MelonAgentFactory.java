@@ -35,6 +35,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -48,33 +49,55 @@ public class MelonAgentFactory {
     private final TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback;
     private final List<ToolkitContributor> toolkitContributors;
     private final ProviderManager providerManager;
+    private final String configuredExecutionSandboxMode;
 
     public MelonAgentFactory() {
-        this(null, List.of(), null);
+        this(null, List.of(), null, null);
     }
 
     public MelonAgentFactory(TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback) {
-        this(tokenUsageCallback, List.of(), null);
+        this(tokenUsageCallback, List.of(), null, null);
     }
 
     public MelonAgentFactory(TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback,
                              List<ToolkitContributor> toolkitContributors) {
-        this(tokenUsageCallback, toolkitContributors, null);
+        this(tokenUsageCallback, toolkitContributors, null, null);
     }
 
     public MelonAgentFactory(TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback,
                              List<ToolkitContributor> toolkitContributors,
                              ProviderManager providerManager) {
+        this(tokenUsageCallback, toolkitContributors, providerManager, null);
+    }
+
+    public MelonAgentFactory(TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback,
+                             List<ToolkitContributor> toolkitContributors,
+                             ProviderManager providerManager,
+                             String executionSandboxMode) {
         this.tokenUsageCallback = tokenUsageCallback;
         this.toolkitContributors = toolkitContributors != null ? List.copyOf(toolkitContributors) : List.of();
         this.providerManager = providerManager;
+        this.configuredExecutionSandboxMode = executionSandboxMode == null || executionSandboxMode.isBlank()
+                ? null
+                : normalizeExecutionSandboxMode(executionSandboxMode);
+        if (this.configuredExecutionSandboxMode != null) {
+            log.info("Agent execution sandbox mode configured: {}", this.configuredExecutionSandboxMode);
+        }
     }
 
     public MelonAgentFactory(MultiAgentManager ignoredAgentManager,
                              TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback,
                              List<ToolkitContributor> toolkitContributors,
                              ProviderManager providerManager) {
-        this(tokenUsageCallback, toolkitContributors, providerManager);
+        this(tokenUsageCallback, toolkitContributors, providerManager, null);
+    }
+
+    public MelonAgentFactory(MultiAgentManager ignoredAgentManager,
+                             TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback,
+                             List<ToolkitContributor> toolkitContributors,
+                             ProviderManager providerManager,
+                             String executionSandboxMode) {
+        this(tokenUsageCallback, toolkitContributors, providerManager, executionSandboxMode);
     }
 
     /**
@@ -108,7 +131,8 @@ public class MelonAgentFactory {
                 .agentId(agentId)
                 .toolkit(toolkit)
                 .workspace(workspaceDir);
-        if ("local".equalsIgnoreCase(executionSandboxMode())) {
+        String sandboxMode = executionSandboxMode();
+        if ("local".equals(sandboxMode)) {
             log.warn("Agent {} uses local shell execution. This is a development-only mode; "
                     + "enterprise deployments must use DockerFilesystemSpec.", agentId);
             builder.filesystem(new LocalFilesystemSpec()
@@ -118,8 +142,11 @@ public class MelonAgentFactory {
                     .isolationScope(IsolationScope.USER)
                     .inheritEnv(false)
                     .executeTimeoutSeconds(shellTimeoutSeconds(agentConfig)));
-        } else {
+        } else if ("docker".equals(sandboxMode)) {
             builder.filesystem(dockerFilesystem(workspaceDir));
+        } else {
+            throw new IllegalStateException("Unsupported execution sandbox mode '" + sandboxMode
+                    + "'. Supported modes: local, docker");
         }
         builder
                 .toolsConfig(buildHarnessToolsConfig(agentConfig))
@@ -210,7 +237,20 @@ public class MelonAgentFactory {
     }
 
     private String executionSandboxMode() {
-        return envOr("MELON_EXECUTION_SANDBOX", "docker");
+        String value = configuredExecutionSandboxMode;
+        if (value == null || value.isBlank()) {
+            value = envOr("MELON_EXECUTION_SANDBOX", "docker");
+        }
+        return normalizeExecutionSandboxMode(value);
+    }
+
+    private static String normalizeExecutionSandboxMode(String value) {
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (!"local".equals(normalized) && !"docker".equals(normalized)) {
+            throw new IllegalArgumentException("Unsupported execution sandbox mode '" + value
+                    + "'. Supported modes: local, docker");
+        }
+        return normalized;
     }
 
     private String envOr(String name, String fallback) {
