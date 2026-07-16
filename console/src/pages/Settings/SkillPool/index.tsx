@@ -6,7 +6,6 @@ import {
   CloseOutlined,
   DeleteOutlined,
   ReloadOutlined,
-  SendOutlined,
   SyncOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
@@ -18,7 +17,6 @@ import { SkillFilterDropdown } from "../../Agent/Skills/components/SkillFilterDr
 import { AddSkillDropdown } from "../../Agent/Skills/components/AddSkillDropdown";
 import { MarketPanel } from "../Market/MarketPanel";
 import {
-  BroadcastModal,
   ImportBuiltinModal,
   PoolSkillCard,
   PoolSkillListItem,
@@ -131,16 +129,6 @@ function SkillPoolPage() {
                       onClick={pool.handleRefresh}
                       disabled={pool.loading}
                     />
-                  </Tooltip>
-                  <Tooltip title={t("skillPool.broadcastHint")}>
-                    <Button
-                      type="default"
-                      className={styles.primaryTransferButton}
-                      icon={<SendOutlined />}
-                      onClick={() => pool.openBroadcast()}
-                    >
-                      {t("skillPool.broadcast")}
-                    </Button>
                   </Tooltip>
                   <Tooltip
                     title={
@@ -273,7 +261,6 @@ function SkillPoolPage() {
                 batchModeEnabled={pool.batchModeEnabled}
                 onToggleSelect={pool.togglePoolSelect}
                 onEdit={pool.openEdit}
-                onBroadcast={pool.openBroadcast}
                 onDelete={pool.handleDelete}
                 onToggleAutoUpdate={pool.handleToggleAutoUpdate}
               />
@@ -290,7 +277,6 @@ function SkillPoolPage() {
                 batchModeEnabled={pool.batchModeEnabled}
                 onToggleSelect={pool.togglePoolSelect}
                 onEdit={pool.openEdit}
-                onBroadcast={pool.openBroadcast}
                 onDelete={pool.handleDelete}
               />
             ))}
@@ -305,15 +291,6 @@ function SkillPoolPage() {
         onCancel={pool.closeImportModal}
         onConfirm={pool.handleConfirmImport}
         hint={t("skillPool.externalHubHint")}
-      />
-
-      <BroadcastModal
-        open={pool.mode === "broadcast"}
-        skills={pool.skills}
-        workspaces={pool.workspaces}
-        initialSkillNames={pool.broadcastInitialNames}
-        onCancel={pool.closeModal}
-        onConfirm={pool.handleBroadcast}
       />
 
       <ImportBuiltinModal

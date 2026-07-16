@@ -18,7 +18,6 @@ interface PoolSkillCardProps {
   batchModeEnabled: boolean;
   onToggleSelect: (name: string) => void;
   onEdit: (skill: PoolSkillSpec) => void;
-  onBroadcast: (skill: PoolSkillSpec) => void;
   onDelete: (skill: PoolSkillSpec) => void;
   onToggleAutoUpdate: (
     skill: PoolSkillSpec,
@@ -33,7 +32,6 @@ export function PoolSkillCard({
   batchModeEnabled,
   onToggleSelect,
   onEdit,
-  onBroadcast,
   onDelete,
   onToggleAutoUpdate,
 }: PoolSkillCardProps) {
@@ -175,16 +173,6 @@ export function PoolSkillCard({
               }}
             />
           </Tooltip>
-          <Button
-            className={styles.actionButton}
-            disabled={batchModeEnabled}
-            onClick={(e) => {
-              e.stopPropagation();
-              onBroadcast(skill);
-            }}
-          >
-            {t("skillPool.broadcast")}
-          </Button>
           <Button
             danger
             className={styles.deleteButton}

@@ -19,7 +19,6 @@ interface PoolSkillListItemProps {
   batchModeEnabled: boolean;
   onToggleSelect: (name: string) => void;
   onEdit: (skill: PoolSkillSpec) => void;
-  onBroadcast: (skill: PoolSkillSpec) => void;
   onDelete: (skill: PoolSkillSpec) => void;
 }
 
@@ -29,7 +28,6 @@ export function PoolSkillListItem({
   batchModeEnabled,
   onToggleSelect,
   onEdit,
-  onBroadcast,
   onDelete,
 }: PoolSkillListItemProps) {
   const { t } = useTranslation();
@@ -88,16 +86,6 @@ export function PoolSkillListItem({
         </div>
       </div>
       <div className={styles.listItemRight}>
-        <Button
-          className={styles.actionButton}
-          disabled={batchModeEnabled}
-          onClick={(e) => {
-            e.stopPropagation();
-            onBroadcast(skill);
-          }}
-        >
-          {t("skillPool.broadcast")}
-        </Button>
         <Button
           danger
           className={styles.deleteButton}
