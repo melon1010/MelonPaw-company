@@ -9,6 +9,7 @@ import {
   SyncOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
+import { Send } from "lucide-react";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -21,6 +22,7 @@ import {
   PoolSkillCard,
   PoolSkillListItem,
   PoolSkillDrawer,
+  SkillDistributionModal,
 } from "./components";
 import { getBuiltinNoticeLines } from "./builtinNotice";
 import { useSkillPool } from "./useSkillPool";
@@ -109,6 +111,15 @@ function SkillPoolPage() {
                   {t("skills.clearSelection")}
                 </Button>
                 <Button
+                  icon={<Send size={15} />}
+                  disabled={pool.selectedPoolSkills.size === 0}
+                  onClick={() =>
+                    pool.openBroadcast(Array.from(pool.selectedPoolSkills))
+                  }
+                >
+                  {t("skillPool.broadcast")}
+                </Button>
+                <Button
                   danger
                   icon={<DeleteOutlined />}
                   onClick={pool.handleBatchDeletePool}
@@ -161,6 +172,16 @@ function SkillPoolPage() {
                 <div className={styles.headerActionsRight}>
                   <Button type="primary" onClick={pool.toggleBatchMode}>
                     {t("skills.batchOperation")}
+                  </Button>
+                  <Button
+                    type="default"
+                    icon={<Send size={15} />}
+                    onClick={() => pool.openBroadcast()}
+                    disabled={
+                      pool.skills.length === 0 || pool.workspaces.length === 0
+                    }
+                  >
+                    {t("skillPool.broadcast")}
                   </Button>
                   <AddSkillDropdown
                     onCreate={pool.openCreate}
@@ -263,6 +284,7 @@ function SkillPoolPage() {
                 onEdit={pool.openEdit}
                 onDelete={pool.handleDelete}
                 onToggleAutoUpdate={pool.handleToggleAutoUpdate}
+                onBroadcast={pool.openBroadcast}
               />
             ))}
             {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
@@ -278,6 +300,7 @@ function SkillPoolPage() {
                 onToggleSelect={pool.togglePoolSelect}
                 onEdit={pool.openEdit}
                 onDelete={pool.handleDelete}
+                onBroadcast={pool.openBroadcast}
               />
             ))}
             {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
@@ -291,6 +314,15 @@ function SkillPoolPage() {
         onCancel={pool.closeImportModal}
         onConfirm={pool.handleConfirmImport}
         hint={t("skillPool.externalHubHint")}
+      />
+
+      <SkillDistributionModal
+        open={pool.mode === "broadcast"}
+        skills={pool.skills}
+        workspaces={pool.workspaces}
+        initialSkillNames={pool.broadcastInitialNames}
+        onCancel={pool.closeModal}
+        onConfirm={pool.handleBroadcast}
       />
 
       <ImportBuiltinModal

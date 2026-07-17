@@ -40,6 +40,9 @@ function validateUrl(url: string): ValidationResult {
   } catch {
     return { ok: false, messageKey: "skills.invalidUrl" };
   }
+  if (parsedInput.protocol !== "https:" && parsedInput.protocol !== "http:") {
+    return { ok: false, messageKey: "skills.invalidUrl" };
+  }
 
   const inputHost = normalizeHost(parsedInput.host);
   const inputPath = parsedInput.pathname.toLowerCase();
@@ -56,11 +59,10 @@ function validateUrl(url: string): ValidationResult {
       inputPath.startsWith(parsedPrefix.pathname.toLowerCase())
     );
   });
-  if (!source) {
-    return { ok: false, messageKey: "skills.invalidSkillUrlSource" };
-  }
-
-  return { ok: true, source: source.name };
+  return {
+    ok: true,
+    source: source?.name || parsedInput.hostname,
+  };
 }
 
 export function ImportHubModal({

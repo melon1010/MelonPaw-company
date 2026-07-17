@@ -1,5 +1,6 @@
 package com.melon.app.auth;
 
+import com.melon.core.config.ConfigManager;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -13,6 +14,28 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AuthControllerBootstrapTokenTest {
+
+    @Test
+    void disabledGeneratedTokenAllowsDirectBootstrap() {
+        AuthService authService = mock(AuthService.class);
+        when(authService.hasUsers()).thenReturn(false);
+        EnterprisePrincipal principal = new EnterprisePrincipal(
+                "admin-id", "admin", "Administrator", true,
+                Set.of("SYSTEM_ADMIN"), Set.of(), "", "");
+        when(authService.login("admin", "StrongPassword123")).thenReturn(
+                new AuthService.AuthResult(true, "token", Instant.now().plusSeconds(60), principal, null));
+        AuthController controller = new AuthController(
+                authService, "", false, mock(ConfigManager.class));
+
+        var response = controller.bootstrap(Map.of(
+                "username", "admin",
+                "display_name", "Administrator",
+                "password", "StrongPassword123"
+        )).block();
+
+        assertEquals(200, response.getStatusCode().value());
+        verify(authService).bootstrap("admin", "Administrator", "StrongPassword123");
+    }
 
     @Test
     void bootstrapRequiresConfiguredToken() {

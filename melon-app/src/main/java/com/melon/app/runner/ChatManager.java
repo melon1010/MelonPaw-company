@@ -97,9 +97,15 @@ public class ChatManager {
     public boolean delete(String agentId, String chatId) {
         if (chatId == null || chatId.isBlank()) return false;
         List<ChatSpec> chats = new ArrayList<>(load(agentId));
-        boolean removed = chats.removeIf(chat -> chatId.equals(chat.getId()));
-        if (removed) save(agentId, chats);
-        return removed;
+        ChatSpec deleted = chats.stream()
+                .filter(chat -> chatId.equals(chat.getId()))
+                .findFirst()
+                .orElse(null);
+        if (deleted == null) return false;
+        chats.remove(deleted);
+        save(agentId, chats);
+        clearSession(agentId, deleted.getChannel(), deleted.getUserId(), deleted.getSessionId());
+        return true;
     }
 
     public ChatSpec getOrCreateForSession(String agentId, String sessionId, String userId, String channel, String name) {
@@ -174,6 +180,45 @@ public class ChatManager {
         if (!Files.isRegularFile(file)) return Map.of();
         Map<String, Object> raw = JsonUtils.load(file, MAP_TYPE);
         return raw != null ? raw : Map.of();
+    }
+
+    /** Removes the persisted frontend shadow and scroll history for one conversation session. */
+    public boolean clearSession(String agentId, String channel, String userId, String sessionId) {
+        boolean deleted = false;
+        try {
+            deleted = Files.deleteIfExists(sessionFile(agentId, channel, userId, sessionId));
+        } catch (IOException e) {
+            log.warn("Failed to clear session shadow: agent={}, session={}", agentId, sessionId, e);
+        }
+        if (historyStore != null) {
+            try {
+                historyStore.awaitIdle(5_000);
+                historyStore.deleteSession(agentId, sessionId);
+            } catch (RuntimeException e) {
+                log.warn("Failed to clear session history: agent={}, session={}", agentId, sessionId, e);
+            }
+        }
+        deleteSessionLogs(agentId, sessionId);
+        return deleted;
+    }
+
+    private void deleteSessionLogs(String agentId, String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return;
+        Path workspace = configManager.resolveWorkspaceDir(normalizeAgentId(agentId));
+        List<Path> roots = List.of(workspace.resolve("agents"), workspace.resolve("default").resolve("agents"));
+        List<String> names = List.of(sessionId + ".log.jsonl", sessionId + ".jsonl");
+        for (Path root : roots) {
+            if (!Files.isDirectory(root)) continue;
+            try (var paths = Files.walk(root)) {
+                for (Path path : paths.filter(Files::isRegularFile)
+                        .filter(file -> names.contains(file.getFileName().toString())).toList()) {
+                    Files.deleteIfExists(path);
+                }
+            } catch (IOException e) {
+                log.warn("Failed to clear AgentScope session logs: agent={}, session={}",
+                        agentId, sessionId, e);
+            }
+        }
     }
 
     private Map<String, Object> previousShadowState(String agentId, String channel, String userId, String sessionId) {
@@ -677,6 +722,7 @@ public class ChatManager {
                     .map(Map.class::cast)
                     .anyMatch(existing -> id.equals(stringValue(existing.get("id"))));
             if (exists) continue;
+            if (isCoveredByCurrentTurn(context, item)) continue;
             int matchingUser = findMatchingUserContext(context, item);
             if (matchingUser >= 0 && context.get(matchingUser) instanceof Map<?, ?> rawExisting) {
                 Map<String, Object> existing = new LinkedHashMap<>();
@@ -688,6 +734,48 @@ public class ChatManager {
             }
         }
         state.put("context", context);
+    }
+
+    private boolean isCoveredByCurrentTurn(List<Object> context, Map<String, Object> candidate) {
+        if ("user".equalsIgnoreCase(stringValue(candidate.get("role")))) return false;
+        List<String> candidateBlocks = blockFingerprints(candidate.get("content"));
+        if (candidateBlocks.isEmpty()) return false;
+
+        List<String> existingBlocks = new ArrayList<>();
+        for (int i = context.size() - 1; i >= 0; i--) {
+            Object item = context.get(i);
+            if (!(item instanceof Map<?, ?> raw)) continue;
+            if ("user".equalsIgnoreCase(stringValue(raw.get("role")))) break;
+            existingBlocks.addAll(blockFingerprints(raw.get("content")));
+        }
+        return existingBlocks.containsAll(candidateBlocks);
+    }
+
+    private List<String> blockFingerprints(Object content) {
+        if (!(content instanceof List<?> blocks)) return List.of();
+        List<String> fingerprints = new ArrayList<>();
+        for (Object block : blocks) {
+            if (!(block instanceof Map<?, ?> raw)) continue;
+            String type = stringValue(raw.get("type"));
+            if ("tool_use".equals(type) || "tool_call".equals(type)) {
+                String id = stringValue(raw.get("id"));
+                fingerprints.add(id.isBlank()
+                        ? "tool_call:" + JsonUtils.toJson(raw)
+                        : "tool_call:" + id);
+            } else if ("tool_result".equals(type)) {
+                String id = stringValue(raw.get("id"));
+                fingerprints.add(id.isBlank()
+                        ? "tool_result:" + JsonUtils.toJson(raw)
+                        : "tool_result:" + id);
+            } else if ("thinking".equals(type)) {
+                fingerprints.add("thinking:" + stringValue(raw.get("thinking")));
+            } else if ("text".equals(type)) {
+                fingerprints.add("text:" + stringValue(raw.get("text")));
+            } else {
+                fingerprints.add(type + ":" + JsonUtils.toJson(raw));
+            }
+        }
+        return fingerprints;
     }
 
     @SuppressWarnings("unchecked")

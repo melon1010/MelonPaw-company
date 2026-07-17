@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  *
  * <p>Defines how the agent handles tool execution approval:
  * <ul>
+ *   <li>{@code RISK_BASED} - Default: classify each tool invocation by its parameters.</li>
  *   <li>{@code OFF} - No approval required, all tools auto-approved.</li>
  *   <li>{@code AUTO} - Automatic approval based on tool safety classification.</li>
  *   <li>{@code SMART} - Smart approval: auto-approve safe tools, require approval for risky ones.</li>
@@ -24,9 +25,10 @@ public class ApprovalConfig {
     public static final String LEVEL_AUTO = "AUTO";
     public static final String LEVEL_SMART = "SMART";
     public static final String LEVEL_STRICT = "STRICT";
+    public static final String LEVEL_RISK_BASED = "RISK_BASED";
 
     @JsonProperty("level")
-    private String level = LEVEL_AUTO;
+    private String level = LEVEL_RISK_BASED;
 
     // ---- Getters / Setters ----
 

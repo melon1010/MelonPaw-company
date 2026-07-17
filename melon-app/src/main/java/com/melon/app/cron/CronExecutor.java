@@ -4,7 +4,9 @@ import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.UserMessage;
 import com.melon.app.runner.AgentRunner;
 import com.melon.app.runner.ChatManager;
+import com.melon.app.runner.ChatSpec;
 import com.melon.app.service.InboxStore;
+import com.melon.app.task.EnterpriseTaskService;
 import com.melon.channels.ChannelAddress;
 import com.melon.channels.ChannelInboundMessage;
 import com.melon.channels.ChannelManager;
@@ -33,13 +35,15 @@ public class CronExecutor {
     private final ChatManager chatManager;
     private final ChannelManager channelManager;
     private final InboxStore inboxStore;
+    private final EnterpriseTaskService taskService;
 
     public CronExecutor(AgentRunner agentRunner, ChatManager chatManager, ChannelManager channelManager,
-                        InboxStore inboxStore) {
+                        InboxStore inboxStore, EnterpriseTaskService taskService) {
         this.agentRunner = agentRunner;
         this.chatManager = chatManager;
         this.channelManager = channelManager;
         this.inboxStore = inboxStore;
+        this.taskService = taskService;
     }
 
     /**
@@ -61,6 +65,7 @@ public class CronExecutor {
         }
         if (job.getDispatch() != null && !job.getDispatch().isEmpty()) {
             injectDispatchedMessage(agentId, message, runId, job.getDispatch(), out -> {
+                linkTraceFromOutbound(runId, out);
                 appendTraceAndCronEvent(job, runId, cleanText(out), null);
             }, err -> appendTraceAndCronEvent(job, runId, "", err));
         } else {
@@ -118,6 +123,7 @@ public class CronExecutor {
                               String userId, String sessionId, String channel, Map<String, Object> envInfo,
                               Consumer<Msg> onSuccess,
                               Consumer<Throwable> onError) {
+        EnterpriseTaskService.TaskRun task = null;
         try {
             // 构造消息 (近似 AgentScope API)
             Msg msg = new UserMessage(message);
@@ -126,8 +132,24 @@ public class CronExecutor {
             String sid = sessionId == null || sessionId.isBlank() ? "cron-" + taskId : sessionId;
             String uid = userId == null || userId.isBlank() ? "default" : userId;
             String ch = channel == null || channel.isBlank() ? "console" : channel;
-            Map<String, Object> env = envInfo != null ? envInfo : Map.of();
-            chatManager.getOrCreateForSession(agentId, sid, uid, ch, "cron result: " + taskId);
+            Map<String, Object> env = new LinkedHashMap<>(envInfo != null ? envInfo : Map.of());
+            String trigger = taskId != null && taskId.startsWith("heartbeat-") ? "heartbeat" : "cron";
+            ChatSpec chat = chatManager.getOrCreateForSession(
+                    agentId, sid, uid, ch, trigger + " result: " + taskId);
+            task = taskService.startForAgent("AUTOMATION", uid, agentId, chat.getName(), sid,
+                    trigger, taskId, chat.getId(), trigger + ":" + taskId);
+            if (!task.created()) {
+                log.info("Automation task {} was already accepted", taskId);
+                return;
+            }
+            env.put("task_id", task.taskId());
+            env.put("run_id", task.runId());
+            taskService.setRetryIntent(task, new EnterpriseTaskService.RetryIntent("QUERY", message, env));
+            if ("heartbeat".equals(trigger)) {
+                inboxStore.createTrace(taskId, Map.of("source", "heartbeat"));
+            }
+            inboxStore.linkTask(taskId, task.taskId(), task.runId());
+            EnterpriseTaskService.TaskRun activeTask = task;
 
             // 非流式查询, 异步订阅结果
             agentRunner.query(agentId, msgs, uid, sid, env)
@@ -136,12 +158,14 @@ public class CronExecutor {
                     .doOnSuccess(reply -> {
                         chatManager.saveSessionShadowFromStateStore(agentId, ch, uid, sid);
                         appendHeartbeatEvent(agentId, taskId, reply != null ? reply.getTextContent() : "", null);
+                        taskService.succeed(activeTask, reply != null ? reply.getTextContent() : "");
                         onSuccess.accept(reply);
                     })
                     .doOnError(err -> log.error("Cron task {} failed", taskId, err))
                     .doOnError(err -> {
                         chatManager.saveSessionShadowFromStateStore(agentId, ch, uid, sid);
                         appendHeartbeatEvent(agentId, taskId, "", err);
+                        taskService.fail(activeTask, err);
                         onError.accept(err);
                     })
                     .subscribe(); // 异步, 不阻塞
@@ -150,6 +174,7 @@ public class CronExecutor {
             // AgentScope API 不可用时回退到日志
             log.warn("AgentScope Msg API unavailable, logging message instead: agent={}, task={}", agentId, taskId);
             log.info("Cron message for agent [{}]: {}", agentId, message);
+            if (task != null) taskService.fail(task, e);
             onError.accept(e);
         }
     }
@@ -175,7 +200,10 @@ public class CronExecutor {
                 ok ? "info" : "error",
                 (ok ? "Cron result: " : "Cron failed: ") + name(job),
                 ok ? preview(text, "Agent cron task finished successfully.") : preview(err.getMessage(), "Cron task failed."),
-                Map.of("job_id", sourceId(job), "job_name", name(job), "task_type", value(job.getTaskType(), "agent"), "run_id", runId)
+                inboxStore.linkedPayload(runId, Map.of(
+                        "job_id", sourceId(job),
+                        "job_name", name(job),
+                        "task_type", value(job.getTaskType(), "agent")))
         );
     }
 
@@ -184,11 +212,9 @@ public class CronExecutor {
             return;
         }
         if (err != null) {
-            inboxStore.createTrace(runId, Map.of("source", "heartbeat"));
             inboxStore.appendTraceText(runId, "assistant", err.getMessage());
             inboxStore.finalizeTrace(runId, "error", err.getMessage());
         } else {
-            inboxStore.createTrace(runId, Map.of("source", "heartbeat"));
             inboxStore.appendTraceText(runId, "assistant", text);
             inboxStore.finalizeTrace(runId, "success", null);
         }
@@ -202,8 +228,17 @@ public class CronExecutor {
                 ok ? "info" : "error",
                 ok ? "Heartbeat result" : "Heartbeat execution failed",
                 ok ? preview(text, "Heartbeat task finished successfully.") : preview(err.getMessage(), "Heartbeat task failed."),
-                Map.of("run_id", runId)
+                inboxStore.linkedPayload(runId, Map.of("source", "heartbeat"))
         );
+    }
+
+    private void linkTraceFromOutbound(String traceId, ChannelOutboundMessage out) {
+        if (out == null || out.getMeta() == null) return;
+        Object taskId = out.getMeta().get("task_id");
+        Object runId = out.getMeta().get("run_id");
+        if (taskId != null && runId != null) {
+            inboxStore.linkTask(traceId, String.valueOf(taskId), String.valueOf(runId));
+        }
     }
 
     private String sourceId(CronManager.CronJob job) {

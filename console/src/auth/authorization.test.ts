@@ -34,6 +34,7 @@ describe("enterprise route authorization", () => {
         "skills:personal",
         "channels:personal",
         "automations:personal",
+        "mcp:personal",
       ],
     );
     expect(canAccessRoute("core.root", employee)).toBe(true);
@@ -61,8 +62,9 @@ describe("enterprise route authorization", () => {
         employee,
       ),
     ).toEqual([]);
-    expect(canAccessRoute("core.mcp", employee)).toBe(false);
-    expect(canAccessRoute("core.agent-config", employee)).toBe(false);
+    expect(canAccessRoute("core.mcp", employee)).toBe(true);
+    expect(canAccessRoute("core.agent-config", employee)).toBe(true);
+    expect(canAccessRoute("core.agent-stats", employee)).toBe(true);
     expect(canAccessRoute("core.agents", employee)).toBe(false);
   });
 

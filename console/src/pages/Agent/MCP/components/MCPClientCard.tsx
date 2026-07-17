@@ -24,6 +24,10 @@ interface MCPClientUpdate {
   args?: string[];
   env?: Record<string, string>;
   cwd?: string;
+  startup_timeout_seconds?: number;
+  tool_timeout_seconds?: number;
+  tool_timeouts?: Record<string, number>;
+  max_inline_result_bytes?: number;
 }
 
 interface MCPClientCardProps {
@@ -71,6 +75,16 @@ export const MCPClientCard = React.memo(function MCPClientCard({
   const isOauthExpired =
     !!oauthStatus?.authorized && oauthStatus.expires_at <= now;
   const hasOauth = !!oauthStatus;
+  const connectionStatus = !client.enabled
+    ? "disabled"
+    : client.connected
+    ? "connected"
+    : client.status === "connecting" || client.status === "reconnecting"
+    ? client.status
+    : client.error
+    ? "error"
+    : "disconnected";
+  const connectionLabel = t(`mcp.status.${connectionStatus}`);
 
   const handleToggleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -120,7 +134,12 @@ export const MCPClientCard = React.memo(function MCPClientCard({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className={`${styles.mcpCard} ${
-          client.enabled ? styles.enabledCard : ""
+          client.connected ? styles.enabledCard : ""
+        } ${connectionStatus === "error" ? styles.errorCard : ""} ${
+          connectionStatus === "connecting" ||
+          connectionStatus === "reconnecting"
+            ? styles.connectingCard
+            : ""
         } ${isHovered ? styles.hover : styles.normal}`}
       >
         <div className={styles.cardHeader}>
@@ -167,15 +186,20 @@ export const MCPClientCard = React.memo(function MCPClientCard({
               </Tooltip>
             )}
           </div>
-          <div className={styles.statusContainer}>
-            <span className={styles.statusDot} />
-            <span className={styles.statusText}>
-              {client.enabled ? t("common.enabled") : t("common.disabled")}
-            </span>
-          </div>
+          <Tooltip title={client.error || connectionLabel}>
+            <div className={styles.statusContainer}>
+              <span className={styles.statusDot} />
+              <span className={styles.statusText}>{connectionLabel}</span>
+            </div>
+          </Tooltip>
         </div>
 
         <p className={styles.mcpDescription}>{client.description || "-"}</p>
+        {client.enabled && client.error ? (
+          <Tooltip title={client.error}>
+            <p className={styles.connectionError}>{client.error}</p>
+          </Tooltip>
+        ) : null}
 
         <div className={styles.cardFooter}>
           <Button

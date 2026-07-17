@@ -108,13 +108,13 @@ public class InboxStore {
 
     public synchronized Map<String, Object> deleteEvent(String eventId, String agentId) {
         List<Map<String, Object>> events = events();
-        String runId = null;
+        String traceId = null;
         boolean deleted = false;
         List<Map<String, Object>> kept = new ArrayList<>();
         for (Map<String, Object> event : events) {
             if (!deleted && matchesAgent(event, agentId)
                     && eventId.equals(String.valueOf(event.get("id")))) {
-                runId = runId(event);
+                traceId = traceId(event);
                 deleted = true;
                 continue;
             }
@@ -122,12 +122,13 @@ public class InboxStore {
         }
         if (!deleted) return Map.of("deleted", false);
         JsonUtils.save(eventsFile(), kept);
-        String deletedRunId = runId;
-        boolean stillReferenced = deletedRunId != null && kept.stream().anyMatch(event -> deletedRunId.equals(runId(event)));
+        String deletedTraceId = traceId;
+        boolean stillReferenced = deletedTraceId != null
+                && kept.stream().anyMatch(event -> deletedTraceId.equals(traceId(event)));
         boolean traceDeleted = false;
-        if (deletedRunId != null && !stillReferenced) {
+        if (deletedTraceId != null && !stillReferenced) {
             try {
-                traceDeleted = Files.deleteIfExists(traceFile(deletedRunId));
+                traceDeleted = Files.deleteIfExists(traceFile(deletedTraceId));
             } catch (Exception ignored) {
                 traceDeleted = false;
             }
@@ -135,13 +136,19 @@ public class InboxStore {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("deleted", true);
         result.put("trace_deleted", traceDeleted);
-        result.put("run_id", deletedRunId);
+        result.put("trace_id", deletedTraceId);
+        result.put("run_id", deletedTraceId); // Legacy console clients used run_id for the trace id.
         return result;
     }
 
     public synchronized void createTrace(String runId, Map<String, Object> meta) {
         if (blank(runId)) return;
+        if (Files.isRegularFile(traceFile(runId))) {
+            mergeTraceMeta(runId, meta);
+            return;
+        }
         Map<String, Object> trace = new LinkedHashMap<>();
+        trace.put("trace_id", runId);
         trace.put("run_id", runId);
         trace.put("created_at", Instant.now().toEpochMilli() / 1000.0);
         trace.put("completed_at", null);
@@ -149,6 +156,23 @@ public class InboxStore {
         trace.put("meta", meta != null ? meta : Map.of());
         trace.put("events", new ArrayList<>());
         JsonUtils.save(traceFile(runId), trace);
+    }
+
+    public synchronized void linkTask(String traceId, String taskId, String runId) {
+        if (blank(traceId) || blank(taskId) || blank(runId)) return;
+        if (!Files.isRegularFile(traceFile(traceId))) return;
+        mergeTraceMeta(traceId, Map.of("task_id", taskId, "run_id", runId));
+    }
+
+    public synchronized Map<String, Object> linkedPayload(String traceId, Map<String, Object> payload) {
+        Map<String, Object> result = new LinkedHashMap<>(payload != null ? payload : Map.of());
+        result.put("trace_id", traceId);
+        Object metaRaw = getTrace(traceId).get("meta");
+        if (metaRaw instanceof Map<?, ?> meta) {
+            if (meta.get("task_id") != null) result.put("task_id", meta.get("task_id"));
+            if (meta.get("run_id") != null) result.put("run_id", meta.get("run_id"));
+        }
+        return result;
     }
 
     @SuppressWarnings("unchecked")
@@ -183,6 +207,7 @@ public class InboxStore {
         Map<String, Object> trace = JsonUtils.loadAsMap(traceFile(runId));
         if (!trace.isEmpty()) return trace;
         Map<String, Object> missing = new LinkedHashMap<>();
+        missing.put("trace_id", runId);
         missing.put("run_id", runId);
         missing.put("created_at", Instant.now().toEpochMilli() / 1000.0);
         missing.put("completed_at", null);
@@ -194,8 +219,19 @@ public class InboxStore {
 
     public synchronized Map<String, Object> getTrace(String runId, String agentId) {
         boolean accessible = events().stream().anyMatch(event ->
-                matchesAgent(event, agentId) && runId.equals(runId(event)));
+                matchesAgent(event, agentId) && runId.equals(traceId(event)));
         return accessible ? getTrace(runId) : missingTrace(runId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mergeTraceMeta(String traceId, Map<String, Object> additions) {
+        if (additions == null || additions.isEmpty()) return;
+        Map<String, Object> trace = getTrace(traceId);
+        Map<String, Object> meta = trace.get("meta") instanceof Map<?, ?> raw
+                ? new LinkedHashMap<>((Map<String, Object>) raw) : new LinkedHashMap<>();
+        meta.putAll(additions);
+        trace.put("meta", meta);
+        JsonUtils.save(traceFile(traceId), trace);
     }
 
     private List<Map<String, Object>> events() {
@@ -204,10 +240,11 @@ public class InboxStore {
     }
 
     @SuppressWarnings("unchecked")
-    private String runId(Map<String, Object> event) {
+    private String traceId(Map<String, Object> event) {
         Object payload = event.get("payload");
-        if (payload instanceof Map<?, ?> map && map.get("run_id") != null) {
-            return String.valueOf(map.get("run_id"));
+        if (payload instanceof Map<?, ?> map) {
+            if (map.get("trace_id") != null) return String.valueOf(map.get("trace_id"));
+            if (map.get("run_id") != null) return String.valueOf(map.get("run_id"));
         }
         return null;
     }
@@ -230,6 +267,7 @@ public class InboxStore {
 
     private Map<String, Object> missingTrace(String runId) {
         Map<String, Object> missing = new LinkedHashMap<>();
+        missing.put("trace_id", runId);
         missing.put("run_id", runId);
         missing.put("created_at", Instant.now().toEpochMilli() / 1000.0);
         missing.put("completed_at", null);

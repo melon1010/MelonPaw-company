@@ -1,19 +1,25 @@
 package com.melon.app.controller;
 
-import com.melon.app.mcp.McpClientManager;
+import com.melon.app.auth.EnterpriseAgentAccessService;
+import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.mcp.McpAccessPolicyService;
+import com.melon.app.mcp.McpClientManager;
+import com.melon.app.mcp.McpClientRegistry;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.config.ConfigManager;
 import com.melon.core.util.JsonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.LinkedHashMap;
+import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
 /**
@@ -35,132 +41,185 @@ public class McpController {
 
     private static final Logger log = LoggerFactory.getLogger(McpController.class);
 
-    private final McpClientManager mcpClientManager;
+    private final McpClientRegistry mcpClientRegistry;
     private final ConfigManager configManager;
     private final MultiAgentManager multiAgentManager;
     private final McpAccessPolicyService accessPolicyService;
+    private final EnterpriseAgentAccessService agentAccessService;
 
-    public McpController(McpClientManager mcpClientManager, ConfigManager configManager,
-                         MultiAgentManager multiAgentManager, McpAccessPolicyService accessPolicyService) {
-        this.mcpClientManager = mcpClientManager;
+    public McpController(McpClientRegistry mcpClientRegistry, ConfigManager configManager,
+                         MultiAgentManager multiAgentManager, McpAccessPolicyService accessPolicyService,
+                         EnterpriseAgentAccessService agentAccessService) {
+        this.mcpClientRegistry = mcpClientRegistry;
         this.configManager = configManager;
         this.multiAgentManager = multiAgentManager;
         this.accessPolicyService = accessPolicyService;
+        this.agentAccessService = agentAccessService;
     }
 
     @GetMapping
-    public Mono<ResponseEntity<?>> listClients() {
-        return Mono.fromCallable(() -> ResponseEntity.ok(mcpClientManager.listServers().stream()
-                .map(this::clientInfo)
-                .collect(Collectors.toList())));
+    public Mono<ResponseEntity<?>> listClients(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        return blocking(() -> {
+            McpClientManager manager = manager(resolvedAgentId);
+            return ResponseEntity.ok(manager.listServers().stream()
+                    .map(config -> clientInfo(resolvedAgentId, manager, config))
+                    .collect(Collectors.toList()));
+        });
     }
 
     @GetMapping("/{clientKey}")
-    public Mono<ResponseEntity<?>> getClient(@PathVariable String clientKey) {
-        return Mono.fromCallable(() -> {
-            var config = mcpClientManager.getServer(clientKey);
+    public Mono<ResponseEntity<?>> getClient(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        return blocking(() -> {
+            McpClientManager manager = manager(resolvedAgentId);
+            var config = manager.getServer(clientKey);
             if (config == null) {
                 return ResponseEntity.notFound().build();
             }
-            return ResponseEntity.ok(clientInfo(config));
+            return ResponseEntity.ok(clientInfo(resolvedAgentId, manager, config));
         });
     }
 
     @PostMapping
-    public Mono<ResponseEntity<?>> createClient(@RequestBody Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
+    public Mono<ResponseEntity<?>> createClient(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
+            McpClientManager manager = manager(resolvedAgentId);
             var config = McpClientManager.McpServerConfig.fromMap(normalizeClientBody(body));
-            mcpClientManager.register(config);
-            multiAgentManager.reloadAll();
-            return ResponseEntity.status(201).body(clientInfo(config));
+            manager.register(config);
+            reloadAgent(resolvedAgentId);
+            return ResponseEntity.status(201).body(clientInfo(resolvedAgentId, manager, config));
         });
     }
 
     @PutMapping("/{clientKey}")
-    public Mono<ResponseEntity<?>> updateClient(@PathVariable String clientKey, @RequestBody Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
-            if (mcpClientManager.getServer(clientKey) == null) {
+    public Mono<ResponseEntity<?>> updateClient(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey, @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
+            McpClientManager manager = manager(resolvedAgentId);
+            var existing = manager.getServer(clientKey);
+            if (existing == null) {
                 return ResponseEntity.notFound().build();
             }
-            Map<String, Object> normalized = normalizeClientBody(body);
-            normalized.put("id", clientKey);
-            mcpClientManager.unregister(clientKey);
-            var config = McpClientManager.McpServerConfig.fromMap(normalized);
-            mcpClientManager.register(config);
-            multiAgentManager.reloadAll();
-            return ResponseEntity.ok(clientInfo(config));
+            Map<String, Object> merged = mergeClientBody(existing, body);
+            merged.put("id", clientKey);
+            manager.unregister(clientKey);
+            var config = McpClientManager.McpServerConfig.fromMap(merged);
+            manager.register(config);
+            reloadAgent(resolvedAgentId);
+            return ResponseEntity.ok(clientInfo(resolvedAgentId, manager, config));
         });
     }
 
     @PatchMapping("/toggle/{clientKey}")
-    public Mono<ResponseEntity<?>> toggleClient(@PathVariable String clientKey) {
-        return Mono.fromCallable(() -> {
-            var config = mcpClientManager.getServer(clientKey);
+    public Mono<ResponseEntity<?>> toggleClient(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
+            McpClientManager manager = manager(resolvedAgentId);
+            var config = manager.getServer(clientKey);
             if (config == null) {
                 return ResponseEntity.notFound().build();
             }
-            config.setEnabled(!config.isEnabled());
-            if (config.isEnabled()) {
-                mcpClientManager.connect(clientKey);
-            } else {
-                mcpClientManager.disconnect(clientKey);
-            }
-            multiAgentManager.reloadAll();
-            return ResponseEntity.ok(clientInfo(config));
+            manager.setEnabled(clientKey, !config.isEnabled());
+            reloadAgent(resolvedAgentId);
+            return ResponseEntity.ok(clientInfo(resolvedAgentId, manager, config));
         });
     }
 
     @DeleteMapping("/{clientKey}")
-    public Mono<ResponseEntity<?>> deleteClient(@PathVariable String clientKey) {
-        return Mono.fromCallable(() -> {
-            boolean removed = mcpClientManager.unregister(clientKey);
+    public Mono<ResponseEntity<?>> deleteClient(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
+            boolean removed = manager(resolvedAgentId).unregister(clientKey);
             if (!removed) {
                 return ResponseEntity.notFound().build();
             }
-            multiAgentManager.reloadAll();
+            reloadAgent(resolvedAgentId);
             return ResponseEntity.ok(Map.of("message", "deleted"));
         });
     }
 
     @GetMapping("/tools/{clientKey}")
-    public Mono<ResponseEntity<?>> listClientTools(@PathVariable String clientKey) {
-        return Mono.fromCallable(() -> ResponseEntity.ok(toolInfos(clientKey)));
+    public Mono<ResponseEntity<?>> listClientTools(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        return blocking(() -> ResponseEntity.ok(toolInfos(manager(resolvedAgentId), clientKey)));
     }
 
     @PutMapping("/tools/{clientKey}")
-    public Mono<ResponseEntity<?>> updateToolWhitelist(@PathVariable String clientKey, @RequestBody Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
-            var config = mcpClientManager.getServer(clientKey);
+    public Mono<ResponseEntity<?>> updateToolWhitelist(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey, @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
+            McpClientManager manager = manager(resolvedAgentId);
+            var config = manager.getServer(clientKey);
             if (config == null) return ResponseEntity.notFound().build();
-            mcpClientManager.setToolWhitelist(clientKey, toStringListOrNull(body != null ? body.get("tools") : null));
-            multiAgentManager.reloadAll();
-            return ResponseEntity.ok(toolInfos(clientKey));
+            manager.setToolWhitelist(clientKey, toStringListOrNull(body != null ? body.get("tools") : null));
+            reloadAgent(resolvedAgentId);
+            return ResponseEntity.ok(toolInfos(manager, clientKey));
         });
     }
 
     @GetMapping("/access-principals")
-    public Mono<ResponseEntity<?>> accessPrincipals() {
-        return Mono.fromCallable(() -> ResponseEntity.ok(recentAccessPrincipals()));
+    public Mono<ResponseEntity<?>> accessPrincipals(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        return blocking(() -> ResponseEntity.ok(recentAccessPrincipals(resolvedAgentId)));
     }
 
     @GetMapping("/policy/{clientKey}")
-    public Mono<ResponseEntity<?>> getPolicy(@PathVariable String clientKey) {
-        return Mono.fromCallable(() -> ResponseEntity.ok(policy(clientKey)));
+    public Mono<ResponseEntity<?>> getPolicy(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        return blocking(() -> ResponseEntity.ok(policy(resolvedAgentId, clientKey)));
     }
 
     @PutMapping("/policy/{clientKey}")
-    public Mono<ResponseEntity<?>> updatePolicy(@PathVariable String clientKey, @RequestBody Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
-            return ResponseEntity.ok(accessPolicyService.save(clientKey, body));
-        });
+    public Mono<ResponseEntity<?>> updatePolicy(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey, @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> ResponseEntity.ok(
+                accessPolicyService.save(scope(resolvedAgentId), clientKey, body)));
     }
 
     @PostMapping("/oauth/start/{clientKey}")
-    public Mono<ResponseEntity<?>> startOAuth(@PathVariable String clientKey,
-                                              @RequestBody(required = false) Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
+    public Mono<ResponseEntity<?>> startOAuth(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey,
+            @RequestBody(required = false) Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
             try {
-                Map<String, Object> status = new LinkedHashMap<>(mcpClientManager.configureOAuth(clientKey, body));
+                Map<String, Object> status = new LinkedHashMap<>(
+                        manager(resolvedAgentId).configureOAuth(clientKey, body));
                 status.put("auth_url", "");
                 status.put("session_id", clientKey);
                 status.put("authorization_url", "");
@@ -172,14 +231,23 @@ public class McpController {
     }
 
     @GetMapping("/oauth/status/{clientKey}")
-    public Mono<ResponseEntity<?>> oauthStatus(@PathVariable String clientKey) {
-        return Mono.fromCallable(() -> ResponseEntity.ok(mcpClientManager.oauthStatus(clientKey)));
+    public Mono<ResponseEntity<?>> oauthStatus(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        return blocking(() -> ResponseEntity.ok(
+                manager(resolvedAgentId).oauthStatus(clientKey)));
     }
 
     @DeleteMapping("/oauth/{clientKey}")
-    public Mono<ResponseEntity<?>> revokeOAuth(@PathVariable String clientKey) {
-        return Mono.fromCallable(() -> {
-            if (!mcpClientManager.clearOAuth(clientKey)) {
+    public Mono<ResponseEntity<?>> revokeOAuth(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String clientKey,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
+            if (!manager(resolvedAgentId).clearOAuth(clientKey)) {
                 return ResponseEntity.notFound().build();
             }
             return ResponseEntity.ok(Map.of("message", "oauth disabled"));
@@ -190,13 +258,21 @@ public class McpController {
      * 列出所有 MCP 服务器.
      */
     @GetMapping("/servers")
-    public Mono<ResponseEntity<?>> listServers() {
-        return Mono.fromCallable(() -> {
-            List<Map<String, Object>> servers = mcpClientManager.listServers().stream()
+    public Mono<ResponseEntity<?>> listServers(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        return blocking(() -> {
+            McpClientManager manager = manager(resolvedAgentId);
+            List<Map<String, Object>> servers = manager.listServers().stream()
                     .map(config -> {
                         var map = serverMap(config);
-                        var state = mcpClientManager.getConnectionState(config.getId());
+                        var state = manager.getConnectionState(config.getId());
                         map.put("connected", state.connected());
+                        map.put("status", state.status());
+                        map.put("restart_count", state.restartCount());
+                        map.put("last_checked_at", state.lastCheckedAt());
+                        map.put("next_retry_at", state.nextRetryAt());
                         if (state.error() != null) {
                             map.put("error", state.error());
                         }
@@ -232,13 +308,19 @@ public class McpController {
      * }</pre>
      */
     @PostMapping("/servers")
-    public Mono<ResponseEntity<?>> registerServer(@RequestBody Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
+    public Mono<ResponseEntity<?>> registerServer(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
             try {
+                McpClientManager manager = manager(resolvedAgentId);
                 var config = McpClientManager.McpServerConfig.fromMap(body);
-                mcpClientManager.register(config);
-                multiAgentManager.reloadAll();
-                log.info("MCP server registered: id={}, name={}", config.getId(), config.getName());
+                manager.register(config);
+                reloadAgent(resolvedAgentId);
+                log.info("MCP server registered: agent={}, id={}, name={}",
+                        scope(resolvedAgentId), config.getId(), config.getName());
                 return ResponseEntity.ok(serverMap(config));
             } catch (Exception e) {
                 log.error("Failed to register MCP server", e);
@@ -251,13 +333,17 @@ public class McpController {
      * 移除 MCP 服务器.
      */
     @DeleteMapping("/servers/{id}")
-    public Mono<ResponseEntity<?>> removeServer(@PathVariable String id) {
-        return Mono.fromCallable(() -> {
-            boolean removed = mcpClientManager.unregister(id);
+    public Mono<ResponseEntity<?>> removeServer(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String id,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
+            boolean removed = manager(resolvedAgentId).unregister(id);
             if (!removed) {
                 return ResponseEntity.notFound().build();
             }
-            multiAgentManager.reloadAll();
+            reloadAgent(resolvedAgentId);
             return ResponseEntity.ok(Map.of("status", "removed", "id", id));
         });
     }
@@ -266,13 +352,18 @@ public class McpController {
      * 列出服务器的可用工具.
      */
     @GetMapping("/servers/{id}/tools")
-    public Mono<ResponseEntity<?>> listTools(@PathVariable String id) {
-        return Mono.fromCallable(() -> {
-            var config = mcpClientManager.getServer(id);
+    public Mono<ResponseEntity<?>> listTools(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String id,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        return blocking(() -> {
+            McpClientManager manager = manager(resolvedAgentId);
+            var config = manager.getServer(id);
             if (config == null) {
                 return ResponseEntity.notFound().build();
             }
-            var tools = mcpClientManager.listTools(id).stream()
+            var tools = manager.listTools(id).stream()
                     .map(McpClientManager.McpTool::toMap)
                     .collect(Collectors.toList());
             return ResponseEntity.ok(Map.of("server_id", id, "tools", tools));
@@ -292,16 +383,19 @@ public class McpController {
      */
     @PostMapping("/servers/{id}/tools")
     public Mono<ResponseEntity<?>> callTool(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
             @PathVariable String id,
-            @RequestBody Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
             String toolName = (String) body.get("tool");
             if (toolName == null || toolName.isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of("error", "tool name is required"));
             }
             @SuppressWarnings("unchecked")
             Map<String, Object> args = (Map<String, Object>) body.get("args");
-            var result = mcpClientManager.callTool(id, toolName, args);
+            var result = manager(resolvedAgentId).callTool(id, toolName, args);
             if (result.containsKey("error")) {
                 return ResponseEntity.status(400).body(result);
             }
@@ -313,19 +407,25 @@ public class McpController {
      * 列出所有已连接服务器的全部工具.
      */
     @GetMapping("/tools")
-    public Mono<ResponseEntity<?>> listAllTools() {
-        return Mono.fromCallable(() ->
-                ResponseEntity.ok(Map.of("tools", mcpClientManager.listAllTools())));
+    public Mono<ResponseEntity<?>> listAllTools(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        return blocking(() ->
+                ResponseEntity.ok(Map.of("tools", manager(resolvedAgentId).listAllTools())));
     }
 
     /**
      * 热重载所有 MCP 服务器.
      */
     @PostMapping("/reload")
-    public Mono<ResponseEntity<?>> reload() {
-        return Mono.fromCallable(() -> {
-            mcpClientManager.reload();
-            multiAgentManager.reloadAll();
+    public Mono<ResponseEntity<?>> reload(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        return blocking(() -> {
+            manager(resolvedAgentId).reload();
+            reloadAgent(resolvedAgentId);
             return ResponseEntity.ok(Map.of("status", "reloaded"));
         });
     }
@@ -354,6 +454,52 @@ public class McpController {
         return normalized;
     }
 
+    private Map<String, Object> mergeClientBody(
+            McpClientManager.McpServerConfig existing, Map<String, Object> body) {
+        Map<String, Object> merged = new LinkedHashMap<>(existing.toMap());
+        Map<String, Object> updates = new LinkedHashMap<>();
+        if (body != null && body.get("client") instanceof Map<?, ?> client) {
+            client.forEach((key, value) -> updates.put(String.valueOf(key), value));
+        } else if (body != null) {
+            updates.putAll(body);
+        }
+        copyAlias(updates, "display_name", "name");
+        copyAlias(updates, "transport_type", "transport");
+        copyAlias(updates, "server_url", "url");
+        for (String runtimeField : List.of(
+                "id", "key", "client_key", "tools", "connected", "status", "error", "restart_count",
+                "last_checked_at", "next_retry_at", "oauth_status", "access_summary", "available")) {
+            updates.remove(runtimeField);
+        }
+        for (var entry : updates.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            if (("env".equals(key) || "headers".equals(key) || "oauth".equals(key))
+                    && value instanceof Map<?, ?> updateMap
+                    && merged.get(key) instanceof Map<?, ?> existingMap) {
+                merged.put(key, preserveMaskedValues(existingMap, updateMap));
+            } else {
+                merged.put(key, value);
+            }
+        }
+        return merged;
+    }
+
+    private void copyAlias(Map<String, Object> values, String alias, String target) {
+        if (!values.containsKey(target) && values.containsKey(alias)) values.put(target, values.get(alias));
+        values.remove(alias);
+    }
+
+    private Map<String, Object> preserveMaskedValues(Map<?, ?> existing, Map<?, ?> updates) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        updates.forEach((key, value) -> {
+            String name = String.valueOf(key);
+            Object previous = existing.get(key);
+            result.put(name, "***".equals(value) && previous != null ? previous : value);
+        });
+        return result;
+    }
+
     private Object firstPresent(Map<String, Object> body, String... keys) {
         for (String key : keys) {
             if (body.containsKey(key)) {
@@ -363,21 +509,41 @@ public class McpController {
         return null;
     }
 
-    private Map<String, Object> clientInfo(McpClientManager.McpServerConfig config) {
+    private McpClientManager manager(String agentId) {
+        return mcpClientRegistry.forAgent(scope(agentId));
+    }
+
+    private <T> Mono<T> blocking(Callable<T> task) {
+        return Mono.fromCallable(task).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private String scope(String agentId) {
+        return AgentRequestSupport.agentId(agentId);
+    }
+
+    private void reloadAgent(String agentId) {
+        multiAgentManager.reload(scope(agentId));
+    }
+
+    private Map<String, Object> clientInfo(String agentId, McpClientManager manager,
+                                           McpClientManager.McpServerConfig config) {
         Map<String, Object> map = serverMap(config);
-        var state = mcpClientManager.getConnectionState(config.getId());
+        var state = manager.getConnectionState(config.getId());
         map.put("key", config.getId());
         map.put("client_key", config.getId());
         map.put("display_name", config.getName());
-        map.put("description", "");
+        map.put("description", config.getDescription() == null ? "" : config.getDescription());
         map.putIfAbsent("headers", Map.of());
         map.putIfAbsent("cwd", "");
         map.put("tools", config.getToolWhitelist());
         map.put("oauth", safeOAuth(config.getOAuth()));
-        map.put("oauth_status", config.getOAuth() == null ? null : mcpClientManager.oauthStatus(config.getId()));
-        map.put("access_summary", accessSummary(config.getId()));
+        map.put("oauth_status", config.getOAuth() == null ? null : manager.oauthStatus(config.getId()));
+        map.put("access_summary", accessSummary(agentId, config.getId()));
         map.put("connected", state.connected());
-        map.put("status", state.connected() ? "connected" : "disconnected");
+        map.put("status", state.status().toLowerCase(java.util.Locale.ROOT));
+        map.put("restart_count", state.restartCount());
+        map.put("last_checked_at", state.lastCheckedAt());
+        map.put("next_retry_at", state.nextRetryAt());
         map.put("available", config.isEnabled());
         if (state.error() != null) {
             map.put("error", state.error());
@@ -387,29 +553,42 @@ public class McpController {
 
     private Map<String, Object> serverMap(McpClientManager.McpServerConfig config) {
         Map<String, Object> map = new LinkedHashMap<>(config.toMap());
+        map.put("env", maskValues(config.getEnv()));
+        map.put("headers", maskValues(config.getHeaders()));
         map.put("oauth", safeOAuth(config.getOAuth()));
         return map;
     }
 
-    private Map<String, Object> policy(String clientKey) {
-        return accessPolicyService.load(clientKey);
+    private Map<String, String> maskValues(Map<String, String> values) {
+        if (values == null || values.isEmpty()) return Map.of();
+        Map<String, String> masked = new LinkedHashMap<>();
+        values.forEach((key, value) -> masked.put(key, value == null || value.isBlank() ? "" : "***"));
+        return masked;
     }
 
-    private Map<String, Object> accessSummary(String clientKey) {
-        Map<String, Object> p = policy(clientKey);
-        int overrides = sizeOf(p.get("client_overrides")) + sizeOf(p.get("tool_defaults")) + sizeOf(p.get("tool_overrides"));
-        return Map.of("default_effect", p.getOrDefault("default_effect", "allow"), "overrides_count", overrides);
+    private Map<String, Object> policy(String agentId, String clientKey) {
+        return accessPolicyService.load(scope(agentId), clientKey);
+    }
+
+    private Map<String, Object> accessSummary(String agentId, String clientKey) {
+        Map<String, Object> p = policy(agentId, clientKey);
+        int overrides = sizeOf(p.get("client_overrides"))
+                + sizeOf(p.get("tool_defaults"))
+                + sizeOf(p.get("tool_overrides"));
+        return Map.of(
+                "default_effect", p.getOrDefault("default_effect", "allow"),
+                "overrides_count", overrides);
     }
 
     private int sizeOf(Object value) {
         return value instanceof List<?> list ? list.size() : 0;
     }
 
-    private List<Map<String, Object>> toolInfos(String clientKey) {
-        var config = mcpClientManager.getServer(clientKey);
+    private List<Map<String, Object>> toolInfos(McpClientManager manager, String clientKey) {
+        var config = manager.getServer(clientKey);
         if (config == null) return List.of();
         List<String> whitelist = config.getToolWhitelist();
-        return mcpClientManager.listTools(clientKey).stream()
+        return manager.listTools(clientKey).stream()
                 .map(tool -> {
                     Map<String, Object> info = tool.toMap();
                     info.put("enabled", whitelist == null || whitelist.contains(tool.getName()));
@@ -419,36 +598,34 @@ public class McpController {
                 .collect(Collectors.toList());
     }
 
-    private List<Map<String, Object>> recentAccessPrincipals() {
+    private List<Map<String, Object>> recentAccessPrincipals(String agentId) {
         List<Map<String, Object>> principals = new java.util.ArrayList<>();
-        for (var config : configManager.getConfig().getAgents().entrySet()) {
-            String agentId = config.getKey();
-            try {
-                java.nio.file.Path chats = configManager.resolveWorkspaceDir(agentId).resolve("chats.json");
-                Map<String, Object> data = JsonUtils.loadAsMap(chats);
-                Object raw = data.get("chats");
-                if (!(raw instanceof List<?> list)) continue;
-                for (Object item : list) {
-                    if (!(item instanceof Map<?, ?> chatRaw)) continue;
-                    Map<String, Object> chat = new LinkedHashMap<>();
-                    chatRaw.forEach((k, v) -> chat.put(String.valueOf(k), v));
-                    String channel = String.valueOf(chat.getOrDefault("channel", "console"));
-                    String userId = String.valueOf(chat.getOrDefault("user_id", "default"));
-                    principals.add(Map.of(
-                            "source_type", "channel",
-                            "source_value", channel,
-                            "subject_type", "user",
-                            "subject_value", userId,
-                            "label", channel + ":" + userId,
-                            "chat_id", String.valueOf(chat.getOrDefault("id", "")),
-                            "chat_name", String.valueOf(chat.getOrDefault("name", "")),
-                            "session_id", String.valueOf(chat.getOrDefault("session_id", "")),
-                            "agent_id", agentId
-                    ));
-                }
-            } catch (Exception e) {
-                log.debug("Failed to read access principals for agent {}", agentId, e);
+        String currentAgentId = scope(agentId);
+        try {
+            java.nio.file.Path chats = configManager.resolveWorkspaceDir(currentAgentId).resolve("chats.json");
+            Map<String, Object> data = JsonUtils.loadAsMap(chats);
+            Object raw = data.get("chats");
+            if (!(raw instanceof List<?> list)) return List.of();
+            for (Object item : list) {
+                if (!(item instanceof Map<?, ?> chatRaw)) continue;
+                Map<String, Object> chat = new LinkedHashMap<>();
+                chatRaw.forEach((k, v) -> chat.put(String.valueOf(k), v));
+                String channel = String.valueOf(chat.getOrDefault("channel", "console"));
+                String userId = String.valueOf(chat.getOrDefault("user_id", "default"));
+                principals.add(Map.of(
+                        "source_type", "channel",
+                        "source_value", channel,
+                        "subject_type", "user",
+                        "subject_value", userId,
+                        "label", channel + ":" + userId,
+                        "chat_id", String.valueOf(chat.getOrDefault("id", "")),
+                        "chat_name", String.valueOf(chat.getOrDefault("name", "")),
+                        "session_id", String.valueOf(chat.getOrDefault("session_id", "")),
+                        "agent_id", currentAgentId
+                ));
             }
+        } catch (Exception e) {
+            log.debug("Failed to read access principals for agent {}", currentAgentId, e);
         }
         return principals.stream().limit(200).toList();
     }
@@ -464,7 +641,12 @@ public class McpController {
     private List<String> toStringListOrNull(Object value) {
         if (value == null) return null;
         if (!(value instanceof List<?> list)) return List.of();
-        return list.stream().filter(java.util.Objects::nonNull).map(String::valueOf).filter(s -> !s.isBlank()).distinct().toList();
+        return list.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::valueOf)
+                .filter(s -> !s.isBlank())
+                .distinct()
+                .toList();
     }
 
 }

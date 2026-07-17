@@ -1,6 +1,13 @@
 package com.melon.core.agent;
 
 import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.memory.MemoryFlushManager;
+import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
+import io.agentscope.harness.agent.memory.compaction.ConversationCompactor;
+import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.state.AgentState;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.state.JsonFileAgentStateStore;
 import com.melon.core.config.AgentConfig;
@@ -13,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import reactor.core.publisher.Mono;
 
 /**
  * 多 Agent 管理器. 对应 Python app/multi_agent_manager.py.
@@ -195,6 +203,81 @@ public class MultiAgentManager {
      */
     public HarnessAgent getAgent(String agentId) {
         return agents.get(agentId);
+    }
+
+    /** Clears the live and persisted AgentScope state for one authenticated session. */
+    public void clearSession(String agentId, String userId, String sessionId) {
+        HarnessAgent agent = getOrCreate(agentId);
+        AgentState state = agent.getDelegate().getAgentState(userId, sessionId);
+        state.contextMutable().clear();
+        state.setSummary("");
+        state.setCurIter(0);
+        state.setShutdownInterrupted(false);
+        state.getTasksContext().tasksMutable().clear();
+        state.getToolContext().setActivatedGroups(List.of());
+        for (String key : List.copyOf(state.getToolContext().getSpawnRegistry().keySet())) {
+            state.getToolContext().removeSpawnEntry(key);
+        }
+        state.getPlanModeContext().setPlanActive(false);
+        state.getPlanModeContext().setCurrentPlanFile(null);
+        agent.getDelegate().saveAgentState(userId, sessionId);
+    }
+
+    /** Forces AgentScope's real conversation compactor to summarize the current session now. */
+    public Mono<Boolean> compactSession(String agentId, String userId, String sessionId, String instruction) {
+        HarnessAgent agent = getOrCreate(agentId);
+        AgentState state = agent.getDelegate().getAgentState(userId, sessionId);
+        List<Msg> messages = state.getContext();
+        if (messages.size() < 2) {
+            return Mono.just(false);
+        }
+
+        int keepMessages = Math.min(8, Math.max(1, messages.size() / 3));
+        String summaryPrompt = CompactionConfig.DEFAULT_SUMMARY_PROMPT;
+        if (instruction != null && !instruction.isBlank()) {
+            summaryPrompt = "Additional user instruction for this compaction:\n"
+                    + instruction.trim() + "\n\n" + summaryPrompt;
+        }
+        CompactionConfig forced = CompactionConfig.builder()
+                .triggerMessages(2)
+                .triggerTokens(1)
+                .keepMessages(keepMessages)
+                .keepTokens(0)
+                .summaryPrompt(summaryPrompt)
+                .flushBeforeCompact(true)
+                .offloadBeforeCompact(true)
+                .build();
+        RuntimeContext context = RuntimeContext.builder()
+                .userId(userId)
+                .sessionId(sessionId)
+                .put("agent_id", agentId)
+                .put("root_agent_id", agentId)
+                .put("root_session_id", sessionId)
+                .build();
+        MemoryFlushManager flushManager = new MemoryFlushManager(
+                agent.workspaceFor(userId, sessionId), agent.getModel());
+        ConversationCompactor compactor = new ConversationCompactor(agent.getModel(), flushManager);
+        return compactor.compactIfNeeded(context, messages, forced, agentId, sessionId)
+                .map(compacted -> {
+                    if (compacted.isEmpty()) return false;
+                    List<Msg> replacement = compacted.get();
+                    state.contextMutable().clear();
+                    state.contextMutable().addAll(replacement);
+                    state.setSummary(summaryText(replacement));
+                    agent.getDelegate().saveAgentState(userId, sessionId);
+                    return true;
+                });
+    }
+
+    private String summaryText(List<Msg> messages) {
+        if (messages == null || messages.isEmpty()) return "";
+        return messages.get(0).getContent().stream()
+                .filter(TextBlock.class::isInstance)
+                .map(TextBlock.class::cast)
+                .map(TextBlock::getText)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse("");
     }
 
     /**

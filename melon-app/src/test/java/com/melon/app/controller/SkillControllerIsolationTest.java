@@ -15,10 +15,41 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SkillControllerIsolationTest {
+
+    @Test
+    void operatorPreviewChecksSelectedPersonalTargetsWithoutWriting() throws Exception {
+        SkillService skillService = mock(SkillService.class);
+        EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
+        EnterprisePrincipal operator = new EnterprisePrincipal(
+                "operator-1", "operator", "Operator", true,
+                Set.of("SERVICE_OPERATOR"), Set.of("agents:manage"), "", "");
+        when(accessService.resolveSkillDistributionTargets(
+                operator, List.of("personal-user-2"), false))
+                .thenReturn(List.of("personal-user-2"));
+        when(skillService.workspaceHasSkill("personal-user-2", "reporting"))
+                .thenReturn(true);
+
+        SkillController controller = controller(skillService, accessService);
+        var response = controller.downloadSkillPoolSkill(
+                "personal-operator-1", operator,
+                Map.of(
+                        "skill_name", "reporting",
+                        "preview_only", true,
+                        "targets", List.of(Map.of("workspace_id", "personal-user-2"))))
+                .block();
+
+        assertEquals(409, response.getStatusCode().value());
+        verify(accessService).resolveSkillDistributionTargets(
+                operator, List.of("personal-user-2"), false);
+        verify(skillService).workspaceHasSkill("personal-user-2", "reporting");
+        verify(skillService, never()).downloadPoolSkillToWorkspace(
+                "personal-user-2", "reporting", false);
+    }
 
     @Test
     void poolUploadCannotUseBodyWorkspaceIdWithoutAccessResolution() throws Exception {

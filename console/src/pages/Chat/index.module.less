@@ -257,3 +257,77 @@
     color: #ffc53d;
   }
 }
+
+.chatMessagesArea :global(.qwenpaw-chat-anywhere-input-wrapper) {
+  position: relative;
+}
+
+.approvalStack {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 30;
+  width: 100%;
+  max-height: min(58vh, 520px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  padding-top: 8px;
+  background: var(--mp-surface-subtle, #f5f7fa);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.approvalGateStatus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px 2px;
+  color: var(--mp-text-secondary, #5c6773);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.approvalPendingCount {
+  flex: 0 0 auto;
+  color: var(--mp-warning, #b76a16);
+  font-weight: 600;
+}
+
+.approvalItem {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.approvalCardExit {
+  animation: approvalExit 180ms ease forwards;
+}
+
+@keyframes approvalExit {
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (max-width: 768px) {
+  .approvalStack {
+    max-height: 65vh;
+    gap: 6px;
+    padding-top: 6px;
+  }
+
+  .approvalGateStatus {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .approvalCardExit {
+    animation: none;
+  }
+}

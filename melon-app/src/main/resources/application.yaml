@@ -14,7 +14,7 @@ spring:
     max-in-memory-size: 50MB
 
 melon:
-  home_dir: ${MELON_HOME:~/.melonAI}
+  home_dir: ${MELON_HOME:~/.melonPaw-CompanyAI}
   execution:
     # Keep production fail-closed. IDEA development should enable the `local`
     # Spring profile from application-local.yaml.
@@ -24,6 +24,7 @@ melon:
     auth:
       token-ttl-hours: ${MELON_TOKEN_TTL_HOURS:12}
       bootstrap-token: ${MELON_BOOTSTRAP_TOKEN:}
+      generate-bootstrap-token: ${MELON_GENERATE_BOOTSTRAP_TOKEN:true}
     cors:
       allowed-origins: ${MELON_ALLOWED_ORIGINS:http://127.0.0.1:8088,http://localhost:8088,http://127.0.0.1:5173,http://localhost:5173}
 

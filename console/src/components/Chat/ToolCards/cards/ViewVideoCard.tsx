@@ -30,6 +30,7 @@ const ViewVideoCard: React.FC<ViewVideoCardProps> = ({
       isStreaming={isStreaming}
       icon={<VideoCameraOutlined />}
       title={title}
+      defaultOpen={Boolean(media) && !isStreaming}
     >
       {media && <MediaPreview media={media} />}
     </ToolCardShell>

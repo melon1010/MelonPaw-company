@@ -3,6 +3,7 @@ package com.melon.app.config;
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.auth.EnterprisePrincipal;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -26,6 +27,7 @@ import static com.melon.app.auth.EnterprisePermissions.AGENTS_MANAGE;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_AUTOMATIONS;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_CHANNELS;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_SKILLS;
+import static com.melon.app.auth.EnterprisePermissions.PERSONAL_MCP;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_WORKSPACE;
 
 class SecurityConfigTest {
@@ -34,7 +36,7 @@ class SecurityConfigTest {
     void authenticatedRequestRunsFilterChainExactlyOnce() {
         EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
         EnterprisePrincipal principal = principal(Set.of("agents:use"));
-        when(accessService.ensurePersonalAgent(principal)).thenReturn("personal-user-1");
+        when(accessService.resolveExecution(principal, "requested-agent")).thenReturn("personal-user-1");
 
         WebFilter filter = new SecurityConfig().agentScopeFilter(accessService);
         MockServerWebExchange exchange = MockServerWebExchange.from(
@@ -55,7 +57,7 @@ class SecurityConfigTest {
             .block();
 
         assertEquals(1, invocations.get());
-        verify(accessService).ensurePersonalAgent(principal);
+        verify(accessService).resolveExecution(principal, "requested-agent");
     }
 
     @Test
@@ -82,7 +84,6 @@ class SecurityConfigTest {
                 {"/api/workspace/upload", PERSONAL_WORKSPACE},
                 {"/api/workspace/download", PERSONAL_WORKSPACE},
                 {"/api/workspace/audio-mode", PERSONAL_WORKSPACE},
-                {"/api/skills", PERSONAL_SKILLS},
                 {"/api/tools", PERSONAL_WORKSPACE},
                 {"/api/config/channels/feishu", PERSONAL_CHANNELS},
                 {"/api/access-control/feishu", PERSONAL_CHANNELS},
@@ -117,6 +118,70 @@ class SecurityConfigTest {
     }
 
     @Test
+    void sharedAgentReadsUseExecutionScopeAndWritesRequireManagerScope() {
+        for (String path : new String[]{"/api/skills", "/api/mcp"}) {
+            EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
+            EnterprisePrincipal principal = principal(Set.of(PERSONAL_SKILLS, PERSONAL_MCP));
+            when(accessService.resolveExecution(principal, "project-agent"))
+                    .thenReturn("project-agent");
+            when(accessService.resolveConfiguration(principal, "project-agent"))
+                    .thenReturn("project-agent");
+            when(accessService.beginConfigurationMutation("project-agent")).thenReturn(true);
+            WebFilter filter = new SecurityConfig().agentScopeFilter(accessService);
+            MockServerWebExchange readExchange = MockServerWebExchange.from(
+                    MockServerHttpRequest.get(path)
+                            .header("X-Agent-Id", "project-agent")
+                            .build());
+
+            filter.filter(readExchange, filteredExchange -> {
+                        assertEquals("project-agent",
+                                filteredExchange.getRequest().getHeaders().getFirst("X-Agent-Id"));
+                        return Mono.empty();
+                    })
+                    .contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication(principal)))
+                    .block();
+            verify(accessService).resolveExecution(principal, "project-agent");
+
+            MockServerWebExchange writeExchange = MockServerWebExchange.from(
+                    MockServerHttpRequest.put(path)
+                            .header("X-Agent-Id", "project-agent")
+                            .build());
+            filter.filter(writeExchange, ignored -> Mono.empty())
+                    .contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication(principal)))
+                    .block();
+
+            verify(accessService).resolveConfiguration(principal, "project-agent");
+            verify(accessService).beginConfigurationMutation("project-agent");
+            verify(accessService).endConfigurationMutation("project-agent");
+        }
+    }
+
+    @Test
+    void activeProjectAgentResourceMutationReturnsConflict() {
+        EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
+        EnterprisePrincipal principal = principal(Set.of(PERSONAL_MCP));
+        when(accessService.resolveConfiguration(principal, "project-agent"))
+                .thenReturn("project-agent");
+        when(accessService.beginConfigurationMutation("project-agent")).thenReturn(false);
+        WebFilter filter = new SecurityConfig().agentScopeFilter(accessService);
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.put("/api/mcp/project-server")
+                        .header("X-Agent-Id", "project-agent")
+                        .build());
+        AtomicInteger invocations = new AtomicInteger();
+
+        filter.filter(exchange, ignored -> {
+                    invocations.incrementAndGet();
+                    return Mono.empty();
+                })
+                .contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication(principal)))
+                .block();
+
+        assertEquals(0, invocations.get());
+        assertEquals(HttpStatus.CONFLICT, exchange.getResponse().getStatusCode());
+    }
+
+    @Test
     void agentOperatorUsesPersonalWorkspaceForPersonalResources() {
         EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
         EnterprisePrincipal principal = principal(Set.of(AGENTS_MANAGE));
@@ -148,7 +213,7 @@ class SecurityConfigTest {
         EnterprisePrincipal principal = new EnterprisePrincipal(
                 "admin-1", "admin", "Administrator", true,
                 Set.of("SYSTEM_ADMIN"), Set.of(), "", "");
-        when(accessService.ensurePersonalAgent(principal)).thenReturn("personal-admin-1");
+        when(accessService.resolveExecution(principal, "default")).thenReturn("personal-admin-1");
         WebFilter filter = new SecurityConfig().agentScopeFilter(accessService);
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.post("/api/console/chat")
@@ -163,7 +228,7 @@ class SecurityConfigTest {
                 .contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication(principal)))
                 .block();
 
-        verify(accessService).ensurePersonalAgent(principal);
+        verify(accessService).resolveExecution(principal, "default");
         verify(accessService, never()).resolve(principal, "default");
     }
 

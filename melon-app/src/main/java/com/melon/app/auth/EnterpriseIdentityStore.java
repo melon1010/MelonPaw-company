@@ -617,6 +617,51 @@ public class EnterpriseIdentityStore {
         }
     }
 
+    public synchronized Optional<AgentBindingRecord> findProjectAgentBinding(String projectId) {
+        String sql = "SELECT agent_id, scope_type, owner_user_id, project_id, created_at "
+                + "FROM enterprise_agent_bindings WHERE scope_type = 'PROJECT' AND project_id = ?";
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, projectId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(agentBindingFrom(result)) : Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("find project agent binding", e);
+        }
+    }
+
+    public synchronized List<AgentBindingRecord> listUsableProjectAgentBindings(String userId) {
+        String sql = "SELECT b.agent_id, b.scope_type, b.owner_user_id, b.project_id, b.created_at "
+                + "FROM enterprise_agent_bindings b "
+                + "JOIN enterprise_project_spaces p ON p.id = b.project_id AND p.enabled = 1 "
+                + "JOIN enterprise_project_members m ON m.project_id = b.project_id "
+                + "WHERE b.scope_type = 'PROJECT' AND m.user_id = ? AND m.project_role <> 'VIEWER' "
+                + "ORDER BY b.created_at";
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            try (ResultSet result = statement.executeQuery()) {
+                List<AgentBindingRecord> bindings = new ArrayList<>();
+                while (result.next()) bindings.add(agentBindingFrom(result));
+                return bindings;
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("list usable project agent bindings", e);
+        }
+    }
+
+    public synchronized List<AgentBindingRecord> listProjectAgentBindings() {
+        String sql = "SELECT agent_id, scope_type, owner_user_id, project_id, created_at "
+                + "FROM enterprise_agent_bindings WHERE scope_type = 'PROJECT' ORDER BY created_at";
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            List<AgentBindingRecord> bindings = new ArrayList<>();
+            while (result.next()) bindings.add(agentBindingFrom(result));
+            return bindings;
+        } catch (SQLException e) {
+            throw databaseFailure("list project agent bindings", e);
+        }
+    }
+
     public synchronized AgentBindingRecord bindPersonalAgent(String agentId, String userId) {
         String sql = "INSERT INTO enterprise_agent_bindings "
                 + "(agent_id, scope_type, owner_user_id, project_id, created_at) "
@@ -634,6 +679,65 @@ public class EnterpriseIdentityStore {
         }
     }
 
+    public synchronized AgentBindingRecord bindProjectAgent(String agentId, String projectId) {
+        try (Connection connection = open()) {
+            connection.setAutoCommit(false);
+            try {
+                requireProject(connection, projectId);
+                try (PreparedStatement check = connection.prepareStatement(
+                        "SELECT scope_type, project_id FROM enterprise_agent_bindings WHERE agent_id = ?")) {
+                    check.setString(1, agentId);
+                    try (ResultSet result = check.executeQuery()) {
+                        if (result.next() && (!"PROJECT".equals(result.getString("scope_type"))
+                                || !projectId.equals(result.getString("project_id")))) {
+                            throw new IllegalStateException("Agent id is already bound to another resource");
+                        }
+                    }
+                }
+                try (PreparedStatement check = connection.prepareStatement(
+                        "SELECT agent_id FROM enterprise_agent_bindings WHERE scope_type = 'PROJECT' AND project_id = ?")) {
+                    check.setString(1, projectId);
+                    try (ResultSet result = check.executeQuery()) {
+                        if (result.next() && !agentId.equals(result.getString("agent_id"))) {
+                            throw new IllegalStateException("This project already has an Agent");
+                        }
+                    }
+                }
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO enterprise_agent_bindings
+                            (agent_id, scope_type, owner_user_id, project_id, created_at)
+                        VALUES (?, 'PROJECT', NULL, ?, ?)
+                        ON CONFLICT(agent_id) DO UPDATE SET
+                            scope_type = excluded.scope_type,
+                            owner_user_id = NULL,
+                            project_id = excluded.project_id
+                        """)) {
+                    statement.setString(1, agentId);
+                    statement.setString(2, projectId);
+                    statement.setString(3, Instant.now().toString());
+                    statement.executeUpdate();
+                }
+                connection.commit();
+                return findAgentBinding(agentId).orElseThrow();
+            } catch (RuntimeException | SQLException e) {
+                rollback(connection);
+                throw e;
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("bind project agent", e);
+        }
+    }
+
+    public synchronized void unbindAgent(String agentId) {
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(
+                "DELETE FROM enterprise_agent_bindings WHERE agent_id = ?")) {
+            statement.setString(1, agentId);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            throw databaseFailure("unbind agent", e);
+        }
+    }
+
     public synchronized boolean isProjectMember(String projectId, String userId) {
         if (projectId == null || projectId.isBlank() || userId == null || userId.isBlank()) {
             return false;
@@ -647,6 +751,32 @@ public class EnterpriseIdentityStore {
             }
         } catch (SQLException e) {
             throw databaseFailure("check project membership", e);
+        }
+    }
+
+    public synchronized String projectRole(String projectId, String userId) {
+        if (projectId == null || projectId.isBlank() || userId == null || userId.isBlank()) return null;
+        try (Connection connection = open()) {
+            return projectMemberRole(connection, projectId, userId);
+        } catch (SQLException e) {
+            throw databaseFailure("read project membership", e);
+        }
+    }
+
+    public synchronized boolean canUseProjectAgent(String agentId, String userId) {
+        String sql = "SELECT 1 FROM enterprise_agent_bindings b "
+                + "JOIN enterprise_project_spaces p ON p.id = b.project_id AND p.enabled = 1 "
+                + "JOIN enterprise_project_members m ON m.project_id = b.project_id "
+                + "WHERE b.agent_id = ? AND b.scope_type = 'PROJECT' "
+                + "AND m.user_id = ? AND m.project_role <> 'VIEWER'";
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, agentId);
+            statement.setString(2, userId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next();
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("authorize project Agent", e);
         }
     }
 
@@ -748,6 +878,8 @@ public class EnterpriseIdentityStore {
                     """);
             statement.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_agent_owner "
                     + "ON enterprise_agent_bindings(owner_user_id) WHERE scope_type = 'PERSONAL'");
+            statement.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_project_agent_project "
+                    + "ON enterprise_agent_bindings(project_id) WHERE scope_type = 'PROJECT'");
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_agent_binding_project "
                     + "ON enterprise_agent_bindings(project_id)");
             seedPermissions(connection);
@@ -786,6 +918,7 @@ public class EnterpriseIdentityStore {
         values.put(EnterprisePermissions.PERSONAL_SKILLS, "Manage skills in the user's isolated workspace");
         values.put(EnterprisePermissions.PERSONAL_CHANNELS, "Manage the user's isolated channel connections");
         values.put(EnterprisePermissions.PERSONAL_AUTOMATIONS, "Manage the user's isolated schedules and heartbeat");
+        values.put(EnterprisePermissions.PERSONAL_MCP, "Manage MCP connections in the user's isolated Agent");
         String sql = "INSERT OR IGNORE INTO enterprise_permissions (code, description) VALUES (?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (Map.Entry<String, String> entry : values.entrySet()) {

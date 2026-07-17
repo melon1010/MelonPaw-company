@@ -61,7 +61,7 @@ export function normalizeMCPAccessPolicy(
   policy: MCPAccessPolicy,
 ): MCPAccessPolicy {
   return {
-    default_effect: policy.default_effect || "deny",
+    default_effect: policy.default_effect || "allow",
     client_overrides: sortAccessRules(policy.client_overrides || []),
     tool_defaults: sortToolDefaults(policy.tool_defaults || []),
     tool_overrides: sortToolRules(policy.tool_overrides || []),

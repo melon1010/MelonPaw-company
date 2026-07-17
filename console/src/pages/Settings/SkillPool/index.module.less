@@ -1286,3 +1286,49 @@
     }
   }
 }
+
+.distributionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 4px 0 8px;
+}
+
+.distributionSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  :global(.qwenpaw-select),
+  :global(.ant-select) {
+    width: 100%;
+  }
+}
+
+.distributionSectionHeader,
+.distributionFooter,
+.distributionBulkActions {
+  display: flex;
+  align-items: center;
+}
+
+.distributionSectionHeader {
+  min-height: 28px;
+  justify-content: space-between;
+  gap: 12px;
+
+  strong {
+    color: var(--mp-text);
+    font-size: 13px;
+    font-weight: 650;
+  }
+}
+
+.distributionBulkActions,
+.distributionFooter {
+  gap: 8px;
+}
+
+.distributionFooter {
+  justify-content: flex-end;
+}

@@ -274,9 +274,11 @@ export function useSkillPool() {
     });
   };
 
-  const openBroadcast = (skill?: PoolSkillSpec) => {
+  const openBroadcast = (skill?: PoolSkillSpec | string[]) => {
     setMode("broadcast");
-    setBroadcastInitialNames(skill ? [skill.name] : []);
+    setBroadcastInitialNames(
+      Array.isArray(skill) ? skill : skill ? [skill.name] : [],
+    );
   };
 
   const openImportBuiltin = async () => {

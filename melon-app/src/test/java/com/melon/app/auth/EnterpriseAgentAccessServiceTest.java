@@ -5,6 +5,7 @@ import com.melon.app.service.SkillService;
 import com.melon.app.service.AuditLogService;
 import com.melon.core.agent.WorkspaceManager;
 import com.melon.core.config.ConfigManager;
+import com.melon.core.config.AgentConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,6 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,6 +33,58 @@ class EnterpriseAgentAccessServiceTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void projectMembersCanExecuteOnlyTheirPublishedProjectAgent() {
+        EnterpriseIdentityStore store = new EnterpriseIdentityStore(tempDir.resolve("project-agent-access.db"));
+        AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
+        EnterprisePrincipal admin = auth.bootstrap("admin", "Administrator", "StrongPassword123");
+        EnterprisePrincipal member = auth.createUser(
+                "member", "Member", "MemberPassword123", true, Set.of("EMPLOYEE"));
+        EnterprisePrincipal viewer = auth.createUser(
+                "viewer", "Viewer", "ViewerPassword123", true, Set.of("EMPLOYEE"));
+        EnterpriseIdentityStore.ProjectSpaceRecord project = store.createProject(
+                "project-one", "Project One", "", admin.id());
+        store.putProjectMember(project.id(), member.id(), "MEMBER");
+        store.putProjectMember(project.id(), viewer.id(), "VIEWER");
+        store.bindProjectAgent("project-agent", project.id());
+
+        ConfigManager config = configManager();
+        AgentConfig projectAgent = new AgentConfig();
+        projectAgent.setName("Project Agent");
+        var agents = new LinkedHashMap<>(config.getConfig().getAgents());
+        agents.put("project-agent", projectAgent);
+        config.getConfig().setAgents(agents);
+        EnterpriseAgentAccessService access = new EnterpriseAgentAccessService(
+                store, config, new WorkspaceManager());
+
+        assertEquals("project-agent", access.resolveExecution(member, "project-agent"));
+        assertTrue(access.accessibleAgentIds(member).contains("project-agent"));
+        assertThrows(SecurityException.class,
+                () -> access.resolveExecution(viewer, "project-agent"));
+    }
+
+    @Test
+    void administratorsCanResolveSkillDistributionTargetsWithoutWorkspaceAccess() throws Exception {
+        EnterpriseIdentityStore store = new EnterpriseIdentityStore(tempDir.resolve("distribution.db"));
+        AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
+        EnterprisePrincipal administrator = auth.bootstrap(
+                "admin", "Administrator", "StrongPassword123");
+        EnterprisePrincipal employee = auth.createUser(
+                "employee", "Employee", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+
+        EnterpriseAgentAccessService access = new EnterpriseAgentAccessService(
+                store, configManager(), new WorkspaceManager());
+        String employeeAgent = access.ensurePersonalAgent(employee);
+
+        List<EnterpriseAgentAccessService.PersonalAgentTarget> targets =
+                access.distributablePersonalAgents(administrator);
+        assertTrue(targets.stream().anyMatch(target -> target.agentId().equals(employeeAgent)));
+        assertEquals(List.of(employeeAgent), access.resolveSkillDistributionTargets(
+                administrator, List.of(employeeAgent), false));
+        assertThrows(SecurityException.class, () -> access.resolveSkillDistributionTargets(
+                administrator, List.of("personal-forged"), false));
+    }
 
     @Test
     void provisionsIsolatedPersonalAgentsAndRejectsForgedScopes() throws Exception {

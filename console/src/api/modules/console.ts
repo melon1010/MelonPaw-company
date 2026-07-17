@@ -21,6 +21,7 @@ export interface InboxEvent {
 }
 
 export interface InboxTrace {
+  trace_id?: string;
   run_id: string;
   created_at: number;
   completed_at: number | null;
@@ -95,6 +96,7 @@ export const consoleApi = {
     request<{
       deleted: boolean;
       trace_deleted?: boolean;
+      trace_id?: string | null;
       run_id?: string | null;
     }>(`/console/inbox/events/${encodeURIComponent(eventId)}`, {
       method: "DELETE",

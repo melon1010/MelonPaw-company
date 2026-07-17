@@ -10,7 +10,6 @@ import {
   MEMORY_MANAGER_BACKEND_MAPPINGS,
   MEMORY_MANAGER_BACKEND_OPTIONS,
 } from "../../../constants/backendMappings";
-import type { ToolExecutionLevel } from "./components/ToolExecutionLevelCard";
 
 export function useAgentConfig() {
   const { t } = useTranslation();
@@ -24,8 +23,7 @@ export function useAgentConfig() {
   const [savingLang, setSavingLang] = useState(false);
   const [timezone, setTimezone] = useState<string>("UTC");
   const [savingTimezone, setSavingTimezone] = useState(false);
-  const [approvalLevel, setApprovalLevel] =
-    useState<ToolExecutionLevel>("AUTO");
+  const approvalLevel = "RISK_BASED" as const;
   const originalConfigRef = useRef<AgentsRunningConfig | null>(null);
 
   const fetchConfig = useCallback(async () => {
@@ -37,10 +35,6 @@ export function useAgentConfig() {
         api.getAgentLanguage(),
         api.getUserTimezone(),
       ]);
-      const loadedLevel = (
-        config.approval_level || "AUTO"
-      ).toUpperCase() as ToolExecutionLevel;
-      setApprovalLevel(loadedLevel);
       const contextBackend =
         config.context_manager_backend in CONTEXT_MANAGER_BACKEND_MAPPINGS
           ? config.context_manager_backend
@@ -251,7 +245,6 @@ export function useAgentConfig() {
     timezone,
     savingTimezone,
     approvalLevel,
-    setApprovalLevel,
     fetchConfig,
     handleSave,
     handleLanguageChange,

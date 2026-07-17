@@ -12,18 +12,21 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import api, {
   companyApi,
-  type ChatSpec,
+  type EnterpriseTask,
+  type EnterpriseTaskStatus,
   type ProjectSpace,
 } from "../../../api";
 import type { AgentSummary } from "../../../api/types/agents";
 import { useAuth } from "../../../contexts/AuthContext";
 import { canAccessRoute } from "../../../auth/authorization";
-import { PageHeader } from "../../../components/PageHeader";
+import { PageHeader, SectionHeader } from "../../../components/PageHeader";
+import { isActiveTask, taskStatusColor } from "../taskPresentation";
+import { useAgentStore } from "../../../stores/agentStore";
 import styles from "../company.module.less";
 
 interface DashboardData {
   projects: ProjectSpace[];
-  tasks: ChatSpec[];
+  tasks: EnterpriseTask[];
   agents: AgentSummary[];
   enabledChannels: number;
 }
@@ -45,6 +48,7 @@ export default function CompanyWorkbench() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const setSelectedAgent = useAgentStore((state) => state.setSelectedAgent);
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState<string | null>(null);
@@ -55,7 +59,9 @@ export default function CompanyWorkbench() {
     setWarning(null);
     const results = await Promise.allSettled([
       companyApi.listProjects(),
-      canStartTask ? api.listChats() : Promise.resolve([] as ChatSpec[]),
+      canStartTask
+        ? api.listTasks({ limit: 200 })
+        : Promise.resolve([] as EnterpriseTask[]),
       canStartTask
         ? api.listAgents()
         : Promise.resolve({ agents: [] as AgentSummary[] }),
@@ -112,32 +118,30 @@ export default function CompanyWorkbench() {
     [data.tasks],
   );
 
-  const columns: ColumnsType<ChatSpec> = [
+  const columns: ColumnsType<EnterpriseTask> = [
     {
       title: t("enterprise.tasks.name"),
-      dataIndex: "name",
-      render: (name: string | undefined, row) => (
+      dataIndex: "title",
+      render: (title: string | undefined, row) => (
         <div className={styles.nameCell}>
-          <div className={styles.primaryText}>{name || row.session_id}</div>
-          <div className={styles.secondaryText}>{row.id}</div>
+          <div className={styles.primaryText}>{title || row.session_id}</div>
+          <div className={styles.secondaryText}>{row.task_id}</div>
         </div>
       ),
     },
     {
       title: t("enterprise.tasks.channel"),
-      dataIndex: "channel",
+      dataIndex: "trigger_type",
       width: 120,
       render: (value: string) => <Tag>{value || "console"}</Tag>,
     },
     {
       title: t("enterprise.tasks.status"),
       dataIndex: "status",
-      width: 110,
-      render: (value) => (
-        <Tag color={value === "running" ? "processing" : "success"}>
-          {value === "running"
-            ? t("enterprise.tasks.running")
-            : t("enterprise.tasks.completed")}
+      width: 130,
+      render: (value: EnterpriseTaskStatus) => (
+        <Tag color={taskStatusColor(value)}>
+          {t(`enterprise.tasks.statuses.${value}`, { defaultValue: value })}
         </Tag>
       ),
     },
@@ -156,7 +160,7 @@ export default function CompanyWorkbench() {
           type="link"
           icon={<ArrowRight size={15} />}
           onClick={() =>
-            navigate(`/tasks/${encodeURIComponent(row.id)}/result`)
+            navigate(`/tasks/${encodeURIComponent(row.task_id)}/result`)
           }
         >
           {t("enterprise.tasks.result")}
@@ -174,7 +178,7 @@ export default function CompanyWorkbench() {
     [t("enterprise.workbench.totalTasks"), data.tasks.length],
     [
       t("enterprise.workbench.runningTasks"),
-      data.tasks.filter((c) => c.status === "running").length,
+      data.tasks.filter((task) => isActiveTask(task.status)).length,
     ],
     [t("enterprise.workbench.channels"), data.enabledChannels],
   ];
@@ -215,7 +219,10 @@ export default function CompanyWorkbench() {
                   <Button
                     type="primary"
                     icon={<Bot size={16} />}
-                    onClick={() => navigate("/chat")}
+                    onClick={() => {
+                      setSelectedAgent("default");
+                      navigate("/chat");
+                    }}
                   >
                     {t("enterprise.workbench.startTask")}
                   </Button>
@@ -250,18 +257,18 @@ export default function CompanyWorkbench() {
             </div>
 
             <section className={styles.section}>
-              <div className={styles.sectionHeader}>
-                <h2 className={styles.sectionTitle}>
-                  {t("enterprise.workbench.recentTasks")}
-                </h2>
-                <Button type="link" onClick={() => navigate("/tasks")}>
-                  {t("enterprise.workbench.viewAll")}
-                </Button>
-              </div>
+              <SectionHeader
+                title={t("enterprise.workbench.recentTasks")}
+                extra={
+                  <Button type="link" onClick={() => navigate("/tasks")}>
+                    {t("enterprise.workbench.viewAll")}
+                  </Button>
+                }
+              />
               {recentTasks.length > 0 ? (
                 <div className={styles.tableWrap}>
                   <Table
-                    rowKey="id"
+                    rowKey="task_id"
                     size="small"
                     pagination={false}
                     columns={columns}

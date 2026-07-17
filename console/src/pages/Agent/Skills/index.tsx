@@ -82,8 +82,7 @@ function SkillsPage() {
   } = useSkillsPage();
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const marketView =
-    canManageAgents && searchParams.get("view") === "market";
+  const marketView = canManageAgents && searchParams.get("view") === "market";
 
   const openMarket = useCallback(() => {
     setSearchParams((prev) => {
@@ -194,14 +193,14 @@ function SkillsPage() {
         }
       />
 
-      {canManageAgents && <ImportHubModal
+      <ImportHubModal
         open={importModalOpen}
         importing={importing}
         onCancel={closeImportModal}
         onConfirm={handleConfirmImport}
         cancelImport={cancelImport}
         hint={t("skillPool.externalHubHint")}
-      />}
+      />
 
       {!loading && skills.length > 0 && (
         <SkillsToolbar
@@ -231,6 +230,9 @@ function SkillsPage() {
           </h2>
           <p className={styles.emptyStateText}>{t("skills.emptyStateText")}</p>
           <div className={styles.emptyStateActions}>
+            <Button type="default" onClick={() => setPoolModal("download")}>
+              {t("skills.emptyStateDownload")}
+            </Button>
             <Button
               type="primary"
               className={styles.primaryActionButton}
@@ -334,14 +336,14 @@ function SkillsPage() {
         </>
       )}
 
-      {canManageAgents && <PoolTransferModal
+      <PoolTransferModal
         mode={poolModal}
         skills={skills}
         poolSkills={poolSkills}
         onCancel={closePoolModal}
         onUpload={handleUploadToPool}
         onDownload={handleDownloadFromPool}
-      />}
+      />
 
       {conflictRenameModal}
 

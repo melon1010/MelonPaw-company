@@ -284,8 +284,8 @@ public class WorkspaceController {
     private String normalizeApprovalLevel(String value) {
         String normalized = value == null ? "AUTO" : value.trim().toUpperCase();
         return switch (normalized) {
-            case "OFF", "AUTO", "SMART", "STRICT" -> normalized;
-            default -> "AUTO";
+            case "OFF", "AUTO", "SMART", "STRICT", "RISK_BASED" -> normalized;
+            default -> "RISK_BASED";
         };
     }
 

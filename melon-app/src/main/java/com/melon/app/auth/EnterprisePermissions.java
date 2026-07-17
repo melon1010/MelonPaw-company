@@ -17,12 +17,14 @@ public final class EnterprisePermissions {
     public static final String PERSONAL_SKILLS = "skills:personal";
     public static final String PERSONAL_CHANNELS = "channels:personal";
     public static final String PERSONAL_AUTOMATIONS = "automations:personal";
+    public static final String PERSONAL_MCP = "mcp:personal";
 
     public static final Set<String> PERSONAL_CAPABILITIES = Set.of(
             PERSONAL_WORKSPACE,
             PERSONAL_SKILLS,
             PERSONAL_CHANNELS,
-            PERSONAL_AUTOMATIONS
+            PERSONAL_AUTOMATIONS,
+            PERSONAL_MCP
     );
 
     private EnterprisePermissions() {

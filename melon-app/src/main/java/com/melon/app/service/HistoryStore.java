@@ -371,6 +371,53 @@ public class HistoryStore {
         }
     }
 
+    /** Deletes every indexed history row for one Agent session, including its FTS entries. */
+    public int deleteSession(String agentId, String sessionId) {
+        String normalizedAgent = normalizeAgentId(agentId);
+        String normalizedSession = valueOrDefault(sessionId, "default");
+        String where = "agent_id = ? AND session_id = ?";
+        try (Connection conn = open(historyPath(agentId))) {
+            boolean autoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try {
+                List<Map<String, Object>> doomed;
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT seq, content FROM conversation_history WHERE " + where)) {
+                    ps.setString(1, normalizedAgent);
+                    ps.setString(2, normalizedSession);
+                    doomed = rows(ps.executeQuery());
+                }
+                if (hasFts(conn) && !doomed.isEmpty()) {
+                    try (PreparedStatement fts = conn.prepareStatement(
+                            "INSERT INTO conversation_history_fts(conversation_history_fts, rowid, content) VALUES('delete', ?, ?)")) {
+                        for (Map<String, Object> row : doomed) {
+                            fts.setObject(1, row.get("seq"));
+                            fts.setString(2, valueOrDefault(stringValue(row.get("content")), ""));
+                            fts.addBatch();
+                        }
+                        fts.executeBatch();
+                    }
+                }
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "DELETE FROM conversation_history WHERE " + where)) {
+                    ps.setString(1, normalizedAgent);
+                    ps.setString(2, normalizedSession);
+                    int deleted = ps.executeUpdate();
+                    conn.commit();
+                    return deleted;
+                }
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(autoCommit);
+            }
+        } catch (Exception e) {
+            log.warn("history session delete failed: agent={}, session={}", agentId, sessionId, e);
+            return 0;
+        }
+    }
+
     private Connection open(Path db) throws SQLException, IOException {
         Files.createDirectories(db.getParent());
         Path key = db.toAbsolutePath().normalize();

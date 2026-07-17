@@ -12,6 +12,7 @@ import com.melon.app.runner.MelonPawEnvelopeMapper;
 import com.melon.app.service.ApprovalService;
 import com.melon.app.service.InboxStore;
 import com.melon.app.service.SkillService;
+import com.melon.app.task.EnterpriseTaskService;
 import com.melon.core.config.ConfigManager;
 import com.melon.core.agent.CommandHandler;
 import com.melon.core.agent.MultiAgentManager;
@@ -46,6 +47,7 @@ import java.util.Map;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import static com.melon.app.auth.EnterprisePermissions.AGENTS_MANAGE;
 import static com.melon.app.auth.EnterprisePermissions.APPROVALS_DECIDE;
 
@@ -68,12 +70,14 @@ public class ConsoleCompatController {
     private final MultiAgentManager multiAgentManager;
     private final InboxStore inboxStore;
     private final EnterpriseAgentAccessService agentAccessService;
+    private final EnterpriseTaskService taskService;
 
     public ConsoleCompatController(AgentRunner agentRunner, ChatManager chatManager, ApprovalService approvalService,
                                    ConfigManager configManager, CommandDispatcher commandDispatcher,
                                    SkillService skillService, MultiAgentManager multiAgentManager,
                                    InboxStore inboxStore,
-                                   EnterpriseAgentAccessService agentAccessService) {
+                                   EnterpriseAgentAccessService agentAccessService,
+                                   EnterpriseTaskService taskService) {
         this.agentRunner = agentRunner;
         this.chatManager = chatManager;
         this.approvalService = approvalService;
@@ -83,29 +87,51 @@ public class ConsoleCompatController {
         this.multiAgentManager = multiAgentManager;
         this.inboxStore = inboxStore;
         this.agentAccessService = agentAccessService;
+        this.taskService = taskService;
     }
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> chat(
             @RequestBody Map<String, Object> body,
-            @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
+            @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String requestedAgentId,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String agentId = agentAccessService.resolveExecution(principal, requestedAgentId);
         String userId = principal.id();
         String sessionId = stringValue(body.get("session_id"), "default");
         String channel = stringValue(body.get("channel"), "console");
+        if (Boolean.TRUE.equals(body.get("reconnect"))) {
+            // The SDK reconnect hook only probes whether an SSE stream can be resumed.
+            // Runtime output is persisted through chat history, so it must not start a new turn.
+            return Flux.empty();
+        }
         List<Map<String, Object>> frontendContext = frontendUserMessages(agentId, body.get("input"));
         String text = modelFacingText(frontendContext);
         ChatSpec chat = chatManager.getOrCreateForSession(agentId, sessionId, userId, channel, initialTitle(agentId, text));
         String chatId = chat.getId();
+        String requestId = stringValue(body.get("request_id"), stringValue(body.get("client_request_id"), ""));
+        EnterpriseTaskService.TaskRun task = taskService.startForAgent(
+                "AGENT", userId, agentId, chat.getName(), sessionId, "console",
+                requestId, chatId, requestId);
+        if (!task.created()) {
+            MelonPawEnvelopeMapper duplicate = new MelonPawEnvelopeMapper(sessionId, task.taskId(), task.runId());
+            return Flux.fromIterable(duplicate.completeWithText(
+                    "This request was already accepted.", Map.of("task_id", task.taskId(), "run_id", task.runId())));
+        }
         chatManager.setStatus(agentId, chatId, "running");
 
-        String commandReply = handleCommand(agentId, text, principal);
-        if (commandReply != null) {
-            MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId);
-            saveCommandShadow(agentId, channel, userId, sessionId, frontendContext, commandReply);
-            chatManager.setStatus(agentId, chatId, "idle");
-            return Flux.fromIterable(envelope.completeWithText(commandReply))
-                    .doFinally(signal -> log.info("Console command handled: agent={}, session={}, chat={}, signal={}", agentId, sessionId, chatId, signal));
+        CommandHandler.CommandResult command = commandDispatcher.dispatch(text);
+        boolean loopCommand = command != null && command.isSuccess()
+                && (command.getAction() == CommandHandler.CommandResult.Action.START_GOAL
+                    || command.getAction() == CommandHandler.CommandResult.Action.START_MISSION);
+        if (isDirectCommand(command)) {
+            return executeCommand(agentId, channel, userId, sessionId, command, principal)
+                    .onErrorResume(error -> {
+                        taskService.fail(task, error);
+                        return Mono.just(CommandOutcome.message(
+                                error.getMessage() != null ? error.getMessage() : "Command failed"));
+                    })
+                    .flatMapMany(outcome -> commandResponse(agentId, channel, userId, sessionId,
+                            chatId, frontendContext, outcome, task));
         }
 
         Map<String, Object> env = new LinkedHashMap<>();
@@ -124,27 +150,52 @@ public class ConsoleCompatController {
                 env.put(String.valueOf(entry.getKey()), entry.getValue());
             }
         }
+        env.put("task_id", task.taskId());
+        env.put("run_id", task.runId());
 
-        List<Msg> msgs = List.of(new UserMessage(text));
-        MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId);
-        return agentRunner.stream(agentId, msgs, userId, sessionId, env)
+        String effectiveText = expandExplicitSkillCommand(agentId, text);
+        List<Msg> msgs = List.of(effectiveText.equals(text)
+                ? new UserMessage(effectiveText)
+                : new UserMessage("__internal__", effectiveText));
+        MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId, task.taskId(), task.runId());
+        AtomicReference<Throwable> taskFailure = new AtomicReference<>();
+        Flux<io.agentscope.core.event.AgentEvent> agentEvents;
+        if (loopCommand) {
+            AgentRunner.LoopMode mode = command.getAction() == CommandHandler.CommandResult.Action.START_MISSION
+                    ? AgentRunner.LoopMode.MISSION : AgentRunner.LoopMode.GOAL;
+            String objective = stringValue(command.getData().get("objective"), "");
+            taskService.setRetryIntent(task, new EnterpriseTaskService.RetryIntent(
+                    mode == AgentRunner.LoopMode.MISSION ? "LOOP_MISSION" : "LOOP_GOAL", objective, env));
+            agentEvents = agentRunner.streamLoop(agentId, mode, objective, userId, sessionId, env);
+        } else {
+            taskService.setRetryIntent(task, new EnterpriseTaskService.RetryIntent(
+                    "STREAM", effectiveText, env, !effectiveText.equals(text)));
+            agentEvents = agentRunner.stream(agentId, msgs, userId, sessionId, env);
+        }
+        return agentEvents
                 .doOnSubscribe(s -> log.info("Console chat started: agent={}, user={}, session={}, chat={}", agentId, userId, sessionId, chatId))
                 .flatMapIterable(envelope::translate)
                 .concatWith(Flux.defer(() -> Flux.fromIterable(envelope.finish())))
                 .startWith(envelope.start())
+                .onErrorResume(e -> {
+                    taskFailure.set(e);
+                    log.error("Console chat failed: agent={}, user={}, session={}, chat={}", agentId, userId, sessionId, chatId, e);
+                    List<ServerSentEvent<String>> errorEvents = envelope.error(e);
+                    return Flux.fromIterable(errorEvents);
+                })
                 .doFinally(signal -> {
                     chatManager.setStatus(agentId, chatId, "idle");
                     chatManager.saveSessionShadowFromStateStore(agentId, channel, userId, sessionId,
                             sessionContext(frontendContext, envelope.outputStateMessagesSnapshot()), envelope.turnUsageSnapshot());
-                    log.info("Console chat finished: agent={}, session={}, chat={}, signal={}", agentId, sessionId, chatId, signal);
-                })
-                .onErrorResume(e -> {
-                    log.error("Console chat failed: agent={}, user={}, session={}, chat={}", agentId, userId, sessionId, chatId, e);
-                    chatManager.setStatus(agentId, chatId, "idle");
-                    List<ServerSentEvent<String>> errorEvents = envelope.error(e);
-                    chatManager.saveSessionShadowFromStateStore(agentId, channel, userId, sessionId,
-                            sessionContext(frontendContext, envelope.outputStateMessagesSnapshot()), envelope.turnUsageSnapshot());
-                    return Flux.fromIterable(errorEvents);
+                    if (signal == reactor.core.publisher.SignalType.CANCEL) {
+                        taskService.cancel(task, "client disconnected or cancelled");
+                    } else if (taskFailure.get() != null) {
+                        taskService.fail(task, taskFailure.get());
+                    } else {
+                        taskService.succeed(task, envelope.visibleAssistantText());
+                    }
+                    log.info("Console chat finished: agent={}, session={}, chat={}, task={}, signal={}",
+                            agentId, sessionId, chatId, task.taskId(), signal);
                 });
     }
 
@@ -157,7 +208,7 @@ public class ConsoleCompatController {
             @AuthenticationPrincipal EnterprisePrincipal principal,
             @RequestBody(required = false) Map<String, Object> body) {
         Map<String, Object> payload = body != null ? body : Map.of();
-        String effectiveAgentId = agentAccessService.ensurePersonalAgent(principal);
+        String effectiveAgentId = agentAccessService.resolveExecution(principal, agentId);
         String chatId = stringValue(payload.get("chat_id"), stringValue(chatIdParam, ""));
         ChatSpec chat = chatManager.get(effectiveAgentId, chatId);
         String userId = principal.id();
@@ -207,6 +258,7 @@ public class ConsoleCompatController {
 
         boolean approvalCancelled = approvalService.cancelPendingApproval(effectiveAgentId, sessionId, userId);
         boolean planCancelled = approvalService.cancelPendingPlan(effectiveAgentId, sessionId);
+        taskService.cancelActiveSession(userId, effectiveAgentId, sessionId, "cancelled from chat");
         int shellCancelled = 0;
         if (!chatId.isBlank()) {
             chatManager.setStatus(effectiveAgentId, chatId, "idle");
@@ -565,30 +617,68 @@ public class ConsoleCompatController {
         return String.join("\n", parts).trim();
     }
 
-    private String handleCommand(String agentId, String text, EnterprisePrincipal principal) {
-        if (text == null || !text.trim().startsWith("/")) return null;
-        String token = text.trim().split("\\s+", 2)[0].toLowerCase();
-        if (!List.of("/clear", "/compact", "/new", "/model", "/skills", "/help", "/mission").contains(token)) {
-            return null;
-        }
-        if ("/mission".equals(token)) {
-            return readWorkspaceMarkdown(agentId, "SOUL.md", "No mission file is configured.");
-        }
-        if ("/model".equals(token) && !principal.hasPermission("agents:manage")) {
-            return "Model selection is managed by your organization.";
-        }
-        CommandHandler.CommandResult result = commandDispatcher.dispatch(text);
-        if (result == null || result.getType() == CommandHandler.CommandType.UNKNOWN) return null;
-        if (!result.isSuccess()) return result.getMessage();
+    private boolean isDirectCommand(CommandHandler.CommandResult result) {
+        if (result == null || result.getType() == CommandHandler.CommandType.UNKNOWN) return false;
+        return result.getAction() != CommandHandler.CommandResult.Action.START_GOAL
+                && result.getAction() != CommandHandler.CommandResult.Action.START_MISSION;
+    }
+
+    private Mono<CommandOutcome> executeCommand(String agentId, String channel, String userId,
+                                                String sessionId, CommandHandler.CommandResult result,
+                                                EnterprisePrincipal principal) {
+        if (!result.isSuccess()) return Mono.just(CommandOutcome.message(result.getMessage()));
         return switch (result.getAction()) {
-            case SWITCH_MODEL -> switchModel(agentId, stringValue(result.getData().get("model"), ""));
-            case LIST_SKILLS -> listSkills(agentId);
-            case CLEAR_HISTORY -> "Conversation history is cleared for this turn. Start a new chat if you need a clean persisted session.";
-            case COMPACT_CONTEXT -> "Context compaction has been requested. AgentScope will compact automatically when configured thresholds are reached.";
-            case NEW_SESSION -> "New session requested. Use the new chat button to create a separate persisted session.";
-            case SHOW_HELP -> result.getMessage();
-            default -> result.getMessage();
+            case SWITCH_MODEL -> Mono.fromCallable(() -> {
+                if (!principal.hasPermission("agents:manage")) {
+                    return CommandOutcome.message("Model selection is managed by your organization.");
+                }
+                return CommandOutcome.message(switchModel(
+                        agentId, stringValue(result.getData().get("model"), "")));
+            });
+            case LIST_SKILLS -> Mono.fromCallable(() -> CommandOutcome.message(listSkills(agentId)));
+            case ADD_SKILL -> Mono.fromCallable(() -> CommandOutcome.message(
+                    addSkill(agentId, stringValue(result.getData().get("skill"), ""))));
+            case REMOVE_SKILL -> Mono.fromCallable(() -> CommandOutcome.message(
+                    removeSkill(agentId, stringValue(result.getData().get("skill"), ""))));
+            case CLEAR_HISTORY -> Mono.fromCallable(() -> {
+                agentRunner.cancel(agentId, userId, sessionId);
+                approvalService.cancelPendingApproval(agentId, sessionId, userId);
+                multiAgentManager.clearSession(agentId, userId, sessionId);
+                chatManager.clearSession(agentId, channel, userId, sessionId);
+                return new CommandOutcome("Conversation context cleared.",
+                        Map.of("clear_history", true), false);
+            });
+            case COMPACT_CONTEXT -> multiAgentManager.compactSession(
+                            agentId, userId, sessionId,
+                            stringValue(result.getData().get("instruction"), ""))
+                    .map(compacted -> CommandOutcome.message(compacted
+                            ? "Conversation context compacted and persisted."
+                            : "There is not enough conversation context to compact."));
+            case NEW_SESSION -> Mono.fromCallable(() -> {
+                String name = stringValue(result.getData().get("session_name"), "New chat");
+                ChatSpec created = chatManager.create(agentId, name, userId, channel, null);
+                return new CommandOutcome("Created a new chat: " + created.getName(),
+                        Map.of("new_session_id", created.getSessionId(), "new_chat_id", created.getId()), true);
+            });
+            case SHOW_HELP -> Mono.just(CommandOutcome.message(result.getMessage()));
+            default -> Mono.just(CommandOutcome.message(result.getMessage()));
         };
+    }
+
+    private Flux<ServerSentEvent<String>> commandResponse(
+            String agentId, String channel, String userId, String sessionId, String chatId,
+            List<Map<String, Object>> frontendContext, CommandOutcome outcome,
+            EnterpriseTaskService.TaskRun task) {
+        MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId, task.taskId(), task.runId());
+        if (outcome.persistShadow()) {
+            saveCommandShadow(agentId, channel, userId, sessionId, frontendContext, outcome.text());
+        }
+        chatManager.setStatus(agentId, chatId, "idle");
+        taskService.succeed(task, outcome.text());
+        return Flux.fromIterable(envelope.completeWithText(outcome.text(), outcome.metadata()))
+                .doFinally(signal -> log.info(
+                        "Console command handled: agent={}, session={}, chat={}, signal={}",
+                        agentId, sessionId, chatId, signal));
     }
 
     private String switchModel(String agentId, String model) {
@@ -606,22 +696,64 @@ public class ConsoleCompatController {
         for (Map<String, Object> skill : skillService.listSkills(agentId)) {
             String enabled = Boolean.TRUE.equals(skill.get("enabled")) ? "enabled" : "disabled";
             String description = stringValue(skill.get("description"), "");
-            lines.add("- " + stringValue(skill.get("name"), "") + " [" + enabled + "]" + (description.isBlank() ? "" : ": " + description));
+            String name = stringValue(skill.get("name"), "");
+            String invocation = "enabled".equals(enabled) ? "/" + name : name;
+            lines.add("- " + invocation + " [" + enabled + "]"
+                    + (description.isBlank() ? "" : ": " + description));
         }
         return lines.isEmpty() ? "No workspace skills are installed." : String.join("\n", lines);
     }
 
-    private String readWorkspaceMarkdown(String agentId, String fileName, String fallback) {
-        try {
-            Path file = SafePathUtil.resolveSafe(configManager.resolveWorkspaceDir(agentId), fileName);
-            if (Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-                String content = Files.readString(file).trim();
-                if (!content.isBlank()) return content;
-            }
-        } catch (Exception ignored) {
-            // Use fallback below.
+    private String addSkill(String agentId, String name) throws java.io.IOException {
+        boolean installed = skillService.listSkills(agentId).stream()
+                .anyMatch(skill -> name.equals(stringValue(skill.get("name"), "")));
+        if (installed) {
+            skillService.enableSkill(agentId, name);
+        } else {
+            boolean inPool = skillService.listPoolSkills().stream()
+                    .anyMatch(skill -> name.equals(stringValue(skill.get("name"), "")));
+            if (!inPool) throw new IllegalArgumentException("Skill not found in workspace or shared pool: " + name);
+            skillService.downloadPoolSkillToWorkspace(agentId, name, false);
+            skillService.enableSkill(agentId, name);
         }
-        return fallback;
+        multiAgentManager.reload(agentId);
+        return "Skill enabled: " + name;
+    }
+
+    private String removeSkill(String agentId, String name) throws java.io.IOException {
+        skillService.disableSkill(agentId, name);
+        multiAgentManager.reload(agentId);
+        return "Skill disabled: " + name;
+    }
+
+    private String expandExplicitSkillCommand(String agentId, String text) {
+        if (text == null || !text.trim().startsWith("/")) return text;
+        String[] parts = text.trim().split("\\s+", 2);
+        String requested = parts[0].substring(1);
+        Map<String, Object> skill = skillService.listSkills(agentId).stream()
+                .filter(item -> Boolean.TRUE.equals(item.get("enabled")))
+                .filter(item -> requested.equalsIgnoreCase(stringValue(item.get("name"), "")))
+                .findFirst()
+                .orElse(null);
+        if (skill == null) return text;
+        String request = parts.length > 1 && !parts[1].isBlank()
+                ? parts[1].trim() : "Apply this skill and report the result.";
+        try {
+            String instructions = skillService.getSkillContent(agentId, requested);
+            return "The user explicitly invoked the workspace skill named '" + requested + "'. "
+                    + "Treat the following SKILL.md as mandatory instructions. Load any referenced skill "
+                    + "resources when needed, then complete the user request.\n\n<skill_instructions>\n"
+                    + instructions + "\n</skill_instructions>\n\n<user_request>\n"
+                    + request + "\n</user_request>";
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Failed to load skill '" + requested + "'", e);
+        }
+    }
+
+    private record CommandOutcome(String text, Map<String, Object> metadata, boolean persistShadow) {
+        private static CommandOutcome message(String text) {
+            return new CommandOutcome(text == null ? "" : text, Map.of(), true);
+        }
     }
 
     private void saveCommandShadow(String agentId, String channel, String userId, String sessionId,
@@ -634,7 +766,7 @@ public class ConsoleCompatController {
         assistant.put("content", List.of(Map.of("type", "text", "text", reply != null ? reply : "")));
         assistant.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")));
         context.add(assistant);
-        chatManager.saveSessionShadow(agentId, channel, userId, sessionId, Map.of("context", context));
+        chatManager.saveSessionShadowFromStateStore(agentId, channel, userId, sessionId, context);
     }
 
     private List<Map<String, Object>> sessionContext(List<Map<String, Object>> frontendContext,

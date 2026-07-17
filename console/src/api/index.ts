@@ -28,6 +28,7 @@ import { backupApi } from "./modules/backup";
 import { consoleApi } from "./modules/console";
 import { accessControlApi } from "./modules/accessControl";
 import { companyApi } from "./modules/company";
+import { taskApi } from "./modules/tasks";
 
 export const api = {
   // Root
@@ -102,6 +103,7 @@ export const api = {
 
   // Enterprise project spaces and membership
   ...companyApi,
+  ...taskApi,
 };
 
 export default api;
@@ -109,10 +111,21 @@ export default api;
 // Export individual APIs for direct access
 export { agentsApi };
 export { companyApi };
+export { taskApi };
+export type {
+  EnterpriseTask,
+  EnterpriseTaskEvent,
+  EnterpriseTaskResult,
+  EnterpriseTaskRun,
+  EnterpriseTaskStatus,
+} from "./modules/tasks";
 export type {
   EnterpriseRole,
   EnterpriseUserInput,
   ProjectSpace,
+  ProjectAgent,
+  ProjectAgentInput,
+  ProjectAgentVersion,
   ProjectSpaceInput,
   ProjectSpaceMember,
   ProjectWorkspace,

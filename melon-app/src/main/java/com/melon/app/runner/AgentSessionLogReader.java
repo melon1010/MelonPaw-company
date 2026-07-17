@@ -59,12 +59,12 @@ public class AgentSessionLogReader {
 
     public List<Map<String, Object>> readFrontendMessages(String agentId, String userId, String channel, String sessionId) {
         Map<String, Object> shadow = chatManager.loadSessionShadow(agentId, channel, userId, sessionId);
-        List<Map<String, Object>> shadowMessages = readPythonSessionMessages(shadow);
+        List<Map<String, Object>> shadowMessages = deduplicateMessages(readPythonSessionMessages(shadow));
         if (!shadowMessages.isEmpty() && !looksTruncatedConsoleHistory(shadowMessages)) return shadowMessages;
 
         Map<String, Object> state = stateLookup.findAsMap(agentId, userId, sessionId);
         if (!state.isEmpty()) {
-            List<Map<String, Object>> messages = readStateMessages(state);
+            List<Map<String, Object>> messages = deduplicateMessages(readStateMessages(state));
             if (!messages.isEmpty() && !looksTruncatedConsoleHistory(messages)) return messages;
         }
 
@@ -82,7 +82,47 @@ public class AgentSessionLogReader {
             log.warn("Failed to read AgentScope session log: {}", logFile, e);
             return List.of();
         }
-        return messages;
+        return deduplicateMessages(messages);
+    }
+
+    private List<Map<String, Object>> deduplicateMessages(List<Map<String, Object>> messages) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        List<String> currentTurn = new ArrayList<>();
+        for (Map<String, Object> message : messages) {
+            if ("user".equals(lower(message.get("role")))) {
+                currentTurn.clear();
+                result.add(message);
+                continue;
+            }
+            List<String> fingerprints = frontendFingerprints(message);
+            if (!fingerprints.isEmpty() && currentTurn.containsAll(fingerprints)) continue;
+            currentTurn.addAll(fingerprints);
+            result.add(message);
+        }
+        return result;
+    }
+
+    private List<String> frontendFingerprints(Map<String, Object> message) {
+        Object content = message.get("content");
+        if (!(content instanceof List<?> blocks)) return List.of();
+        String messageType = stringValue(message.get("type"));
+        List<String> fingerprints = new ArrayList<>();
+        for (Object block : blocks) {
+            if (!(block instanceof Map<?, ?> raw)) continue;
+            String type = stringValue(raw.get("type"));
+            if ("data".equals(type) && raw.get("data") instanceof Map<?, ?> data) {
+                String callId = stringValue(data.get("call_id"));
+                fingerprints.add(!callId.isBlank()
+                        ? messageType + ":" + callId
+                        : messageType + ":" + JsonUtils.toJson(data));
+            } else if ("text".equals(type)) {
+                String text = stringValue(raw.get("text"));
+                if (!text.isBlank()) fingerprints.add(messageType + ":" + text);
+            } else {
+                fingerprints.add(messageType + ":" + JsonUtils.toJson(raw));
+            }
+        }
+        return fingerprints;
     }
 
     private boolean looksTruncatedConsoleHistory(List<Map<String, Object>> messages) {

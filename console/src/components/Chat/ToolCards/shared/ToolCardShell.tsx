@@ -25,6 +25,8 @@ export interface ToolCardShellProps {
   badges?: React.ReactNode;
   /** Expandable body content. */
   children?: React.ReactNode;
+  /** Show result content immediately, used for user-facing media. */
+  defaultOpen?: boolean;
 }
 
 const ToolCardShell: React.FC<ToolCardShellProps> = ({
@@ -35,6 +37,7 @@ const ToolCardShell: React.FC<ToolCardShellProps> = ({
   inlineResult,
   badges,
   children,
+  defaultOpen = false,
 }) => {
   const { t } = useTranslation();
   const isLoading = content.status === "calling" && isStreaming;
@@ -42,6 +45,7 @@ const ToolCardShell: React.FC<ToolCardShellProps> = ({
 
   return (
     <details
+      open={defaultOpen || undefined}
       className={`${styles.toolCallCompact} ${
         isLoading ? styles.toolCallCompactLoading : ""
       } ${isError ? styles.toolCallCompactError : ""}`}

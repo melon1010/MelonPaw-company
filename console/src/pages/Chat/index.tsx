@@ -101,9 +101,6 @@ import {
 import { openExternalLink } from "../../utils/openExternalLink";
 import { useUploadLimitStore } from "../../stores/uploadLimitStore";
 import MessageQueuePanel from "./components/MessageQueuePanel";
-import ApprovalLevelToggle, {
-  type ToolExecutionLevel,
-} from "./components/ApprovalLevelToggle";
 import {
   useMessageQueueStore,
   type QueueItem,
@@ -330,6 +327,7 @@ async function startBackgroundQueue(
             session_id: item.backendSessionId || backendSessionId,
             user_id: item.userId || DEFAULT_USER_ID,
             channel: item.channel || DEFAULT_CHANNEL,
+            request_id: item.id,
             stream: true,
           }),
         });
@@ -1029,6 +1027,8 @@ export default function ChatPage() {
   const { user } = useAuth();
   const canManageModels = hasPermission(user, "system:manage");
   const loopSelectedSkill = useLoopStore((s) => s.selectedSkill);
+  const availableCommands = useLoopStore((s) => s.availableCommands);
+  const availableLoopSkills = useLoopStore((s) => s.availableSkills);
 
   // Wide mode toggle: expand chat content to full available width
   const [isWideMode, setIsWideMode] = useState(() => {
@@ -1082,8 +1082,7 @@ export default function ChatPage() {
   messageQueueRef.current = messageQueue;
   const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevQueueLenRef = useRef(messageQueue.length);
-
-  const sessionApprovalLevelRef = useRef<ToolExecutionLevel | null>(null);
+  const approvalPendingRef = useRef(false);
 
   // Track pending attachments for queue support
   const pendingFileListRef = useRef<
@@ -1160,7 +1159,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     void fetchAvailableLoopSkills();
-  }, []);
+  }, [selectedAgent]);
 
   // Whether this tab is confirmed to be a non-owner (queue-only) tab.
   // Stays false until ownership check completes, preventing a flash of
@@ -1174,6 +1173,7 @@ export default function ChatPage() {
     autoSendTimerRef.current = setTimeout(() => {
       autoSendTimerRef.current = null;
       if (chatLoadingRef.current) return;
+      if (approvalPendingRef.current) return;
       // Only the owner tab is allowed to actually send.
       if (!isOwnerRef.current) return;
       // Respect pause/error state — read fresh from store
@@ -1187,6 +1187,7 @@ export default function ChatPage() {
       // cross-tab broadcast will refresh our queue and the next loading→idle
       // transition will retry.
       void withSendLock(queueSessionId, () => {
+        if (approvalPendingRef.current) return;
         // Re-check: another tab may have already removed this item via
         // broadcast, or a session switch may have happened.
         const fresh = useMessageQueueStore.getState().getQueue(queueSessionId);
@@ -1254,6 +1255,7 @@ export default function ChatPage() {
   const [approvalRequests, setApprovalRequests] = useState<
     Map<string, ApprovalMessageData>
   >(new Map());
+  approvalPendingRef.current = approvalRequests.size > 0;
   const isMobile = useIsMobile();
 
   // Right-side history panel state
@@ -1413,7 +1415,7 @@ export default function ChatPage() {
           `[data-approval-id="${requestId}"]`,
         );
         if (cardElement) {
-          cardElement.classList.add("approvalCardExit");
+          cardElement.classList.add(styles.approvalCardExit);
         }
 
         await commandsApi.sendApprovalCommand(
@@ -1458,7 +1460,7 @@ export default function ChatPage() {
           `[data-approval-id="${requestId}"]`,
         );
         if (cardElement) {
-          cardElement.classList.add("approvalCardExit");
+          cardElement.classList.add(styles.approvalCardExit);
         }
 
         await commandsApi.sendApprovalCommand("deny", requestId, rootSessionId);
@@ -1505,6 +1507,34 @@ export default function ChatPage() {
   const chatIdRef = useRef(chatId);
   const navigateRef = useRef(navigate);
   const chatRef = useRef<IAgentScopeRuntimeWebUIRef>(null);
+  const approvalInputLockRef = useRef(false);
+
+  useEffect(() => {
+    const pending = approvalRequests.size > 0;
+    approvalPendingRef.current = pending;
+
+    if (pending) {
+      if (autoSendTimerRef.current) {
+        clearTimeout(autoSendTimerRef.current);
+        autoSendTimerRef.current = null;
+      }
+      chatRef.current?.input.setDisabled(true);
+      approvalInputLockRef.current = true;
+      return;
+    }
+
+    if (approvalInputLockRef.current) {
+      chatRef.current?.input.setDisabled(false);
+      approvalInputLockRef.current = false;
+    }
+    if (
+      isOwnerRef.current &&
+      !chatLoadingRef.current &&
+      messageQueueRef.current.length > 0
+    ) {
+      scheduleNextSend();
+    }
+  }, [approvalRequests.size, refreshKey, scheduleNextSend]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -1706,6 +1736,11 @@ export default function ChatPage() {
   useEffect(() => {
     const handleEnterEnqueue = (e: KeyboardEvent) => {
       if (!isChatActive() || e.key !== "Enter" || e.shiftKey) return;
+      if (approvalPendingRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       const hasCtrl = e.ctrlKey || e.metaKey;
       const queueBusy =
         messageQueueRef.current.length > 0 ||
@@ -2161,6 +2196,7 @@ export default function ChatPage() {
         session_id: identity.sessionId || session?.session_id || "",
         user_id: identity.userId || session?.user_id || DEFAULT_USER_ID,
         channel: identity.channel || session?.channel || DEFAULT_CHANNEL,
+        request_id: crypto.randomUUID(),
         stream: true,
         ...biz_params,
       };
@@ -2176,15 +2212,6 @@ export default function ChatPage() {
         if (next && typeof next === "object") {
           requestBody = next;
         }
-      }
-
-      // Inject session-level approval_level into request_context
-      const sessionLevel = sessionApprovalLevelRef.current;
-      if (sessionLevel) {
-        const rc =
-          (requestBody.request_context as Record<string, unknown>) || {};
-        rc.approval_level = sessionLevel;
-        requestBody.request_context = rc;
       }
 
       const backendChatId =
@@ -2287,39 +2314,23 @@ export default function ChatPage() {
 
   const options = useMemo(() => {
     const i18nConfig = getDefaultConfig(t);
-    const commandSuggestions: CommandSuggestion[] = [
-      {
-        command: "/clear",
-        value: "clear",
-        description: t("chat.commands.clear.description"),
-      },
-      {
-        command: "/compact",
-        value: "compact",
-        description: t("chat.commands.compact.description"),
-      },
-      {
-        command: "/mission",
-        value: "__loop__mission",
-        description: t("chat.commands.mission.description"),
-      },
-      {
-        command: "/skills",
-        value: "skills",
-        description: t("chat.commands.skills.description"),
-      },
-      {
-        command: "/goal",
-        value: "__loop__goal",
-        description: t("chat.commands.goal.description"),
-      },
-    ];
+    const commandSuggestions: CommandSuggestion[] = availableCommands
+      .filter((item) => item.category === "system" || item.category === "loop")
+      .map((item) => ({
+        command: `/${item.name}`,
+        value: item.category === "loop" ? `__loop__${item.name}` : item.name,
+        description: t(`chat.commands.${item.name}.description`, {
+          defaultValue: item.description,
+        }),
+      }));
     const reservedCommands = new Set(
-      commandSuggestions.map((item) => item.value.trim()),
+      availableCommands
+        .filter(
+          (item) => item.category === "system" || item.category === "loop",
+        )
+        .map((item) => item.name.trim()),
     );
-    const loopSkillNames = new Set(
-      useLoopStore.getState().availableSkills.map((s) => s.name),
-    );
+    const loopSkillNames = new Set(availableLoopSkills.map((s) => s.name));
     const skillSuggestions: CommandSuggestion[] = consoleSkills
       .filter((skill) => !reservedCommands.has(skill.name))
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -2330,9 +2341,8 @@ export default function ChatPage() {
           : skill.name,
         description: "",
       }));
-    const loopOnlySuggestions: CommandSuggestion[] = useLoopStore
-      .getState()
-      .availableSkills.filter(
+    const loopOnlySuggestions: CommandSuggestion[] = availableLoopSkills
+      .filter(
         (s) =>
           !reservedCommands.has(s.name) &&
           !consoleSkills.some((cs) => cs.name === s.name),
@@ -2344,6 +2354,10 @@ export default function ChatPage() {
       }));
     const handleBeforeSubmit = async () => {
       if (isComposingRef.current) return false;
+      if (approvalPendingRef.current) {
+        message.warning(t("approval.resolveBeforeSending"));
+        return false;
+      }
       // Single-tab ownership: non-owner tabs are queue-only. Re-route every
       // submit (Enter / send button / programmatic) to the shared queue and
       // abort the actual SDK send. The owner tab will pick the item up via
@@ -2573,6 +2587,82 @@ export default function ChatPage() {
       );
     }
 
+    const pendingApprovalRequests = Array.from(approvalRequests.values()).sort(
+      (left, right) => left.createdAt - right.createdAt,
+    );
+    const activeApproval = pendingApprovalRequests[0];
+    const remainingApprovalCount = Math.max(
+      0,
+      pendingApprovalRequests.length - 1,
+    );
+    const approvalTray = activeApproval ? (
+      <div
+        className={styles.approvalStack}
+        role="region"
+        aria-label={t("approval.title", "Security Approval Required")}
+        aria-live="polite"
+      >
+        <div className={styles.approvalGateStatus}>
+          <span>{t("approval.inputLocked")}</span>
+          {remainingApprovalCount > 0 ? (
+            <span className={styles.approvalPendingCount}>
+              {t("approval.pendingCount", {
+                count: remainingApprovalCount,
+              })}
+            </span>
+          ) : null}
+        </div>
+        <div
+          key={activeApproval.requestId}
+          data-approval-id={activeApproval.requestId}
+          className={styles.approvalItem}
+        >
+          <ApprovalCard
+            compact
+            requestId={activeApproval.requestId}
+            agentId={activeApproval.agentId}
+            toolName={activeApproval.toolName}
+            severity={activeApproval.severity}
+            findingsCount={activeApproval.findingsCount}
+            findingsSummary={activeApproval.findingsSummary}
+            toolParams={activeApproval.toolParams}
+            createdAt={activeApproval.createdAt}
+            timeoutSeconds={activeApproval.timeoutSeconds}
+            sessionId={activeApproval.sessionId}
+            rootSessionId={activeApproval.rootSessionId}
+            isGeneralized={activeApproval.isGeneralized}
+            exactTarget={activeApproval.exactTarget}
+            similarTarget={activeApproval.similarTarget}
+            onApprove={(reqId, scope) => handleApprove(reqId, scope)}
+            onDeny={handleDeny}
+            onCancel={() => {
+              const sessionId =
+                activeApproval.rootSessionId || window.currentSessionId || "";
+              const resolvedChatId =
+                sessionApi.getRealIdForSession(sessionId) ??
+                chatIdRef.current ??
+                sessionId;
+
+              if (!resolvedChatId) return;
+              chatApi
+                .stopChat(resolvedChatId)
+                .then(() => {
+                  setApprovals((prev) =>
+                    prev.filter(
+                      (item) =>
+                        item.root_session_id !== activeApproval.rootSessionId,
+                    ),
+                  );
+                })
+                .catch((error) => {
+                  console.error("[Chat] stopChat failed:", error);
+                });
+            }}
+          />
+        </div>
+      </div>
+    ) : null;
+
     const baseSuggestions = [
       ...commandSuggestions,
       ...loopOnlySuggestions,
@@ -2650,32 +2740,34 @@ export default function ChatPage() {
         ...(i18nConfig as any)?.sender,
         beforeSubmit: handleBeforeSubmit,
         allowSpeech: whisperChecked && !whisperEnabled,
-        beforeUI: showSenderBeforeUI ? (
-          <>
-            {isQueueOnlyTab && (
-              <Alert
-                type="info"
-                showIcon
-                banner
-                message={t("chat.queue.otherTabOwner")}
-              />
-            )}
-            {hasQueueItems ? (
-              <MessageQueuePanel
-                items={messageQueue}
-                runState={runState}
-                onRemove={handleQueueRemove}
-                onEdit={handleQueueEdit}
-                onReorder={handleQueueReorder}
-                onInterruptAndSend={handleQueueInterruptAndSend}
-                onClear={handleQueueClear}
-                onPauseResume={handleQueuePauseResume}
-                onRetry={handleQueueRetry}
-                onSkip={handleQueueSkip}
-              />
-            ) : null}
-          </>
-        ) : undefined,
+        beforeUI:
+          showSenderBeforeUI || approvalTray !== null ? (
+            <>
+              {approvalTray}
+              {isQueueOnlyTab && (
+                <Alert
+                  type="info"
+                  showIcon
+                  banner
+                  message={t("chat.queue.otherTabOwner")}
+                />
+              )}
+              {hasQueueItems ? (
+                <MessageQueuePanel
+                  items={messageQueue}
+                  runState={runState}
+                  onRemove={handleQueueRemove}
+                  onEdit={handleQueueEdit}
+                  onReorder={handleQueueReorder}
+                  onInterruptAndSend={handleQueueInterruptAndSend}
+                  onClear={handleQueueClear}
+                  onPauseResume={handleQueuePauseResume}
+                  onRetry={handleQueueRetry}
+                  onSkip={handleQueueSkip}
+                />
+              ) : null}
+            </>
+          ) : undefined,
         prefix: (
           <>
             {whisperEnabled ? (
@@ -2700,14 +2792,6 @@ export default function ChatPage() {
             ) : null}
             {pluginSenderPrefix}
           </>
-        ),
-        actionAffix: (
-          <ApprovalLevelToggle
-            chatId={chatId}
-            onChange={(level) => {
-              sessionApprovalLevelRef.current = level;
-            }}
-          />
         ),
         attachments: {
           multiple: true,
@@ -2911,6 +2995,8 @@ export default function ChatPage() {
     extLists,
     scheduleHistoryClear,
     consoleSkills,
+    availableCommands,
+    availableLoopSkills,
     selectedAgent,
     onFileCardClick,
     whisperChecked,
@@ -2929,6 +3015,9 @@ export default function ChatPage() {
     handleQueueSkip,
     runState,
     isOwner,
+    approvalRequests,
+    handleApprove,
+    handleDeny,
   ]);
 
   return (
@@ -2970,9 +3059,7 @@ export default function ChatPage() {
                           scope: "agent",
                           agent_id: selectedAgent,
                         });
-                        window.dispatchEvent(
-                          new CustomEvent("model-switched"),
-                        );
+                        window.dispatchEvent(new CustomEvent("model-switched"));
                         message.success(
                           t("chat.rateLimitSwitched", {
                             model: alt.model_name,
@@ -2997,71 +3084,6 @@ export default function ChatPage() {
             </div>
           </div>
         )}
-
-        {/* Render approval cards as overlays */}
-        {Array.from(approvalRequests.values()).map((request) => (
-          <div
-            key={request.requestId}
-            data-approval-id={request.requestId}
-            style={{
-              position: "fixed",
-              bottom: 80,
-              right: 24,
-              zIndex: 1000,
-              maxWidth: 480,
-              width: "calc(100vw - 48px)",
-            }}
-          >
-            <ApprovalCard
-              requestId={request.requestId}
-              agentId={request.agentId}
-              toolName={request.toolName}
-              severity={request.severity}
-              findingsCount={request.findingsCount}
-              findingsSummary={request.findingsSummary}
-              toolParams={request.toolParams}
-              createdAt={request.createdAt}
-              timeoutSeconds={request.timeoutSeconds}
-              sessionId={request.sessionId}
-              rootSessionId={request.rootSessionId}
-              isGeneralized={request.isGeneralized}
-              exactTarget={request.exactTarget}
-              similarTarget={request.similarTarget}
-              onApprove={(reqId, scope) => handleApprove(reqId, scope)}
-              onDeny={handleDeny}
-              onCancel={() => {
-                const sessionId =
-                  request.rootSessionId || window.currentSessionId || "";
-                const resolvedChatId =
-                  sessionApi.getRealIdForSession(sessionId) ??
-                  chatIdRef.current ??
-                  sessionId;
-
-                if (resolvedChatId) {
-                  console.log("[Chat] Calling stopChat with:", resolvedChatId);
-                  chatApi
-                    .stopChat(resolvedChatId)
-                    .then(() => {
-                      console.log("[Chat] stopChat succeeded");
-                      setApprovals((prev) =>
-                        prev.filter(
-                          (item) =>
-                            item.root_session_id !== request.rootSessionId,
-                        ),
-                      );
-                    })
-                    .catch((err) => {
-                      console.error("[Chat] stopChat failed:", err);
-                    });
-                } else {
-                  console.warn(
-                    "[Chat] No chat_id resolved, cannot cancel task",
-                  );
-                }
-              }}
-            />
-          </div>
-        ))}
 
         <Modal
           open={showModelPrompt}

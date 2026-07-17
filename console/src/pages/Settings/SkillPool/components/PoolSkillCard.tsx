@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Checkbox, Tooltip } from "@agentscope-ai/design";
 import { SyncOutlined } from "@ant-design/icons";
+import { Send } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import dayjs from "dayjs";
 import type { PoolSkillSpec } from "../../../../api/types";
@@ -19,6 +20,7 @@ interface PoolSkillCardProps {
   onToggleSelect: (name: string) => void;
   onEdit: (skill: PoolSkillSpec) => void;
   onDelete: (skill: PoolSkillSpec) => void;
+  onBroadcast: (skill: PoolSkillSpec) => void;
   onToggleAutoUpdate: (
     skill: PoolSkillSpec,
     enabled: boolean,
@@ -33,6 +35,7 @@ export function PoolSkillCard({
   onToggleSelect,
   onEdit,
   onDelete,
+  onBroadcast,
   onToggleAutoUpdate,
 }: PoolSkillCardProps) {
   const { t } = useTranslation();
@@ -155,6 +158,17 @@ export function PoolSkillCard({
       {/* Footer - show on hover, batch mode, or mobile (no hover) */}
       {(isHover || batchModeEnabled || isMobile) && (
         <div className={styles.cardFooter}>
+          <Button
+            type="default"
+            icon={<Send size={14} />}
+            disabled={batchModeEnabled}
+            onClick={(e) => {
+              e.stopPropagation();
+              onBroadcast(skill);
+            }}
+          >
+            {t("skillPool.broadcast")}
+          </Button>
           <Tooltip
             title={
               skill.auto_update

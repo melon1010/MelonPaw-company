@@ -23,6 +23,7 @@ import GenericToolCard from "../cards/GenericToolCard";
 // ---------------------------------------------------------------------------
 
 const ERROR_STATUSES = new Set(["failed", "rejected", "canceled"]);
+const ERROR_RESULT_STATES = new Set(["error", "denied", "interrupted"]);
 
 /**
  * Derive the tool execution status from V1 message data.
@@ -37,11 +38,43 @@ function deriveToolStatus(
 ): ToolCallStatus {
   if (!resultItem) return "calling";
 
+  const resultData = (resultItem.data ?? {}) as Record<string, unknown>;
+  if (resultIndicatesError(resultData.output)) return "error";
+  const resultState = String(resultData.state ?? "").toLowerCase();
+  if (ERROR_RESULT_STATES.has(resultState)) return "error";
+  if (resultState === "success") return "done";
+
   const rawStatus =
-    (data.status as string) || (resultItem.status as string) || "";
+    (resultItem.status as string) || (data.status as string) || "";
   if (rawStatus === "completed") return "done";
   if (ERROR_STATUSES.has(rawStatus)) return "error";
   return "calling";
+}
+
+function resultIndicatesError(value: unknown, depth = 0): boolean {
+  if (depth > 4 || value == null) return false;
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(/^"|"$/g, "");
+    if (/^(?:\[ERROR\]|Error:|Error sending file:)/i.test(normalized)) {
+      return true;
+    }
+    try {
+      return resultIndicatesError(JSON.parse(value), depth + 1);
+    } catch {
+      return false;
+    }
+  }
+  if (Array.isArray(value)) {
+    return value.some((item) => resultIndicatesError(item, depth + 1));
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (record.isError === true || record.error != null) return true;
+    return Object.values(record).some((item) =>
+      resultIndicatesError(item, depth + 1),
+    );
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

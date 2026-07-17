@@ -1,21 +1,8 @@
-import { useMemo, useState } from "react";
-import { Layout, Dropdown, Popover, Tooltip } from "antd";
-import type { MenuProps } from "antd";
-import { Button } from "@agentscope-ai/design";
-import {
-  ChevronDown,
-  LogOut,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Settings,
-} from "lucide-react";
+import { Layout, Tooltip } from "antd";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useAuth } from "../contexts/AuthContext";
-import { primaryRole } from "../auth/authorization";
 import { Slot } from "../plugins/registry/Slot";
-import SidebarSettingsPanel from "./SidebarSettingsPanel";
-import { authApi } from "../api/modules/auth";
-import { clearAuthToken } from "../api/config";
+import { AccountControl, SettingsControl } from "./AccountControls";
 import styles from "./index.module.less";
 
 const { Header: AntHeader } = Layout;
@@ -30,46 +17,6 @@ export default function Header({
   onToggleSidebar,
 }: HeaderProps) {
   const { t } = useTranslation();
-  const { user, status: authStatus, clearSession } = useAuth();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
-  const role = user ? primaryRole(user) : "";
-
-  const accountItems = useMemo<MenuProps["items"]>(() => {
-    if (!user) return [];
-    const items: MenuProps["items"] = [
-      {
-        key: "identity",
-        disabled: true,
-        label: (
-          <div className={styles.accountMenuIdentity}>
-            <strong>{user.display_name || user.username}</strong>
-            <span>{role}</span>
-          </div>
-        ),
-      },
-    ];
-    if (authStatus?.enabled) {
-      items.push(
-        { type: "divider" },
-        {
-          key: "logout",
-          icon: <LogOut size={15} />,
-          label: t("login.logout"),
-        },
-      );
-    }
-    return items;
-  }, [authStatus?.enabled, role, t, user]);
-
-  const handleAccountAction: MenuProps["onClick"] = ({ key }) => {
-    if (key !== "logout") return;
-    void authApi.logout().finally(() => {
-      clearAuthToken();
-      clearSession();
-      window.location.href = "/login";
-    });
-  };
 
   return (
     <AntHeader className={styles.header}>
@@ -107,45 +54,17 @@ export default function Header({
             </span>
           </button>
         </Tooltip>
-
       </div>
 
       <Slot name="header.left" kind="fill" />
 
       <div className={styles.headerRight}>
         <Slot name="header.right" kind="fill" />
-        <Popover
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
+        <SettingsControl
+          className={styles.headerIconButton}
           placement="bottomRight"
-          trigger="click"
-          content={<SidebarSettingsPanel />}
-        >
-          <Button
-            type="text"
-            aria-label={t("nav.settings")}
-            icon={<Settings size={18} />}
-            className={styles.headerIconButton}
-          />
-        </Popover>
-        {user && (
-          <Dropdown
-            menu={{ items: accountItems, onClick: handleAccountAction }}
-            placement="bottomRight"
-            trigger={["click"]}
-          >
-            <button className={styles.headerAccount} type="button">
-              <span className={styles.headerAccountAvatar}>
-                {(user.display_name || user.username).slice(0, 1).toUpperCase()}
-              </span>
-              <span className={styles.headerAccountText}>
-                <strong>{user.display_name || user.username}</strong>
-                <span>{role}</span>
-              </span>
-              <ChevronDown size={14} className={styles.headerAccountChevron} />
-            </button>
-          </Dropdown>
-        )}
+        />
+        <AccountControl variant="header" placement="bottomRight" />
       </div>
     </AntHeader>
   );

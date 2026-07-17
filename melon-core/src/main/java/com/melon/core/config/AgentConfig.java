@@ -125,7 +125,7 @@ public class AgentConfig {
 
     public static class ApprovalConfig {
         @JsonProperty("level")
-        private String level = "AUTO"; // OFF / AUTO / SMART / STRICT
+        private String level = "RISK_BASED"; // RISK_BASED; legacy OFF / AUTO / SMART / STRICT remain readable
 
         public String getLevel() { return level; }
         public void setLevel(String level) { this.level = level; }

@@ -1,5 +1,6 @@
 import { Button, Checkbox } from "@agentscope-ai/design";
 import { useTranslation } from "react-i18next";
+import { Send } from "lucide-react";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import type { PoolSkillSpec } from "../../../../api/types";
@@ -20,6 +21,7 @@ interface PoolSkillListItemProps {
   onToggleSelect: (name: string) => void;
   onEdit: (skill: PoolSkillSpec) => void;
   onDelete: (skill: PoolSkillSpec) => void;
+  onBroadcast: (skill: PoolSkillSpec) => void;
 }
 
 export function PoolSkillListItem({
@@ -29,6 +31,7 @@ export function PoolSkillListItem({
   onToggleSelect,
   onEdit,
   onDelete,
+  onBroadcast,
 }: PoolSkillListItemProps) {
   const { t } = useTranslation();
 
@@ -86,6 +89,16 @@ export function PoolSkillListItem({
         </div>
       </div>
       <div className={styles.listItemRight}>
+        <Button
+          icon={<Send size={14} />}
+          disabled={batchModeEnabled}
+          onClick={(e) => {
+            e.stopPropagation();
+            onBroadcast(skill);
+          }}
+        >
+          {t("skillPool.broadcast")}
+        </Button>
         <Button
           danger
           className={styles.deleteButton}

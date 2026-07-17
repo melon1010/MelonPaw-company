@@ -2,33 +2,50 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Button,
+  Drawer,
   Empty,
+  Form,
   Input,
   Modal,
+  Popconfirm,
   Result,
+  Select,
   Space,
   Spin,
+  Switch,
+  Table,
   Tag,
 } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import {
   ArrowLeft,
+  Bot,
   BookOpenText,
   FileText,
+  History,
+  Network,
+  Play,
   RefreshCw,
   RotateCcw,
   Save,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
+import api, {
   companyApi,
   type ProjectSpace,
+  type ProjectAgent,
+  type ProjectAgentInput,
+  type ProjectAgentVersion,
   type ProjectWorkspace,
   type ProjectWorkspaceDocumentName,
 } from "../../../api";
-import { PageHeader } from "../../../components/PageHeader";
+import type { ProviderInfo } from "../../../api/types";
+import { PageHeader, SectionHeader } from "../../../components/PageHeader";
 import { useAppMessage } from "../../../hooks/useAppMessage";
+import { useAgentStore } from "../../../stores/agentStore";
 import styles from "../company.module.less";
 
 const DOCUMENT_NAMES: ProjectWorkspaceDocumentName[] = [
@@ -53,9 +70,21 @@ export default function ProjectWorkspacePage() {
   const { t } = useTranslation();
   const { message } = useAppMessage();
   const navigate = useNavigate();
+  const setSelectedAgent = useAgentStore((state) => state.setSelectedAgent);
   const { projectId = "" } = useParams();
   const [project, setProject] = useState<ProjectSpace | null>(null);
   const [workspace, setWorkspace] = useState<ProjectWorkspace | null>(null);
+  const [projectAgent, setProjectAgent] = useState<ProjectAgent | null>(null);
+  const [agentModalOpen, setAgentModalOpen] = useState(false);
+  const [agentSaving, setAgentSaving] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelOptions, setModelOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versions, setVersions] = useState<ProjectAgentVersion[]>([]);
+  const [agentForm] = Form.useForm<ProjectAgentInput>();
   const [drafts, setDrafts] = useState(EMPTY_DRAFTS);
   const [savedContents, setSavedContents] = useState(EMPTY_DRAFTS);
   const [activeName, setActiveName] =
@@ -69,9 +98,10 @@ export default function ProjectWorkspacePage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [nextProject, nextWorkspace] = await Promise.all([
+      const [nextProject, nextWorkspace, nextAgent] = await Promise.all([
         companyApi.getProject(projectId),
         companyApi.getProjectWorkspace(projectId),
+        companyApi.getProjectAgent(projectId),
       ]);
       const nextDrafts = { ...EMPTY_DRAFTS };
       for (const document of nextWorkspace.documents) {
@@ -79,6 +109,7 @@ export default function ProjectWorkspacePage() {
       }
       setProject(nextProject);
       setWorkspace(nextWorkspace);
+      setProjectAgent(nextAgent);
       setDrafts(nextDrafts);
       setSavedContents(nextDrafts);
     } catch (error) {
@@ -167,6 +198,153 @@ export default function ProjectWorkspacePage() {
       setSaving(false);
     }
   };
+
+  const openAgentEditor = async () => {
+    agentForm.setFieldsValue({
+      name: projectAgent?.name || `${project?.name || "Project"} Agent`,
+      description: projectAgent?.description || "",
+      enabled: projectAgent?.enabled ?? true,
+      active_model: projectAgent?.active_model,
+      change_summary: "",
+    });
+    setAgentModalOpen(true);
+    if (modelOptions.length > 0) return;
+    setModelsLoading(true);
+    try {
+      const providers = (await api.listProviders()) as ProviderInfo[];
+      setModelOptions(
+        providers
+          .filter((provider) => {
+            if (provider.require_api_key === false) return !!provider.base_url;
+            if (provider.is_custom) return !!provider.base_url;
+            return !!provider.api_key || !!provider.api_key_configured;
+          })
+          .flatMap((provider) =>
+            [...(provider.models || []), ...(provider.extra_models || [])].map(
+              (model) => ({
+                value: `${provider.id}:${model.id}`,
+                label: `${provider.name} / ${model.name || model.id}`,
+              }),
+            ),
+          ),
+      );
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : t("enterprise.projects.agentSaveFailed"),
+      );
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
+  const saveProjectAgent = async (values: ProjectAgentInput) => {
+    if (!projectId) return;
+    setAgentSaving(true);
+    try {
+      const saved = projectAgent?.configured
+        ? await companyApi.updateProjectAgent(projectId, values)
+        : await companyApi.createProjectAgent(projectId, values);
+      setProjectAgent({
+        ...saved,
+        configured: true,
+        can_manage: projectAgent?.can_manage ?? true,
+        can_execute: projectAgent?.can_execute ?? true,
+      });
+      setAgentModalOpen(false);
+      message.success(t("enterprise.projects.agentSaved"));
+      await load();
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : t("enterprise.projects.agentSaveFailed"),
+      );
+    } finally {
+      setAgentSaving(false);
+    }
+  };
+
+  const openVersions = async () => {
+    if (!projectId) return;
+    setVersionsOpen(true);
+    setVersionsLoading(true);
+    try {
+      setVersions(await companyApi.listProjectAgentVersions(projectId));
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : t("enterprise.projects.versionsLoadFailed"),
+      );
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
+
+  const rollbackVersion = async (versionId: string) => {
+    if (!projectId) return;
+    try {
+      await companyApi.rollbackProjectAgent(projectId, versionId);
+      message.success(t("enterprise.projects.rollbackComplete"));
+      await Promise.all([load(), openVersions()]);
+    } catch (error) {
+      message.error(
+        error instanceof Error
+          ? error.message
+          : t("enterprise.projects.rollbackFailed"),
+      );
+    }
+  };
+
+  const startProjectChat = () => {
+    if (!projectAgent?.agent_id) return;
+    setSelectedAgent(projectAgent.agent_id);
+    navigate("/chat");
+  };
+
+  const openProjectResource = (path: "/skills" | "/mcp") => {
+    if (!projectAgent?.agent_id) return;
+    setSelectedAgent(projectAgent.agent_id);
+    navigate(path);
+  };
+
+  const versionColumns: ColumnsType<ProjectAgentVersion> = [
+    {
+      title: t("enterprise.projects.version"),
+      dataIndex: "version",
+      width: 90,
+      render: (version: number) => <Tag>v{version}</Tag>,
+    },
+    {
+      title: t("enterprise.projects.changeSummary"),
+      dataIndex: "change_summary",
+    },
+    {
+      title: t("enterprise.projects.publishedAt"),
+      dataIndex: "published_at",
+      width: 190,
+      render: formatTime,
+    },
+    {
+      title: t("common.actions"),
+      key: "actions",
+      width: 110,
+      render: (_, version) =>
+        projectAgent?.can_manage &&
+        version.version_id !== projectAgent.current_version_id ? (
+          <Popconfirm
+            title={t("enterprise.projects.rollbackConfirm", {
+              version: version.version,
+            })}
+            onConfirm={() => rollbackVersion(version.version_id)}
+          >
+            <Button type="link">{t("enterprise.projects.rollback")}</Button>
+          </Popconfirm>
+        ) : null,
+    },
+  ];
 
   const documentMeta = {
     "PROJECT.md": {
@@ -258,6 +436,83 @@ export default function ProjectWorkspacePage() {
                 className={styles.workspaceReadOnlyAlert}
               />
             )}
+            <section className={styles.projectAgentSection}>
+              <SectionHeader
+                icon={<Bot size={18} />}
+                title={t("enterprise.projects.agentTitle")}
+                description={t("enterprise.projects.agentDescription")}
+                extra={
+                  <Space wrap>
+                    {projectAgent?.configured ? (
+                      <>
+                        <Button
+                          icon={<History size={15} />}
+                          onClick={() => void openVersions()}
+                        >
+                          {t("enterprise.projects.versions")}
+                        </Button>
+                        {projectAgent.can_manage ? (
+                          <>
+                            <Button
+                              icon={<Sparkles size={15} />}
+                              onClick={() => openProjectResource("/skills")}
+                            >
+                              {t("nav.skills")}
+                            </Button>
+                            <Button
+                              icon={<Network size={15} />}
+                              onClick={() => openProjectResource("/mcp")}
+                            >
+                              {t("nav.mcp")}
+                            </Button>
+                            <Button onClick={() => void openAgentEditor()}>
+                              {t("common.edit")}
+                            </Button>
+                          </>
+                        ) : null}
+                        {projectAgent.can_execute && projectAgent.enabled ? (
+                          <Button
+                            type="primary"
+                            icon={<Play size={15} />}
+                            onClick={startProjectChat}
+                          >
+                            {t("enterprise.projects.startAgent")}
+                          </Button>
+                        ) : null}
+                      </>
+                    ) : projectAgent?.can_manage ? (
+                      <Button
+                        type="primary"
+                        onClick={() => void openAgentEditor()}
+                      >
+                        {t("enterprise.projects.createAgent")}
+                      </Button>
+                    ) : null}
+                  </Space>
+                }
+              />
+              {projectAgent?.configured ? (
+                <div className={styles.projectAgentMeta}>
+                  <strong>{projectAgent.name}</strong>
+                  <Tag color={projectAgent.enabled ? "success" : "default"}>
+                    {projectAgent.enabled
+                      ? t("common.enabled")
+                      : t("common.disabled")}
+                  </Tag>
+                  <Tag color="blue">v{projectAgent.current_version || 1}</Tag>
+                  {projectAgent.active_model ? (
+                    <Tag>{projectAgent.active_model}</Tag>
+                  ) : null}
+                  <span>{projectAgent.description}</span>
+                  <span>{projectAgent.agent_id}</span>
+                </div>
+              ) : (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={t("enterprise.projects.agentEmpty")}
+                />
+              )}
+            </section>
             <div className={styles.projectWorkspaceShell}>
               <aside
                 className={styles.projectDocumentList}
@@ -303,39 +558,36 @@ export default function ProjectWorkspacePage() {
               </aside>
 
               <section className={styles.projectDocumentEditor}>
-                <div className={styles.projectDocumentEditorHeader}>
-                  <div className={styles.projectDocumentHeading}>
-                    <span className={styles.projectDocumentHeadingIcon}>
-                      {documentMeta[activeName].icon}
-                    </span>
-                    <div>
-                      <h2>{documentMeta[activeName].label}</h2>
-                      <p>{documentMeta[activeName].description}</p>
-                    </div>
-                  </div>
-                  <Space size={8}>
-                    {activeDirty && (
-                      <Tag color="warning">
-                        {t("enterprise.projects.unsaved")}
-                      </Tag>
-                    )}
-                    {workspace.editable && (
-                      <Button
-                        type="text"
-                        icon={<RotateCcw size={15} />}
-                        disabled={!activeDirty || saving}
-                        onClick={() =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [activeName]: savedContents[activeName],
-                          }))
-                        }
-                      >
-                        {t("common.reset")}
-                      </Button>
-                    )}
-                  </Space>
-                </div>
+                <SectionHeader
+                  className={styles.projectDocumentEditorHeader}
+                  icon={documentMeta[activeName].icon}
+                  title={documentMeta[activeName].label}
+                  description={documentMeta[activeName].description}
+                  extra={
+                    <Space size={8}>
+                      {activeDirty && (
+                        <Tag color="warning">
+                          {t("enterprise.projects.unsaved")}
+                        </Tag>
+                      )}
+                      {workspace.editable && (
+                        <Button
+                          type="text"
+                          icon={<RotateCcw size={15} />}
+                          disabled={!activeDirty || saving}
+                          onClick={() =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [activeName]: savedContents[activeName],
+                            }))
+                          }
+                        >
+                          {t("common.reset")}
+                        </Button>
+                      )}
+                    </Space>
+                  }
+                />
                 <Input.TextArea
                   className={styles.projectDocumentTextarea}
                   aria-label={activeName}
@@ -364,6 +616,83 @@ export default function ProjectWorkspacePage() {
           </>
         )}
       </div>
+
+      <Modal
+        open={agentModalOpen}
+        title={
+          projectAgent?.configured
+            ? t("enterprise.projects.editAgent")
+            : t("enterprise.projects.createAgent")
+        }
+        onCancel={() => setAgentModalOpen(false)}
+        onOk={() => agentForm.submit()}
+        confirmLoading={agentSaving}
+        destroyOnHidden
+      >
+        <Form<ProjectAgentInput>
+          form={agentForm}
+          layout="vertical"
+          onFinish={(values) => void saveProjectAgent(values)}
+        >
+          <Form.Item
+            name="name"
+            label={t("enterprise.projects.agentName")}
+            rules={[{ required: true }]}
+          >
+            <Input maxLength={120} />
+          </Form.Item>
+          <Form.Item
+            name="description"
+            label={t("enterprise.projects.agentSummary")}
+          >
+            <Input.TextArea
+              maxLength={500}
+              autoSize={{ minRows: 3, maxRows: 6 }}
+            />
+          </Form.Item>
+          <Form.Item
+            name="enabled"
+            label={t("enterprise.projects.agentEnabled")}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item name="active_model" label={t("models.model")}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              loading={modelsLoading}
+              options={modelOptions}
+              placeholder={t("models.selectModel")}
+            />
+          </Form.Item>
+          {projectAgent?.configured ? (
+            <Form.Item
+              name="change_summary"
+              label={t("enterprise.projects.changeSummary")}
+            >
+              <Input maxLength={240} />
+            </Form.Item>
+          ) : null}
+        </Form>
+      </Modal>
+
+      <Drawer
+        open={versionsOpen}
+        title={t("enterprise.projects.versions")}
+        width={680}
+        onClose={() => setVersionsOpen(false)}
+      >
+        <Table
+          rowKey="version_id"
+          size="small"
+          loading={versionsLoading}
+          columns={versionColumns}
+          dataSource={versions}
+          pagination={false}
+          scroll={{ x: 600 }}
+        />
+      </Drawer>
     </div>
   );
 }

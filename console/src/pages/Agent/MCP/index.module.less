@@ -70,6 +70,27 @@
     }
   }
 
+  &.connectingCard {
+    .statusDot {
+      background-color: var(--mp-warning);
+      animation: mcpStatusPulse 1.4s ease-in-out infinite;
+    }
+
+    .statusText {
+      color: var(--mp-warning);
+    }
+  }
+
+  &.errorCard {
+    .statusDot {
+      background-color: var(--mp-danger);
+    }
+
+    .statusText {
+      color: var(--mp-danger);
+    }
+  }
+
   &.hover {
     border-color: var(--color-border, #d9d9d9);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -130,6 +151,17 @@
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.connectionError {
+  min-height: 18px;
+  margin: -10px 0 12px;
+  overflow: hidden;
+  color: var(--mp-danger);
+  font-size: 11px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cardFooter {
@@ -224,6 +256,17 @@
   line-height: 19px;
   letter-spacing: normal;
   color: rgba(20, 20, 19, 0.45);
+}
+
+@keyframes mcpStatusPulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 .editJsonTextArea {

@@ -82,6 +82,10 @@ public final class AgentSessionLogReaderSelfCheck {
                         Map.of("type", "tool_call", "id", "shadow-call", "name", "read_file", "input", "{\"file_path\":\"AGENTS.md\"}", "state", "finished"),
                         Map.of("type", "tool_result", "id", "shadow-call", "name", "read_file", "output", List.of(Map.of("type", "text", "text", "ok")), "state", "success"),
                         Map.of("type", "text", "text", "done")
+                )),
+                Map.of("id", "synthetic-duplicate", "role", "ASSISTANT", "content", List.of(
+                        Map.of("type", "tool_call", "id", "shadow-call", "name", "read_file", "input", "{\"file_path\":\"AGENTS.md\"}"),
+                        Map.of("type", "text", "text", "done")
                 ))
         )));
         List<Map<String, Object>> shadowMessages = reader.readFrontendMessages("test", "default", "console", "s1");

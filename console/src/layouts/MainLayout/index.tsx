@@ -3,7 +3,6 @@ import { Layout, Result, Spin } from "antd";
 import { Routes, Route, useLocation, matchPath } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import Sidebar from "../Sidebar";
-import Header from "../Header";
 import ConsolePollService from "../../components/ConsolePollService";
 import { ChunkErrorBoundary } from "../../components/ChunkErrorBoundary";
 import styles from "../index.module.less";
@@ -48,49 +47,47 @@ export default function MainLayout() {
 
   return (
     <Layout className={styles.mainLayout}>
-      <Header
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+      <Sidebar
+        selectedKey={selectedKey}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
       />
-      <Layout>
-        <Sidebar selectedKey={selectedKey} collapsed={sidebarCollapsed} />
-        <Content className="page-container">
-          {canPollConsole && <ConsolePollService />}
-          <Slot name="content.statusBar" kind="fill" />
-          <div className="page-content">
-            <ChunkErrorBoundary resetKey={currentPath}>
-              <Suspense
-                fallback={
-                  <Spin
-                    tip={t("common.loading")}
-                    style={{ display: "block", margin: "20vh auto" }}
+      <Content className="page-container">
+        {canPollConsole && <ConsolePollService />}
+        <Slot name="content.statusBar" kind="fill" />
+        <div className="page-content">
+          <ChunkErrorBoundary resetKey={currentPath}>
+            <Suspense
+              fallback={
+                <Spin
+                  tip={t("common.loading")}
+                  style={{ display: "block", margin: "20vh auto" }}
+                />
+              }
+            >
+              <Routes>
+                {routes.map((r) => (
+                  <Route
+                    key={r.id}
+                    path={r.path}
+                    element={
+                      canAccessRoute(r.id, user) ? (
+                        <r.Component />
+                      ) : (
+                        <Result
+                          status="403"
+                          title="403"
+                          subTitle={t("enterprise.auth.forbidden")}
+                        />
+                      )
+                    }
                   />
-                }
-              >
-                <Routes>
-                  {routes.map((r) => (
-                    <Route
-                      key={r.id}
-                      path={r.path}
-                      element={
-                        canAccessRoute(r.id, user) ? (
-                          <r.Component />
-                        ) : (
-                          <Result
-                            status="403"
-                            title="403"
-                            subTitle={t("enterprise.auth.forbidden")}
-                          />
-                        )
-                      }
-                    />
-                  ))}
-                </Routes>
-              </Suspense>
-            </ChunkErrorBoundary>
-          </div>
-        </Content>
-      </Layout>
+                ))}
+              </Routes>
+            </Suspense>
+          </ChunkErrorBoundary>
+        </div>
+      </Content>
       <MobileNavigation />
       <Slot name="overlay.global" kind="fill" />
     </Layout>

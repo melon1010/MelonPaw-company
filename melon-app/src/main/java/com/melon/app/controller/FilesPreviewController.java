@@ -66,6 +66,8 @@ public class FilesPreviewController {
             }
             String contentType = Files.probeContentType(file);
             return ResponseEntity.ok()
+                    .header("Cache-Control", "private, no-store")
+                    .header("Referrer-Policy", "no-referrer")
                     .contentType(contentType == null ? MediaType.APPLICATION_OCTET_STREAM : MediaType.parseMediaType(contentType))
                     .body(new ByteArrayResource(Files.readAllBytes(file)));
         });
@@ -104,6 +106,15 @@ public class FilesPreviewController {
         Path path = Path.of(decoded);
         if (path.isAbsolute()) {
             return path.toAbsolutePath().normalize();
+        }
+        // A browser route collapses file:/// to a single captured slash. Recover the absolute
+        // path only when it still belongs to this authenticated Agent workspace.
+        Path root = workspace.getRoot();
+        if (root != null) {
+            Path absoluteCandidate = root.resolve(path).normalize();
+            if (absoluteCandidate.startsWith(workspace)) {
+                return absoluteCandidate;
+            }
         }
         return workspace.resolve(decoded).normalize();
     }

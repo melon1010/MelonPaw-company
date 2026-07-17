@@ -15,7 +15,7 @@ interface AddSkillDropdownProps {
   onFromPool?: () => void;
   onUploadZip: () => void;
   onFromUrl: () => void;
-  onBrowseMarket: () => void;
+  onBrowseMarket?: () => void;
   uploading?: boolean;
 }
 
@@ -63,17 +63,21 @@ export function AddSkillDropdown({
       icon: <ImportOutlined />,
       onClick: onFromUrl,
     },
-    { type: "divider" },
-    {
-      key: "market",
-      label: t("market.browseMarket"),
-      icon: <AppstoreOutlined />,
-      onClick: onBrowseMarket,
-    },
+    ...(onBrowseMarket
+      ? [
+          { type: "divider" as const },
+          {
+            key: "market",
+            label: t("market.browseMarket"),
+            icon: <AppstoreOutlined />,
+            onClick: onBrowseMarket,
+          },
+        ]
+      : []),
   ];
 
   return (
-    <Dropdown menu={{ items }} placement="bottomRight">
+    <Dropdown menu={{ items }} placement="bottomRight" trigger={["click"]}>
       <Button type="primary" icon={<PlusOutlined />} loading={uploading}>
         {t("skills.addSkill")}
       </Button>

@@ -46,6 +46,8 @@
 
 `projects:manage` 可以创建和管理全部项目；`projects:read` 只能查看自己被分配的项目。项目工作区当前包含 `PROJECT.md`、`KNOWLEDGE.md` 和 `POLICY.md`。
 
+每个项目当前最多绑定一个已发布 Agent。`OWNER`、`MANAGER` 可以发布/回滚项目 Agent；二者和具有全局 `agents:manage` 的运营人员可以维护其技能和 MCP，运行中禁止修改这些资源。`OWNER`、`MANAGER`、`MEMBER` 可以发起独立的项目 Agent 会话，`VIEWER` 不能执行但可以读取仍有成员资格项目的任务结果。项目 Agent 不共享用户会话、个人 MCP、个人渠道或个人记忆。
+
 ## 企业与系统管理
 
 | 范围 | 权限 | 页面或接口 |

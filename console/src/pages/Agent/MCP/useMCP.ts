@@ -12,22 +12,35 @@ export function useMCP() {
   const [loading, setLoading] = useState(false);
   const { message } = useAppMessage();
 
-  const loadClients = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.listMCPClients();
-      setClients(data);
-    } catch (error) {
-      console.error("Failed to load MCP clients:", error);
-      message.error(t("mcp.loadError"));
-    } finally {
-      setLoading(false);
-    }
-  }, [message, t]);
+  const loadClients = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const data = await api.listMCPClients();
+        setClients(data);
+      } catch (error) {
+        console.error("Failed to load MCP clients:", error);
+        if (!silent) message.error(t("mcp.loadError"));
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [message, t],
+  );
 
   useEffect(() => {
     loadClients();
   }, [loadClients, selectedAgent]);
+
+  useEffect(() => {
+    const pending = clients.some(
+      (client) =>
+        client.status === "connecting" || client.status === "reconnecting",
+    );
+    if (!pending) return;
+    const timer = window.setTimeout(() => void loadClients(true), 2000);
+    return () => window.clearTimeout(timer);
+  }, [clients, loadClients]);
 
   const createClient = useCallback(
     async (
@@ -43,6 +56,10 @@ export function useMCP() {
         args?: string[];
         env?: Record<string, string>;
         cwd?: string;
+        startup_timeout_seconds?: number;
+        tool_timeout_seconds?: number;
+        tool_timeouts?: Record<string, number>;
+        max_inline_result_bytes?: number;
       },
     ) => {
       try {
@@ -76,6 +93,10 @@ export function useMCP() {
         args?: string[];
         env?: Record<string, string>;
         cwd?: string;
+        startup_timeout_seconds?: number;
+        tool_timeout_seconds?: number;
+        tool_timeouts?: Record<string, number>;
+        max_inline_result_bytes?: number;
       },
     ) => {
       try {

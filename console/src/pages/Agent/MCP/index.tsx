@@ -53,6 +53,11 @@ function normalizeClientData(key: string, rawData: Record<string, unknown>) {
     args: Array.isArray(rawData.args) ? (rawData.args as string[]) : [],
     env: (rawData.env as Record<string, string>) || {},
     cwd: (rawData.cwd || "") as string,
+    startup_timeout_seconds: (rawData.startup_timeout_seconds as number) || 60,
+    tool_timeout_seconds: (rawData.tool_timeout_seconds as number) || 120,
+    tool_timeouts: (rawData.tool_timeouts as Record<string, number>) || {},
+    max_inline_result_bytes:
+      (rawData.max_inline_result_bytes as number) || 20 * 1024,
   };
 }
 

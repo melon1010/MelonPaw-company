@@ -29,6 +29,8 @@ public class CommandHandler {
         CLEAR,
         MODEL,
         SKILLS,
+        GOAL,
+        MISSION,
         HELP,
         UNKNOWN
     }
@@ -45,6 +47,8 @@ public class CommandHandler {
             LIST_SKILLS,
             ADD_SKILL,
             REMOVE_SKILL,
+            START_GOAL,
+            START_MISSION,
             SHOW_HELP,
             NO_OP
         }
@@ -113,6 +117,8 @@ public class CommandHandler {
             case "/clear" -> handleClear(args);
             case "/model" -> handleModel(args);
             case "/skills" -> handleSkills(args);
+            case "/goal" -> handleLoop(CommandType.GOAL, CommandResult.Action.START_GOAL, args);
+            case "/mission" -> handleLoop(CommandType.MISSION, CommandResult.Action.START_MISSION, args);
             case "/help" -> handleHelp();
             default -> CommandResult.error(CommandType.UNKNOWN, "Unknown command: " + cmd);
         };
@@ -123,7 +129,8 @@ public class CommandHandler {
      */
     private CommandResult handleCompact(String args) {
         return CommandResult.ok(CommandType.COMPACT, CommandResult.Action.COMPACT_CONTEXT,
-                "Context compaction triggered", Map.of());
+                "Context compaction triggered",
+                args == null || args.isBlank() ? Map.of() : Map.of("instruction", args.trim()));
     }
 
     /**
@@ -197,6 +204,15 @@ public class CommandHandler {
         };
     }
 
+    private CommandResult handleLoop(CommandType type, CommandResult.Action action, String objective) {
+        String command = type == CommandType.GOAL ? "/goal" : "/mission";
+        if (objective == null || objective.isBlank()) {
+            return CommandResult.error(type, "Usage: " + command + " <objective>");
+        }
+        return CommandResult.ok(type, action, "Starting " + command.substring(1) + " mode",
+                Map.of("objective", objective.trim()));
+    }
+
     /**
      * /help - 显示可用命令.
      */
@@ -210,6 +226,8 @@ public class CommandHandler {
                   /skills           - List skills
                   /skills add <n>   - Add a skill
                   /skills remove <n>- Remove a skill
+                  /goal <objective> - Continue until the objective passes a completion rubric
+                  /mission <task>   - Delegate an orchestrated task to isolated subagents
                   /help             - Show this help""";
         return CommandResult.ok(CommandType.HELP, CommandResult.Action.SHOW_HELP,
                 helpText, Map.of());

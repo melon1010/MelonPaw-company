@@ -7,6 +7,8 @@ export interface AgentSummary {
   name: string;
   description: string;
   workspace_dir: string;
+  scope?: "PERSONAL" | "PROJECT" | "SERVICE";
+  project_id?: string;
   enabled: boolean;
   active_model?: ModelSlotConfig | null;
 }

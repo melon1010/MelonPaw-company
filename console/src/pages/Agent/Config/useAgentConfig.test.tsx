@@ -174,23 +174,23 @@ describe("useAgentConfig", () => {
     });
   });
 
-  it("fetchConfig defaults approval_level to AUTO when missing", async () => {
+  it("fetchConfig uses fixed risk-based approval when the backend value is missing", async () => {
     apiMocks.getAgentRunningConfig.mockResolvedValue(
       makeConfig({ approval_level: undefined }),
     );
     const { result } = renderConfigHook();
     await waitFor(() => {
-      expect(result.current.approvalLevel).toBe("AUTO");
+      expect(result.current.approvalLevel).toBe("RISK_BASED");
     });
   });
 
-  it("fetchConfig uppercases an existing lowercased approval_level", async () => {
+  it("fetchConfig normalizes a legacy backend approval mode to risk-based", async () => {
     apiMocks.getAgentRunningConfig.mockResolvedValue(
       makeConfig({ approval_level: "strict" }),
     );
     const { result } = renderConfigHook();
     await waitFor(() => {
-      expect(result.current.approvalLevel).toBe("STRICT");
+      expect(result.current.approvalLevel).toBe("RISK_BASED");
     });
   });
 
@@ -253,16 +253,12 @@ describe("useAgentConfig", () => {
       expect(result.current.loading).toBe(false);
     });
 
-    act(() => {
-      result.current.setApprovalLevel("STRICT");
-    });
-
     await act(async () => {
       await result.current.handleSave();
     });
 
     const saved = apiMocks.updateAgentRunningConfig.mock.calls[0][0] as Config;
-    expect(saved.approval_level).toBe("STRICT");
+    expect(saved.approval_level).toBe("RISK_BASED");
   });
 
   it("handleSave calls message.error when update fails", async () => {

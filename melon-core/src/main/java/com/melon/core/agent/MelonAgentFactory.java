@@ -160,14 +160,18 @@ public class MelonAgentFactory {
                         .draftsDir("skills/_drafts")
                         .mainDir("skills")
                         .build())
-                .enableTaskList(agentConfig.getRunning().isTaskListEnabled())
-                .disableSubagents();
+                .enableTaskList(agentConfig.getRunning().isTaskListEnabled());
         addContextFiles(builder, agentConfig);
         if (providerManager != null) {
             builder.model(providerManager.createModel(activeModel));
         } else {
             builder.model(activeModel);
         }
+        builder.subagentFactory("general-purpose", ignored ->
+                createRestrictedSubagent(agentId, agentConfig, workspaceDir));
+        // Keep mission workers fixed to the restricted factory above. Runtime workspace
+        // declarations must not replace it with a worker that inherits coordinator tools.
+        builder.disableDynamicSubagents();
 
         if (agentConfig.getPlanMode().isEnabled()) {
             builder.enablePlanMode(true);
@@ -178,6 +182,38 @@ public class MelonAgentFactory {
         }
 
         return builder.build();
+    }
+
+    /**
+     * Mission workers can perform ordinary isolated workspace work, but risky capabilities remain
+     * on the coordinator so AgentRunner can apply the interactive risk policy.
+     */
+    private HarnessAgent createRestrictedSubagent(String parentAgentId, AgentConfig config, Path workspaceDir) {
+        HarnessAgent.Builder subagent = HarnessAgent.builder()
+                .name("general-purpose-subagent")
+                .agentId(parentAgentId + "-worker")
+                .description("Isolated mission worker with workspace-only tools")
+                .workspace(workspaceDir)
+                .maxIters(config.getRunning().getMaxIters())
+                .permissionContext(PermissionContextState.builder().mode(PermissionMode.BYPASS).build())
+                .disableShellTool()
+                .disableSubagents()
+                .disableSessionPersistence();
+        String sandboxMode = executionSandboxMode();
+        if ("local".equals(sandboxMode)) {
+            subagent.filesystem(localFilesystem(workspaceDir, config));
+        } else if ("docker".equals(sandboxMode)) {
+            subagent.filesystem(dockerFilesystem(workspaceDir));
+        } else {
+            throw new IllegalStateException("Unsupported execution sandbox mode '" + sandboxMode + "'");
+        }
+        if (providerManager != null) {
+            subagent.model(providerManager.createModel(config.getActiveModel()));
+        } else {
+            subagent.model(config.getActiveModel());
+        }
+        addContextFiles(subagent, config);
+        return subagent.build();
     }
 
     private Toolkit buildToolkit(String agentId, AgentConfig config, Path workspaceDir) {
@@ -419,7 +455,9 @@ public class MelonAgentFactory {
             return PermissionContextState.builder().mode(PermissionMode.BYPASS).build();
         }
         boolean strict = "STRICT".equalsIgnoreCase(level);
-        boolean smart = "SMART".equalsIgnoreCase(level);
+        boolean riskBased = "RISK_BASED".equalsIgnoreCase(level)
+                || "AUTO".equalsIgnoreCase(level)
+                || "SMART".equalsIgnoreCase(level);
         PermissionContextState.Builder builder = PermissionContextState.builder()
                 .mode(strict ? PermissionMode.DEFAULT : PermissionMode.BYPASS);
         if (strict) {
@@ -427,11 +465,8 @@ public class MelonAgentFactory {
                 builder.addAskRule(tool, new PermissionRule(tool, null, PermissionBehavior.ASK, "melonpaw-java"));
             }
         } else {
-            for (String tool : lifecycleApprovalTools()) {
-                builder.addAskRule(tool, new PermissionRule(tool, null, PermissionBehavior.ASK, "melonpaw-java"));
-            }
-            if (smart) {
-                for (String tool : smartApprovalTools()) {
+            if (riskBased) {
+                for (String tool : riskCandidateTools()) {
                     builder.addAskRule(tool, new PermissionRule(tool, null, PermissionBehavior.ASK, "melonpaw-java"));
                 }
             }
@@ -452,14 +487,23 @@ public class MelonAgentFactory {
     private List<String> smartApprovalTools() {
         return List.of(
                 "execute",
+                "execute_shell_command",
                 "write_file",
                 "edit_file"
         );
     }
 
+    private List<String> riskCandidateTools() {
+        java.util.LinkedHashSet<String> tools = new java.util.LinkedHashSet<>();
+        tools.addAll(smartApprovalTools());
+        tools.addAll(lifecycleApprovalTools());
+        tools.add("agent_spawn");
+        return List.copyOf(tools);
+    }
+
     private List<String> strictApprovalTools() {
         java.util.LinkedHashSet<String> tools = new java.util.LinkedHashSet<>();
-        tools.addAll(List.of("execute", "write_file", "edit_file", "read_file",
+        tools.addAll(List.of("execute", "execute_shell_command", "write_file", "edit_file", "read_file",
                 "grep_files", "glob_files", "list_files"));
         tools.addAll(lifecycleApprovalTools());
         tools.addAll(smartApprovalTools());

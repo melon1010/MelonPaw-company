@@ -39,10 +39,12 @@ public class AuthController {
     @Autowired
     public AuthController(AuthService authService,
                           @Value("${melon.enterprise.auth.bootstrap-token:}") String bootstrapToken,
+                          @Value("${melon.enterprise.auth.generate-bootstrap-token:true}")
+                          boolean generateBootstrapToken,
                           ConfigManager configManager) {
         this.authService = authService;
         String configured = bootstrapToken == null ? "" : bootstrapToken.trim();
-        if (configured.isBlank() && !authService.hasUsers()) {
+        if (configured.isBlank() && generateBootstrapToken && !authService.hasUsers()) {
             this.generatedBootstrapTokenFile = configManager.resolveHomeDir().resolve("bootstrap.token");
             this.bootstrapToken = loadOrCreateBootstrapToken(generatedBootstrapTokenFile);
             log.warn("Initial administrator bootstrap token written to {}", generatedBootstrapTokenFile);

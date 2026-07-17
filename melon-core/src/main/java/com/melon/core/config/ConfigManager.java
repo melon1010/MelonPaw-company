@@ -161,7 +161,7 @@ public class ConfigManager {
             data.put("name", !isBlank(agent.getName()) ? agent.getName() : agentId);
             data.put("workspace_dir", workspaceDir.toString());
             data.put("active_model", agent.getActiveModel() != null ? agent.getActiveModel() : "");
-            data.put("approval_level", agent.getApproval() != null ? agent.getApproval().getLevel() : "AUTO");
+            data.put("approval_level", agent.getApproval() != null ? agent.getApproval().getLevel() : "RISK_BASED");
             Path agentJson = com.melon.core.util.SafePathUtil.resolveSafe(workspaceDir, "agent.json");
             jsonMapper.writerWithDefaultPrettyPrinter().writeValue(agentJson.toFile(), data);
         }

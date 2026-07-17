@@ -146,6 +146,8 @@ ${MELON_HOME}/enterprise.db
 
 当系统没有任何用户且未显式设置 `MELON_BOOTSTRAP_TOKEN` 时，后端会生成 256 位初始化令牌并写入 `${MELON_HOME}/bootstrap.token`；登录页会要求输入该令牌。首个管理员创建成功后文件会被删除，初始化接口随即永久关闭。也可以在启动前由运维系统注入 `MELON_BOOTSTRAP_TOKEN`，此时不会生成令牌文件。
 
+`local` profile 默认不生成初始化令牌，首次打开控制台即可直接创建管理员。需要在本地复现生产保护时，可显式设置 `MELON_BOOTSTRAP_TOKEN`，或将 `MELON_GENERATE_BOOTSTRAP_TOKEN` 设为 `true`。
+
 这是应用内嵌的 SQLite 数据库，无需安装或启动 PostgreSQL。可通过 `MELON_ENTERPRISE_DATABASE_PATH` 覆盖数据库文件位置。备份时至少应同时保存 `enterprise.db`、`config.yaml` 和 `workspaces/`。
 
 OneBot 使用反向 WebSocket。个人渠道页会显示带当前 Agent 标识的连接 URL；OneBot 客户端必须把该渠道配置的 `access_token` 作为 `Authorization: Bearer <token>` 或 `X-Access-Token` 请求头发送。服务端按 Agent 独立校验 token，不接受仅靠 `X-Agent-Id` 切换工作区。

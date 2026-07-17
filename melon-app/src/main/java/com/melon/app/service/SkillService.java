@@ -266,6 +266,11 @@ public class SkillService {
         );
     }
 
+    public boolean workspaceHasSkill(String agentId, String name) throws IOException {
+        String safeName = normalizeSkillName(name);
+        return Files.isRegularFile(skillPath(skillsDir(agentId), safeName).resolve("SKILL.md"));
+    }
+
     public Map<String, Object> uploadWorkspaceSkillToPool(String agentId, String name, boolean overwrite) throws IOException {
         String safeName = normalizeSkillName(name);
         Path source = skillPath(skillsDir(agentId), safeName);

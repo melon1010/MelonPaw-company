@@ -7,3 +7,8 @@ melon:
   execution:
     # Development only: execute and Skill scripts run on the IDE host process.
     sandbox-mode: ${MELON_EXECUTION_SANDBOX:local}
+  enterprise:
+    auth:
+      # Loopback development can create the first administrator directly.
+      # Set MELON_BOOTSTRAP_TOKEN to require an explicit token locally.
+      generate-bootstrap-token: ${MELON_GENERATE_BOOTSTRAP_TOKEN:false}

@@ -51,6 +51,8 @@ public class MelonPawEnvelopeMapper {
 
     private final String responseId = "response_" + UUID.randomUUID().toString().replace("-", "");
     private final String sessionId;
+    private final String taskId;
+    private final String runId;
     private final long createdEpochSeconds = System.currentTimeMillis() / 1000;
     private final String createdAt = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
 
@@ -68,7 +70,13 @@ public class MelonPawEnvelopeMapper {
     private boolean finalized;
 
     public MelonPawEnvelopeMapper(String sessionId) {
+        this(sessionId, "", "");
+    }
+
+    public MelonPawEnvelopeMapper(String sessionId, String taskId, String runId) {
         this.sessionId = sessionId != null ? sessionId : "";
+        this.taskId = taskId != null ? taskId : "";
+        this.runId = runId != null ? runId : "";
     }
 
     public List<ServerSentEvent<String>> start() {
@@ -79,14 +87,26 @@ public class MelonPawEnvelopeMapper {
     }
 
     public List<ServerSentEvent<String>> completeWithText(String text) {
+        return completeWithText(text, Map.of());
+    }
+
+    public List<ServerSentEvent<String>> completeWithText(String text, Map<String, Object> metadata) {
         if (finalized) return List.of();
         finalized = true;
         List<ServerSentEvent<String>> events = new ArrayList<>(start());
         String messageId = newMessageId();
         Map<String, Object> content = textContent(text != null ? text : "", false, 0);
-        events.add(messageEvent(messageId, "message", "assistant", "in_progress", List.of()));
+        Map<String, Object> started = runtimeMessage(messageId, "message", "assistant", "in_progress", List.of());
+        if (metadata != null && !metadata.isEmpty()) started.put("metadata", new LinkedHashMap<>(metadata));
+        events.add(sse("message", tag(started)));
         events.add(contentEvent(messageId, "text", Map.of("text", text != null ? text : ""), false, "completed", 0));
-        events.add(completedMessageEvent(messageId, "message", "assistant", List.of(content)));
+        Map<String, Object> completedMessage = runtimeMessage(
+                messageId, "message", "assistant", "completed", List.of(content));
+        if (metadata != null && !metadata.isEmpty()) {
+            completedMessage.put("metadata", new LinkedHashMap<>(metadata));
+        }
+        outputMessages.add(new LinkedHashMap<>(completedMessage));
+        events.add(sse("message", tag(completedMessage)));
         Map<String, Object> completed = response("completed");
         completed.put("completed_at", System.currentTimeMillis() / 1000);
         completed.put("output", new ArrayList<>(outputMessages));
@@ -439,6 +459,8 @@ public class MelonPawEnvelopeMapper {
         response.put("created_at", createdEpochSeconds);
         response.put("created_at_iso", createdAt);
         response.put("session_id", sessionId);
+        if (!taskId.isBlank()) response.put("task_id", taskId);
+        if (!runId.isBlank()) response.put("run_id", runId);
         response.put("output", List.of());
         response.put("error", null);
         if (usage != null) response.put("usage", usage);
@@ -622,7 +644,7 @@ public class MelonPawEnvelopeMapper {
             block.put("id", valueOrDefault(string(data.get("call_id")), id));
             block.put("name", string(data.get("name")));
             block.put("output", nonNull(data.get("output")));
-            block.put("state", "success");
+            block.put("state", valueOrDefault(string(data.get("state")), "success"));
             blocks.add(block);
         }
         if (blocks.isEmpty()) return Map.of();

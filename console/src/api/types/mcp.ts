@@ -29,6 +29,22 @@ export interface MCPClientInfo {
   description: string;
   /** Whether the client is enabled */
   enabled: boolean;
+  /** Whether the MCP transport is currently connected */
+  connected?: boolean;
+  /** Live connection lifecycle state */
+  status?:
+    | "connected"
+    | "connecting"
+    | "reconnecting"
+    | "disconnected"
+    | "disabled"
+    | "error";
+  /** Latest safe connection error */
+  error?: string;
+  /** Number of reconnect attempts since process start */
+  restart_count?: number;
+  last_checked_at?: string;
+  next_retry_at?: string | null;
   /** MCP transport type */
   transport: "stdio" | "streamable_http" | "sse";
   /** Remote MCP endpoint URL for HTTP/SSE transport */
@@ -43,6 +59,11 @@ export interface MCPClientInfo {
   env: Record<string, string>;
   /** Working directory for stdio command */
   cwd: string;
+  /** Startup and tool-call governance */
+  startup_timeout_seconds?: number;
+  tool_timeout_seconds?: number;
+  tool_timeouts?: Record<string, number>;
+  max_inline_result_bytes?: number;
   /** Tool whitelist (null means all tools enabled) */
   tools: string[] | null;
   /** OAuth status (null if OAuth not configured) */
@@ -102,6 +123,10 @@ export interface MCPClientCreateRequest {
     env?: Record<string, string>;
     /** Working directory for stdio command */
     cwd?: string;
+    startup_timeout_seconds?: number;
+    tool_timeout_seconds?: number;
+    tool_timeouts?: Record<string, number>;
+    max_inline_result_bytes?: number;
   };
 }
 
@@ -199,4 +224,8 @@ export interface MCPClientUpdateRequest {
   env?: Record<string, string>;
   /** Working directory for stdio command */
   cwd?: string;
+  startup_timeout_seconds?: number;
+  tool_timeout_seconds?: number;
+  tool_timeouts?: Record<string, number>;
+  max_inline_result_bytes?: number;
 }

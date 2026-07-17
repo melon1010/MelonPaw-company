@@ -7,15 +7,21 @@ import ProjectWorkspacePage from "./index";
 const mocks = vi.hoisted(() => ({
   getProject: vi.fn(),
   getProjectWorkspace: vi.fn(),
+  getProjectAgent: vi.fn(),
   saveProjectWorkspaceDocument: vi.fn(),
+  listProviders: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
 }));
 
 vi.mock("../../../api", () => ({
+  default: {
+    listProviders: mocks.listProviders,
+  },
   companyApi: {
     getProject: mocks.getProject,
     getProjectWorkspace: mocks.getProjectWorkspace,
+    getProjectAgent: mocks.getProjectAgent,
     saveProjectWorkspaceDocument: mocks.saveProjectWorkspaceDocument,
   },
 }));
@@ -68,6 +74,11 @@ describe("ProjectWorkspacePage", () => {
       editable: true,
       documents,
     });
+    mocks.getProjectAgent.mockResolvedValue({
+      configured: false,
+      can_manage: false,
+      can_execute: true,
+    });
     mocks.saveProjectWorkspaceDocument.mockImplementation(
       async (_projectId: string, name: string, content: string) => ({
         name,
@@ -75,6 +86,7 @@ describe("ProjectWorkspacePage", () => {
         updated_at: "2026-07-14T01:00:00Z",
       }),
     );
+    mocks.listProviders.mockResolvedValue([]);
   });
 
   it("loads, edits, and saves the active project document", async () => {

@@ -54,8 +54,8 @@ export interface BuiltinLanguageSpec {
 export interface WorkspaceSkillSummary {
   agent_id: string;
   agent_name?: string;
-  workspace_dir: string;
-  skills: SkillSpec[];
+  workspace_dir?: string;
+  skills?: SkillSpec[];
 }
 
 export interface BuiltinImportSpec {

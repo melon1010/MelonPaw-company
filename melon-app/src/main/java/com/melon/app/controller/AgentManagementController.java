@@ -1,6 +1,7 @@
 package com.melon.app.controller;
 
 import com.melon.app.auth.EnterpriseAgentAccessService;
+import com.melon.app.auth.EnterpriseIdentityStore;
 import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.agent.WorkspaceManager;
@@ -264,13 +265,15 @@ public class AgentManagementController {
         if (includeInternalDetails) {
             result.put("workspace_dir", configManager.resolveWorkspaceDir(id).toString());
         }
-        result.put("scope", agentAccessService.isPersonalAgent(id) ? "PERSONAL" : "SYSTEM");
+        EnterpriseIdentityStore.AgentBindingRecord binding = agentAccessService.binding(id);
+        result.put("scope", binding != null ? binding.scopeType() : "SERVICE");
+        if (binding != null && binding.projectId() != null) result.put("project_id", binding.projectId());
         result.put("enabled", config.isEnabled());
         result.put("active_model", activeModel(config.getActiveModel()));
         if (!includeInternalDetails) {
             return result;
         }
-        result.put("approval_level", config.getApproval() != null ? config.getApproval().getLevel() : "AUTO");
+        result.put("approval_level", config.getApproval() != null ? config.getApproval().getLevel() : "RISK_BASED");
         result.put("system_prompt_files", config.getSystemPromptFiles());
         result.put("skills", config.getSkills());
         result.put("tools", config.getTools());

@@ -4,6 +4,7 @@ import com.melon.app.runner.AgentRunner;
 import com.melon.app.runner.ChatManager;
 import com.melon.app.runner.ChatSpec;
 import com.melon.app.runner.MelonPawEnvelopeMapper;
+import com.melon.app.task.EnterpriseTaskService;
 import com.melon.channels.ChannelConfigService;
 import com.melon.channels.ChannelInboundMessage;
 import com.melon.channels.ChannelMessageRenderer;
@@ -12,6 +13,7 @@ import com.melon.core.config.ConfigManager;
 import com.melon.core.util.OutboundNetworkPolicy;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.UserMessage;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -40,16 +42,23 @@ public class ChannelRuntimeProcessor {
     private final ChatManager chatManager;
     private final ConfigManager configManager;
     private final ChannelConfigService channelConfigService;
+    private final EnterpriseTaskService taskService;
     private final ChannelMessageRenderer messageRenderer = new ChannelMessageRenderer();
 
-    public ChannelRuntimeProcessor(AgentRunner agentRunner,
-                                   ChatManager chatManager,
-                                   ConfigManager configManager,
-                                   ChannelConfigService channelConfigService) {
+    public ChannelRuntimeProcessor(AgentRunner agentRunner, ChatManager chatManager,
+                                   ConfigManager configManager, ChannelConfigService channelConfigService) {
+        this(agentRunner, chatManager, configManager, channelConfigService, null);
+    }
+
+    @Autowired
+    public ChannelRuntimeProcessor(AgentRunner agentRunner, ChatManager chatManager,
+                                   ConfigManager configManager, ChannelConfigService channelConfigService,
+                                   EnterpriseTaskService taskService) {
         this.agentRunner = agentRunner;
         this.chatManager = chatManager;
         this.configManager = configManager;
         this.channelConfigService = channelConfigService;
+        this.taskService = taskService;
     }
 
     public CompletableFuture<ChannelOutboundMessage> process(ChannelInboundMessage inbound) {
@@ -68,25 +77,48 @@ public class ChannelRuntimeProcessor {
         List<Map<String, Object>> frontendContext = new ArrayList<>();
         frontendContext.add(userMessage(inbound.getContent(), inbound.getAttachments()));
         ChatSpec chat = chatManager.getOrCreateForSession(agentId, sessionId, userId, channel, title(text));
+        Map<String, Object> channelMeta = inbound.getChannelMeta() != null ? inbound.getChannelMeta() : Map.of();
+        String source = value(stringValue(channelMeta.get("source")), channel);
+        Object triggerRaw = firstPresent(channelMeta, "message_id", "msg_id", "feishu_message_id",
+                "event_id", "task_id", "update_id");
+        String triggerRef = stringValue(triggerRaw);
+        String taskType = "cron".equalsIgnoreCase(source) || "heartbeat".equalsIgnoreCase(source)
+                ? "AUTOMATION" : "CHANNEL";
+        String idempotencyKey = triggerRef.isBlank() ? "" : channel + ":" + triggerRef;
+        EnterpriseTaskService.TaskRun task = taskService != null
+                ? taskService.startForAgent(taskType, userId, agentId, chat.getName(), sessionId, source,
+                        triggerRef, chat.getId(), idempotencyKey)
+                : new EnterpriseTaskService.TaskRun("", "", true);
+        if (!task.created()) return outbound(inbound, "", "", task);
         chatManager.setStatus(agentId, chat.getId(), "running");
-        MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId);
+        MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId, task.taskId(), task.runId());
         Map<String, Object> env = new LinkedHashMap<>();
         env.put("agent_id", agentId);
         env.put("channel", channel);
-        env.put("source", channel);
+        env.put("source", source);
         env.put("session_id", sessionId);
         env.put("working_dir", configManager.resolveWorkspaceDir(agentId).toString());
         env.put("channel_meta", inbound.getChannelMeta());
+        env.put("task_id", task.taskId());
+        env.put("run_id", task.runId());
+        if (taskService != null) {
+            taskService.setRetryIntent(task, new EnterpriseTaskService.RetryIntent("STREAM", text, env));
+        }
         try {
             agentRunner.stream(agentId, List.of(new UserMessage(text)), userId, sessionId, env)
                     .doOnNext(envelope::translate)
                     .blockLast();
             envelope.finish();
             String reply = messageRenderer.render(envelope.outputMessagesSnapshot(), channelConfig);
-            return outbound(inbound, reply.isBlank() ? envelope.visibleAssistantText() : reply, envelope.visibleAssistantText());
+            if (taskService != null) {
+                taskService.succeed(task, reply.isBlank() ? envelope.visibleAssistantText() : reply);
+            }
+            return outbound(inbound, reply.isBlank() ? envelope.visibleAssistantText() : reply,
+                    envelope.visibleAssistantText(), task);
         } catch (Exception e) {
             envelope.error(e);
-            return outbound(inbound, e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(), "");
+            if (taskService != null) taskService.fail(task, e);
+            return outbound(inbound, e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(), "", task);
         } finally {
             chatManager.setStatus(agentId, chat.getId(), "idle");
             chatManager.saveSessionShadowFromStateStore(agentId, channel, userId, sessionId,
@@ -94,7 +126,8 @@ public class ChannelRuntimeProcessor {
         }
     }
 
-    private ChannelOutboundMessage outbound(ChannelInboundMessage inbound, String text, String visibleText) {
+    private ChannelOutboundMessage outbound(ChannelInboundMessage inbound, String text, String visibleText,
+                                            EnterpriseTaskService.TaskRun task) {
         ChannelOutboundMessage out = new ChannelOutboundMessage();
         out.setAgentId(inbound.getAgentId());
         out.setChannel(inbound.getChannel());
@@ -102,7 +135,14 @@ public class ChannelRuntimeProcessor {
         out.setSessionId(inbound.getSessionId());
         out.setTo(inbound.getReplyTo());
         out.setText(text != null ? text : "");
-        out.setMeta(Map.of("channel_meta", inbound.getChannelMeta(), "visible_text", visibleText != null ? visibleText : ""));
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("channel_meta", inbound.getChannelMeta() != null ? inbound.getChannelMeta() : Map.of());
+        meta.put("visible_text", visibleText != null ? visibleText : "");
+        if (task != null && !task.taskId().isBlank()) {
+            meta.put("task_id", task.taskId());
+            meta.put("run_id", task.runId());
+        }
+        out.setMeta(meta);
         return out;
     }
 

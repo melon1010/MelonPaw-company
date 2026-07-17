@@ -29,14 +29,12 @@ import {
   Cpu,
   DatabaseBackup,
   Files,
-  FolderKanban,
   Globe2,
   HeartPulse,
   History,
   Inbox,
   LayoutDashboard,
   Library,
-  ListChecks,
   Mic,
   Network,
   Package,
@@ -72,24 +70,6 @@ export const BUILTIN_MENU: MenuItem[] = [
     route: "company.workbench",
     order: 10,
   },
-  {
-    id: "company.projects",
-    location: "primary.agentScoped",
-    parentId: "company.enterprise-group",
-    label: navLabel("enterprise.nav.projects"),
-    icon: FolderKanban,
-    route: "company.projects",
-    order: 20,
-  },
-  {
-    id: "company.tasks",
-    location: "primary.agentScoped",
-    parentId: "company.enterprise-group",
-    label: navLabel("enterprise.nav.tasks"),
-    icon: ListChecks,
-    route: "company.tasks",
-    order: 30,
-  },
   // ── Agent-scoped (Sidebar Menu #1) ───────────────────────────────────────
   {
     id: "core.inbox",
@@ -98,7 +78,7 @@ export const BUILTIN_MENU: MenuItem[] = [
     label: navLabel("nav.inbox"),
     icon: Inbox,
     route: "core.inbox",
-    order: 40,
+    order: 20,
   },
 
   // control-group

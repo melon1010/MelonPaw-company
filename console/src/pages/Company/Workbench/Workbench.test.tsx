@@ -6,7 +6,7 @@ import CompanyWorkbench from "./index";
 const {
   mockAuthState,
   mockListProjects,
-  mockListChats,
+  mockListTasks,
   mockListAgents,
   mockListChannels,
   mockT,
@@ -16,7 +16,7 @@ const {
     permissions: ["projects:read"] as string[],
   },
   mockListProjects: vi.fn(),
-  mockListChats: vi.fn(),
+  mockListTasks: vi.fn(),
   mockListAgents: vi.fn(),
   mockListChannels: vi.fn(),
   mockT: vi.fn((key: string) => key),
@@ -24,7 +24,7 @@ const {
 
 vi.mock("@/api", () => ({
   default: {
-    listChats: mockListChats,
+    listTasks: mockListTasks,
     listAgents: mockListAgents,
     listChannels: mockListChannels,
   },
@@ -55,7 +55,7 @@ describe("CompanyWorkbench permissions", () => {
     mockAuthState.roles = ["ORG_ADMIN"];
     mockAuthState.permissions = ["projects:read"];
     mockListProjects.mockResolvedValue([]);
-    mockListChats.mockResolvedValue([]);
+    mockListTasks.mockResolvedValue([]);
     mockListAgents.mockResolvedValue({ agents: [] });
     mockListChannels.mockResolvedValue({});
   });
@@ -73,7 +73,7 @@ describe("CompanyWorkbench permissions", () => {
         name: "enterprise.workbench.startTask",
       }),
     ).not.toBeInTheDocument();
-    expect(mockListChats).not.toHaveBeenCalled();
+    expect(mockListTasks).not.toHaveBeenCalled();
   });
 
   it("renders the start task action when chat access is granted", async () => {
@@ -88,6 +88,6 @@ describe("CompanyWorkbench permissions", () => {
         name: "enterprise.workbench.startTask",
       }),
     ).toBeInTheDocument();
-    expect(mockListChats).toHaveBeenCalledOnce();
+    expect(mockListTasks).toHaveBeenCalledOnce();
   });
 });

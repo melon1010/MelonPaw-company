@@ -78,12 +78,13 @@ export function HeaderActions({
             disabled={loading}
           />
         </Tooltip>
-        <Button type="default" onClick={onUploadClick} loading={uploading}>
-          {t("common.upload")}
-        </Button>
-        <Button type="primary" onClick={onCreate}>
-          {t("skills.createSkill")}
-        </Button>
+        <AddSkillDropdown
+          onCreate={onCreate}
+          onFromPool={onOpenDownloadPool}
+          onUploadZip={onUploadClick}
+          onFromUrl={onImportHub}
+          uploading={uploading}
+        />
       </div>
     );
   }

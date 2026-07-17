@@ -83,7 +83,7 @@ public class WorkspaceManager {
             data.put("name", config.getName() != null ? config.getName() : agentId);
             data.put("workspace_dir", dir.toString());
             data.put("active_model", config.getActiveModel() != null ? config.getActiveModel() : "");
-            data.put("approval_level", config.getApproval() != null ? config.getApproval().getLevel() : "AUTO");
+            data.put("approval_level", config.getApproval() != null ? config.getApproval().getLevel() : "RISK_BASED");
             JSON.writerWithDefaultPrettyPrinter().writeValue(
                     SafePathUtil.resolveSafe(dir, "agent.json").toFile(), data);
         } catch (IOException e) {

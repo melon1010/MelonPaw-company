@@ -67,19 +67,8 @@
   margin-top: 20px;
 }
 
-.sectionHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+.section > :first-child {
   margin-bottom: 10px;
-}
-
-.sectionTitle {
-  margin: 0;
-  font-size: 15px;
-  line-height: 22px;
-  font-weight: 650;
 }
 
 .quickActions {
@@ -173,6 +162,57 @@
   background: #fff;
 }
 
+.taskSummary {
+  min-height: 120px;
+  padding: 18px;
+  color: var(--mp-text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--mp-surface-subtle);
+  border: 1px solid var(--mp-border);
+  border-radius: 6px;
+}
+
+.taskTimeline {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--mp-border);
+}
+
+.taskTimeline > :first-child {
+  margin-bottom: 18px;
+}
+
+.taskEvent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 16px;
+  padding-bottom: 6px;
+
+  strong {
+    min-width: 0;
+    color: var(--mp-text);
+    font-size: 13px;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+
+  span,
+  small {
+    color: var(--mp-text-tertiary);
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  small {
+    grid-column: 1 / -1;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    overflow-wrap: anywhere;
+  }
+}
+
 .drawerBody {
   display: flex;
   flex-direction: column;
@@ -196,6 +236,38 @@
   flex-direction: column;
   overflow: hidden;
   background: #f5f7f8;
+}
+
+.projectAgentSection {
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e8eb;
+}
+
+.projectAgentSection > :first-child {
+  margin-bottom: 10px;
+}
+
+.projectAgentMeta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  color: #687078;
+  font-size: 13px;
+}
+
+.projectAgentMeta strong {
+  color: #20262b;
+  font-size: 15px;
+}
+
+.projectAgentMeta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspaceReadOnlyAlert {
@@ -324,39 +396,6 @@
   border-bottom: 1px solid #e3e7e9;
 }
 
-.projectDocumentHeading {
-  min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-
-  h2 {
-    margin: 0;
-    color: #202a30;
-    font-size: 15px;
-    line-height: 22px;
-    font-weight: 650;
-  }
-
-  p {
-    margin: 2px 0 0;
-    color: #707b82;
-    font-size: 12px;
-    line-height: 18px;
-  }
-}
-
-.projectDocumentHeadingIcon {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 32px;
-  color: #176b5b;
-  background: #e8f1ef;
-  border-radius: 5px;
-}
-
 .projectDocumentTextarea {
   flex: 1;
   min-height: 240px;
@@ -409,12 +448,14 @@
   .metrics,
   .metric,
   .resultMeta,
-  .messageItem {
+  .messageItem,
+  .taskSummary {
     border-color: rgba(255, 255, 255, 0.1);
   }
 
   .metric,
-  .resultMeta {
+  .resultMeta,
+  .taskSummary {
     background: rgba(255, 255, 255, 0.035);
   }
 
@@ -423,8 +464,7 @@
   }
 
   .metricValue,
-  .primaryText,
-  .sectionTitle {
+  .primaryText {
     color: rgba(255, 255, 255, 0.88);
   }
 
@@ -456,10 +496,19 @@
   }
 
   .projectWorkspaceShell,
+  .projectAgentSection,
   .projectDocumentList,
   .projectDocumentEditorHeader,
   .projectDocumentFooter {
     border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .projectAgentMeta {
+    color: rgba(255, 255, 255, 0.54);
+  }
+
+  .projectAgentMeta strong {
+    color: rgba(255, 255, 255, 0.88);
   }
 
   .projectDocumentItem {
@@ -476,21 +525,18 @@
     border-color: rgba(114, 199, 181, 0.36);
   }
 
-  .projectDocumentIcon,
-  .projectDocumentHeadingIcon {
+  .projectDocumentIcon {
     color: #72c7b5;
     background: rgba(114, 199, 181, 0.1);
     border-color: rgba(114, 199, 181, 0.2);
   }
 
-  .projectDocumentTitleRow,
-  .projectDocumentHeading h2 {
+  .projectDocumentTitleRow {
     color: rgba(255, 255, 255, 0.88);
   }
 
   .projectDocumentFileName,
   .projectDocumentUpdated,
-  .projectDocumentHeading p,
   .projectDocumentFooter {
     color: rgba(255, 255, 255, 0.46);
   }
@@ -540,6 +586,11 @@
     margin: 10px 10px 0;
   }
 
+  .projectAgentSection {
+    margin: 10px;
+    padding-bottom: 12px;
+  }
+
   .projectWorkspaceShell {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -572,10 +623,6 @@
     align-items: flex-start;
     gap: 8px;
     padding: 10px 12px;
-  }
-
-  .projectDocumentHeading p {
-    display: none;
   }
 
   .projectDocumentTextarea {

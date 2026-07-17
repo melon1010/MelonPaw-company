@@ -18,7 +18,7 @@ class McpAccessPolicyServiceTest {
     Path tempDir;
 
     @Test
-    void defaultsToDenyAndAllowsOnlyMatchingRuntimePrincipal() {
+    void defaultsToAllowAndHonorsExplicitRuntimeRules() {
         ConfigManager configManager = new ConfigManager();
         configManager.setHomeDir(tempDir.toString());
         McpAccessPolicyService service = new McpAccessPolicyService(configManager);
@@ -28,7 +28,7 @@ class McpAccessPolicyServiceTest {
                 .put("channel", "console")
                 .build();
 
-        assertEquals("deny", service.effect("corp-search", "search", employee));
+        assertEquals("allow", service.effect("corp-search", "search", employee));
 
         service.save("corp-search", Map.of(
                 "default_effect", "deny",

@@ -86,17 +86,20 @@ export function useTraceViewer(
       );
       setDetailOpen(true);
 
-      const runId =
-        typeof messageItem.metadata?.payload?.run_id === "string"
-          ? (messageItem.metadata.payload.run_id as string)
+      const payload = messageItem.metadata?.payload;
+      const traceId =
+        typeof payload?.trace_id === "string"
+          ? (payload.trace_id as string)
+          : typeof payload?.run_id === "string"
+          ? (payload.run_id as string)
           : undefined;
-      if (!runId) {
+      if (!traceId) {
         setTraceData(buildContentFallbackTrace(messageItem));
         return;
       }
       setTraceLoading(true);
       void api
-        .getInboxTrace(runId)
+        .getInboxTrace(traceId)
         .then((trace) => {
           setTraceData({ events: trace.events || [] });
         })

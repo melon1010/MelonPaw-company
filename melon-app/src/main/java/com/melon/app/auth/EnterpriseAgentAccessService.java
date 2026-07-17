@@ -8,11 +8,14 @@ import com.melon.core.config.BuiltinToolConfig;
 import com.melon.core.config.ConfigManager;
 import com.melon.core.provider.ProviderManager;
 import com.melon.app.service.AuditLogService;
+import com.melon.app.task.EnterpriseTaskService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -23,6 +26,7 @@ import static com.melon.app.auth.EnterprisePermissions.AUDIT_READ;
 import static com.melon.app.auth.EnterprisePermissions.DATA_BREAKGLASS;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_AUTOMATIONS;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_CHANNELS;
+import static com.melon.app.auth.EnterprisePermissions.PERSONAL_MCP;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_SKILLS;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_WORKSPACE;
 import static com.melon.app.auth.EnterprisePermissions.SYSTEM_MANAGE;
@@ -39,6 +43,7 @@ public class EnterpriseAgentAccessService {
     private final ProviderManager providerManager;
     private final AuditLogService auditLogService;
     private final MultiAgentManager multiAgentManager;
+    private final EnterpriseTaskService taskService;
 
     @Autowired
     public EnterpriseAgentAccessService(
@@ -47,13 +52,15 @@ public class EnterpriseAgentAccessService {
             WorkspaceManager workspaceManager,
             ProviderManager providerManager,
             AuditLogService auditLogService,
-            MultiAgentManager multiAgentManager) {
+            MultiAgentManager multiAgentManager,
+            EnterpriseTaskService taskService) {
         this.identityStore = identityStore;
         this.configManager = configManager;
         this.workspaceManager = workspaceManager;
         this.providerManager = providerManager;
         this.auditLogService = auditLogService;
         this.multiAgentManager = multiAgentManager;
+        this.taskService = taskService;
     }
 
     public EnterpriseAgentAccessService(
@@ -62,7 +69,18 @@ public class EnterpriseAgentAccessService {
             WorkspaceManager workspaceManager,
             ProviderManager providerManager,
             AuditLogService auditLogService) {
-        this(identityStore, configManager, workspaceManager, providerManager, auditLogService, null);
+        this(identityStore, configManager, workspaceManager, providerManager, auditLogService, null, null);
+    }
+
+    public EnterpriseAgentAccessService(
+            EnterpriseIdentityStore identityStore,
+            ConfigManager configManager,
+            WorkspaceManager workspaceManager,
+            ProviderManager providerManager,
+            AuditLogService auditLogService,
+            MultiAgentManager multiAgentManager) {
+        this(identityStore, configManager, workspaceManager, providerManager, auditLogService,
+                multiAgentManager, null);
     }
 
     public EnterpriseAgentAccessService(
@@ -70,14 +88,14 @@ public class EnterpriseAgentAccessService {
             ConfigManager configManager,
             WorkspaceManager workspaceManager,
             ProviderManager providerManager) {
-        this(identityStore, configManager, workspaceManager, providerManager, null, null);
+        this(identityStore, configManager, workspaceManager, providerManager, null, null, null);
     }
 
     public EnterpriseAgentAccessService(
             EnterpriseIdentityStore identityStore,
             ConfigManager configManager,
             WorkspaceManager workspaceManager) {
-        this(identityStore, configManager, workspaceManager, null, null, null);
+        this(identityStore, configManager, workspaceManager, null, null, null, null);
     }
 
     public String resolve(EnterprisePrincipal principal, String requestedAgentId) {
@@ -96,9 +114,58 @@ public class EnterpriseAgentAccessService {
         if (!canUsePersonalAgent(principal)) {
             throw new SecurityException("Agent access permission is required");
         }
-        // Project Agent execution remains disabled until delegation, ownership,
-        // approval and quota policies are all project-scoped.
         return ensurePersonalAgent(principal);
+    }
+
+    /** Resolves interactive execution to the user's personal Agent or an authorized project Agent. */
+    public String resolveExecution(EnterprisePrincipal principal, String requestedAgentId) {
+        if (principal == null) throw new SecurityException("Authentication is required");
+        String requested = normalize(requestedAgentId);
+        EnterpriseIdentityStore.AgentBindingRecord binding = identityStore.findAgentBinding(requested)
+                .orElse(null);
+        if (binding != null && "PROJECT".equals(binding.scopeType())) {
+            if (!principal.hasPermission(AGENTS_USE)
+                    || !identityStore.canUseProjectAgent(requested, principal.id())) {
+                throw new SecurityException("Project Agent access denied");
+            }
+            AgentConfig config = configManager.getConfig().getAgent(requested);
+            if (config == null || !config.isEnabled()) throw new SecurityException("Project Agent is unavailable");
+            return requested;
+        }
+        if (!canUsePersonalAgent(principal) && !principal.hasPermission(SYSTEM_MANAGE)) {
+            throw new SecurityException("Agent access permission is required");
+        }
+        return ensurePersonalAgent(principal);
+    }
+
+    /** Resolves a mutable Agent configuration target without widening project member access. */
+    public String resolveConfiguration(EnterprisePrincipal principal, String requestedAgentId) {
+        if (principal == null) throw new SecurityException("Authentication is required");
+        String requested = normalize(requestedAgentId);
+        EnterpriseIdentityStore.AgentBindingRecord binding = identityStore.findAgentBinding(requested)
+                .orElse(null);
+        if (binding != null && "PROJECT".equals(binding.scopeType())) {
+            String role = identityStore.projectRole(binding.projectId(), principal.id());
+            boolean projectManager = "OWNER".equals(role) || "MANAGER".equals(role);
+            if (!projectManager && !principal.hasAnyPermission(AGENTS_MANAGE, SYSTEM_MANAGE)) {
+                throw new SecurityException("Project manager permission is required");
+            }
+            return requested;
+        }
+        return resolve(principal, requested);
+    }
+
+    /** Acquires a task-exclusion lease when the target is a project Agent. */
+    public boolean beginConfigurationMutation(String agentId) {
+        String requested = normalize(agentId);
+        EnterpriseIdentityStore.AgentBindingRecord binding = identityStore.findAgentBinding(requested)
+                .orElse(null);
+        return binding == null || !"PROJECT".equals(binding.scopeType())
+                || taskService == null || taskService.beginAgentMutation(requested);
+    }
+
+    public void endConfigurationMutation(String agentId) {
+        if (taskService != null) taskService.endAgentMutation(agentId);
     }
 
     public boolean canAccess(EnterprisePrincipal principal, String agentId) {
@@ -113,7 +180,9 @@ public class EnterpriseAgentAccessService {
         }
         if (!canUsePersonalAgent(principal)) return false;
         String personalAgentId = ensurePersonalAgent(principal);
-        return personalAgentId.equals(requested);
+        return personalAgentId.equals(requested)
+                || (principal.hasPermission(AGENTS_USE)
+                    && identityStore.canUseProjectAgent(requested, principal.id()));
     }
 
     public List<String> accessibleAgentIds(EnterprisePrincipal principal) {
@@ -131,7 +200,52 @@ public class EnterpriseAgentAccessService {
         if (!canUsePersonalAgent(principal)) {
             return List.of();
         }
-        return List.of(ensurePersonalAgent(principal));
+        LinkedHashSet<String> agents = new LinkedHashSet<>();
+        agents.add(ensurePersonalAgent(principal));
+        List<EnterpriseIdentityStore.AgentBindingRecord> projectBindings =
+                identityStore.listUsableProjectAgentBindings(principal.id());
+        projectBindings.stream().map(EnterpriseIdentityStore.AgentBindingRecord::agentId).forEach(agents::add);
+        return List.copyOf(agents);
+    }
+
+    /** Lists personal Agent targets without granting access to their workspace contents. */
+    public synchronized List<PersonalAgentTarget> distributablePersonalAgents(
+            EnterprisePrincipal principal) {
+        if (principal == null || !principal.hasPermission(AGENTS_MANAGE)) {
+            throw new SecurityException("Agent management permission is required");
+        }
+        return identityStore.listUsers().stream()
+                .filter(EnterprisePrincipal::enabled)
+                .filter(user -> user.hasPermission(PERSONAL_SKILLS))
+                .map(user -> new PersonalAgentTarget(
+                        ensurePersonalAgent(user),
+                        user.id(),
+                        user.username(),
+                        user.displayName()))
+                .toList();
+    }
+
+    /** Resolves an operator's distribution selection against the current enterprise users. */
+    public List<String> resolveSkillDistributionTargets(
+            EnterprisePrincipal principal,
+            Collection<String> requestedAgentIds,
+            boolean allTargets) {
+        List<PersonalAgentTarget> available = distributablePersonalAgents(principal);
+        if (allTargets) {
+            return available.stream().map(PersonalAgentTarget::agentId).toList();
+        }
+        Set<String> allowed = available.stream()
+                .map(PersonalAgentTarget::agentId)
+                .collect(java.util.stream.Collectors.toSet());
+        LinkedHashSet<String> resolved = new LinkedHashSet<>();
+        for (String requested : requestedAgentIds == null ? List.<String>of() : requestedAgentIds) {
+            String normalized = normalize(requested);
+            if (!allowed.contains(normalized)) {
+                throw new SecurityException("Skill distribution target is not available");
+            }
+            resolved.add(normalized);
+        }
+        return List.copyOf(resolved);
     }
 
     /** Resolves an audit target without granting auditors access to personal content. */
@@ -260,6 +374,16 @@ public class EnterpriseAgentAccessService {
                 .orElse(false);
     }
 
+    public boolean isProjectAgent(String agentId) {
+        return identityStore.findAgentBinding(normalize(agentId))
+                .map(binding -> "PROJECT".equals(binding.scopeType()))
+                .orElse(false);
+    }
+
+    public EnterpriseIdentityStore.AgentBindingRecord binding(String agentId) {
+        return identityStore.findAgentBinding(normalize(agentId)).orElse(null);
+    }
+
     private AgentConfig personalAgent(EnterprisePrincipal principal) {
         AgentConfig personal = new AgentConfig();
         String displayName = principal.displayName() == null || principal.displayName().isBlank()
@@ -282,7 +406,7 @@ public class EnterpriseAgentAccessService {
         }
         applyGlobalModel(personal);
         personal.setSystemPromptFiles(List.of("AGENTS.md", "PROFILE.md", "MEMORY.md"));
-        personal.getApproval().setLevel("SMART");
+        personal.getApproval().setLevel("RISK_BASED");
         enforcePersonalPolicy(personal);
         return personal;
     }
@@ -318,7 +442,8 @@ public class EnterpriseAgentAccessService {
                 PERSONAL_WORKSPACE,
                 PERSONAL_SKILLS,
                 PERSONAL_CHANNELS,
-                PERSONAL_AUTOMATIONS
+                PERSONAL_AUTOMATIONS,
+                PERSONAL_MCP
         );
     }
 
@@ -400,5 +525,12 @@ public class EnterpriseAgentAccessService {
     }
 
     public record PersonalAgentCleanupResult(boolean workspaceRemoved, boolean stateRemoved) {
+    }
+
+    public record PersonalAgentTarget(
+            String agentId,
+            String userId,
+            String username,
+            String displayName) {
     }
 }

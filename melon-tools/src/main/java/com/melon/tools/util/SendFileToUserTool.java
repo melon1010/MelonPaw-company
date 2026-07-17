@@ -1,6 +1,10 @@
 package com.melon.tools.util;
 
 import com.melon.core.util.WorkspacePathResolver;
+import io.agentscope.core.message.DataBlock;
+import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.message.ToolResultState;
+import io.agentscope.core.message.URLSource;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 
@@ -15,7 +19,7 @@ public class SendFileToUserTool {
     private final WorkspacePathResolver pathResolver;
 
     public SendFileToUserTool() {
-        this.pathResolver = new WorkspacePathResolver(null);
+        this(null);
     }
 
     public SendFileToUserTool(String workspaceDir) {
@@ -23,18 +27,26 @@ public class SendFileToUserTool {
     }
 
     @Tool(name = "send_file_to_user", description = "Send a file to the user for download")
-    public String sendFileToUser(
+    public ToolResultBlock sendFileToUser(
             @ToolParam(name = "file_path", description = "Path to the file to send") String filePath
     ) {
         try {
             Path path = pathResolver.resolve(filePath);
-            if (!Files.exists(path)) {
-                return "Error: File not found: " + filePath;
+            if (!Files.isRegularFile(path)) {
+                return error("File not found: " + filePath);
             }
-            String fileUrl = path.toUri().toString(); // file:// URL (RFC 8089)
-            return "File sent: " + fileUrl;
+            String mimeType = Files.probeContentType(path);
+            DataBlock file = DataBlock.builder()
+                    .name(path.getFileName().toString())
+                    .source(URLSource.builder().url(path.toUri().toString()).mimeType(mimeType).build())
+                    .build();
+            return ToolResultBlock.of(file);
         } catch (Exception e) {
-            return "Error sending file: " + e.getMessage();
+            return error("Error sending file: " + e.getMessage());
         }
+    }
+
+    private ToolResultBlock error(String message) {
+        return ToolResultBlock.error(message).withState(ToolResultState.ERROR);
     }
 }

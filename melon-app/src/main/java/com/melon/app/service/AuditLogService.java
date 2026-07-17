@@ -40,19 +40,23 @@ public class AuditLogService {
         try (Connection conn = open(dbPath(agentId));
              PreparedStatement ps = conn.prepareStatement("""
                      INSERT INTO audit_events
-                     (ts, workspace_dir, agent_id, session_id, tool_name, target, decision, reason, extra)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     (ts, workspace_dir, agent_id, session_id, task_id, run_id,
+                      tool_name, target, decision, reason, extra)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                      """)) {
             String aid = normalizeAgentId(agentId);
+            Map<String, Object> metadata = extra == null ? Map.of() : extra;
             ps.setLong(1, Instant.now().toEpochMilli());
             ps.setString(2, configManager.resolveWorkspaceDir(aid).toString());
             ps.setString(3, aid);
             ps.setString(4, sessionId == null || sessionId.isBlank() ? "default" : sessionId);
-            ps.setString(5, toolName == null || toolName.isBlank() ? "unknown" : toolName);
-            ps.setString(6, target == null ? "" : JsonUtils.toJson(target));
-            ps.setString(7, approved ? "allow" : "deny");
-            ps.setString(8, reason == null ? "" : reason);
-            ps.setString(9, JsonUtils.toJson(extra == null ? Map.of() : extra));
+            ps.setString(5, text(metadata.get("task_id")));
+            ps.setString(6, text(metadata.get("run_id")));
+            ps.setString(7, toolName == null || toolName.isBlank() ? "unknown" : toolName);
+            ps.setString(8, target == null ? "" : JsonUtils.toJson(target));
+            ps.setString(9, approved ? "allow" : "deny");
+            ps.setString(10, reason == null ? "" : reason);
+            ps.setString(11, JsonUtils.toJson(metadata));
             ps.executeUpdate();
         } catch (Exception e) {
             log.warn("audit write failed: agent={}, session={}, tool={}", agentId, sessionId, toolName, e);
@@ -167,23 +171,38 @@ public class AuditLogService {
     }
 
     private void initSchema(Statement st) throws SQLException {
-            st.execute("""
-                    CREATE TABLE IF NOT EXISTS audit_events (
-                        ts            INTEGER NOT NULL,
-                        workspace_dir TEXT NOT NULL,
-                        agent_id      TEXT NOT NULL,
-                        session_id    TEXT NOT NULL,
-                        tool_name     TEXT NOT NULL,
-                        target        TEXT NOT NULL,
-                        decision      TEXT NOT NULL,
-                        reason        TEXT NOT NULL DEFAULT '',
-                        extra         TEXT NOT NULL DEFAULT '{}'
-                    )
-                    """);
-            st.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_audit_workspace ON audit_events(workspace_dir)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_audit_agent ON audit_events(agent_id)");
-            st.execute("CREATE INDEX IF NOT EXISTS idx_audit_tool ON audit_events(tool_name)");
+        st.execute("""
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    ts            INTEGER NOT NULL,
+                    workspace_dir TEXT NOT NULL,
+                    agent_id      TEXT NOT NULL,
+                    session_id    TEXT NOT NULL,
+                    task_id       TEXT,
+                    run_id        TEXT,
+                    tool_name     TEXT NOT NULL,
+                    target        TEXT NOT NULL,
+                    decision      TEXT NOT NULL,
+                    reason        TEXT NOT NULL DEFAULT '',
+                    extra         TEXT NOT NULL DEFAULT '{}'
+                )
+                """);
+        ensureColumn(st, "audit_events", "task_id", "TEXT");
+        ensureColumn(st, "audit_events", "run_id", "TEXT");
+        st.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts)");
+        st.execute("CREATE INDEX IF NOT EXISTS idx_audit_workspace ON audit_events(workspace_dir)");
+        st.execute("CREATE INDEX IF NOT EXISTS idx_audit_agent ON audit_events(agent_id)");
+        st.execute("CREATE INDEX IF NOT EXISTS idx_audit_tool ON audit_events(tool_name)");
+        st.execute("CREATE INDEX IF NOT EXISTS idx_audit_task ON audit_events(task_id)");
+        st.execute("CREATE INDEX IF NOT EXISTS idx_audit_run ON audit_events(run_id)");
+    }
+
+    private void ensureColumn(Statement statement, String table, String column, String definition) throws SQLException {
+        try (ResultSet result = statement.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (result.next()) {
+                if (column.equalsIgnoreCase(result.getString("name"))) return;
+            }
+        }
+        statement.executeUpdate("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
     }
 
     private void quarantine(Path db) {
@@ -222,5 +241,11 @@ public class AuditLogService {
 
     private String normalizeAgentId(String agentId) {
         return agentId == null || agentId.isBlank() ? "default" : agentId;
+    }
+
+    private String text(Object value) {
+        if (value == null) return null;
+        String text = String.valueOf(value);
+        return text.isBlank() ? null : text;
     }
 }

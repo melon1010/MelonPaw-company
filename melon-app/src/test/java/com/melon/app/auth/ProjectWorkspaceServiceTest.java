@@ -34,10 +34,10 @@ class ProjectWorkspaceServiceTest {
         Path first = service.workspaceDir("project-one");
         Path second = service.workspaceDir("project-two");
         assertNotEquals(first, second);
-        assertEquals(configManager.resolveHomeDir().resolve("project-workspaces").toAbsolutePath().normalize(),
+        assertEquals(configManager.resolveWorkspaceRootDir().resolve("projects").toAbsolutePath().normalize(),
                 first.getParent());
-        assertFalse(first.startsWith(configManager.resolveWorkspaceRootDir()),
-                "shared project documents must not live in an Agent workspace");
+        assertTrue(first.startsWith(configManager.resolveWorkspaceRootDir()),
+                "project documents must remain inside the managed workspace root");
 
         Map<String, Object> firstProject = document(service.list("project-one"), "PROJECT.md");
         Map<String, Object> secondProject = document(service.list("project-two"), "PROJECT.md");

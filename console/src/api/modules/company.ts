@@ -45,6 +45,42 @@ export interface ProjectWorkspace {
   documents: ProjectWorkspaceDocument[];
 }
 
+export interface ProjectAgent {
+  configured: boolean;
+  definition_id?: string;
+  agent_id?: string;
+  project_id?: string;
+  scope_type?: "PROJECT";
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  active_model?: string;
+  skill_names?: string[];
+  lifecycle_state?: string;
+  current_version_id?: string;
+  current_version?: number;
+  can_manage: boolean;
+  can_execute: boolean;
+  updated_at?: string;
+}
+
+export interface ProjectAgentInput {
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  active_model?: string;
+  change_summary?: string;
+}
+
+export interface ProjectAgentVersion {
+  version_id: string;
+  version: number;
+  config_sha256: string;
+  change_summary: string;
+  published_by: string;
+  published_at: string;
+}
+
 export interface EnterpriseRole {
   code: string;
   name: string;
@@ -123,6 +159,31 @@ export const companyApi = {
         method: "PUT",
         body: JSON.stringify({ content }),
       },
+    ),
+  getProjectAgent: (projectId: string) =>
+    request<ProjectAgent>(
+      `/project-spaces/${encodeURIComponent(projectId)}/agent`,
+    ),
+  createProjectAgent: (projectId: string, body: ProjectAgentInput) =>
+    request<ProjectAgent>(
+      `/project-spaces/${encodeURIComponent(projectId)}/agent`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  updateProjectAgent: (projectId: string, body: ProjectAgentInput) =>
+    request<ProjectAgent>(
+      `/project-spaces/${encodeURIComponent(projectId)}/agent`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  listProjectAgentVersions: (projectId: string) =>
+    request<ProjectAgentVersion[]>(
+      `/project-spaces/${encodeURIComponent(projectId)}/agent/versions`,
+    ),
+  rollbackProjectAgent: (projectId: string, versionId: string) =>
+    request<ProjectAgent>(
+      `/project-spaces/${encodeURIComponent(
+        projectId,
+      )}/agent/versions/${encodeURIComponent(versionId)}/rollback`,
+      { method: "POST" },
     ),
   listUsers: () => request<AuthUser[]>("/admin/users"),
   createUser: (body: EnterpriseUserInput) =>

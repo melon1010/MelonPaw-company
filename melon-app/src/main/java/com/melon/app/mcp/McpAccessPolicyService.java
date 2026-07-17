@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Runtime authorization for globally configured MCP tools. */
+/** Runtime authorization for Agent-scoped MCP tools. */
 @Component
 public class McpAccessPolicyService {
 
@@ -21,22 +21,34 @@ public class McpAccessPolicyService {
     }
 
     public Map<String, Object> load(String serverId) {
+        return load("default", serverId);
+    }
+
+    public Map<String, Object> load(String agentId, String serverId) {
         Map<String, Object> result = defaultPolicy();
-        result.putAll(JsonUtils.loadAsMap(policyFile(serverId)));
+        result.putAll(JsonUtils.loadAsMap(policyFile(agentId, serverId)));
         result.put("default_effect", effect(result.get("default_effect")));
         return result;
     }
 
     public Map<String, Object> save(String serverId, Map<String, Object> policy) {
+        return save("default", serverId, policy);
+    }
+
+    public Map<String, Object> save(String agentId, String serverId, Map<String, Object> policy) {
         Map<String, Object> result = defaultPolicy();
         if (policy != null) result.putAll(policy);
         result.put("default_effect", effect(result.get("default_effect")));
-        JsonUtils.save(policyFile(serverId), result);
+        JsonUtils.save(policyFile(agentId, serverId), result);
         return result;
     }
 
     public String effect(String serverId, String toolName, RuntimeContext context) {
-        Map<String, Object> policy = load(serverId);
+        return effect("default", serverId, toolName, context);
+    }
+
+    public String effect(String agentId, String serverId, String toolName, RuntimeContext context) {
+        Map<String, Object> policy = load(agentId, serverId);
         String channel = contextValue(context, "channel", "console");
         String userId = context != null && context.getUserId() != null
                 ? context.getUserId() : "";
@@ -51,7 +63,7 @@ public class McpAccessPolicyService {
 
     public Map<String, Object> defaultPolicy() {
         Map<String, Object> policy = new LinkedHashMap<>();
-        policy.put("default_effect", "deny");
+        policy.put("default_effect", "allow");
         policy.put("client_overrides", List.of());
         policy.put("tool_defaults", List.of());
         policy.put("tool_overrides", List.of());
@@ -101,12 +113,19 @@ public class McpAccessPolicyService {
         return wildcard;
     }
 
-    private Path policyFile(String serverId) {
+    private Path policyFile(String agentId, String serverId) {
         String safeId = serverId == null ? "" : serverId.trim();
         if (!safeId.matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")) {
             throw new IllegalArgumentException("Invalid MCP server id");
         }
-        return configManager.resolveStateDir().resolve("mcp-policies").resolve(safeId + ".json");
+        String scope = agentId == null || agentId.isBlank() ? "default" : agentId.trim();
+        if (!scope.matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")) {
+            throw new IllegalArgumentException("Invalid Agent id");
+        }
+        Path root = "default".equals(scope)
+                ? configManager.resolveStateDir()
+                : configManager.resolveWorkspaceDir(scope).resolve(".melon");
+        return root.resolve("mcp-policies").resolve(safeId + ".json");
     }
 
     private String contextValue(RuntimeContext context, String key, String fallback) {

@@ -33,6 +33,7 @@ import {
 import type { FlatMenuEntry } from "./registry/adapter";
 import type { MenuItem } from "../plugins/registry/types";
 import type { ReactNode } from "react";
+import { SidebarAccount, SidebarBrand } from "./SidebarChrome";
 
 // ── Layout ────────────────────────────────────────────────────────────────
 
@@ -53,15 +54,15 @@ const INBOX_BADGE_POLLING_MS = 6000;
 /** Menu item IDs that remain visible in the compact mobile navigation. */
 const MOBILE_NAV_WHITELIST = new Set([
   "company.workbench",
-  "company.projects",
   "company.members",
-  "company.tasks",
   "core.inbox",
   "core.workspace",
   "core.skills",
   "core.channels",
   "core.cron-jobs",
+  "core.mcp",
   "core.agent-config",
+  "core.agent-stats",
   "core.models",
 ]);
 
@@ -93,11 +94,16 @@ interface SidebarProps {
   /** Route id of the currently active page (e.g. "core.workspace"). */
   selectedKey: string;
   collapsed: boolean;
+  onToggleCollapsed: () => void;
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 
-export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
+export default function Sidebar({
+  selectedKey,
+  collapsed,
+  onToggleCollapsed,
+}: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
@@ -242,7 +248,7 @@ export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
     [settingsMenu, collapsed],
   );
 
-  const openKeys = useMemo(
+  const openGroupKeys = useMemo(
     () => [...deriveOpenKeys(agentMenu), ...deriveOpenKeys(settingsMenu)],
     [agentMenu, settingsMenu],
   );
@@ -356,149 +362,157 @@ export default function Sidebar({ selectedKey, collapsed }: SidebarProps) {
         isMobileExpanded ? ` ${styles.siderSimple}` : ""
       }`}
     >
-      {collapsed ? (
-        <nav className={styles.collapsedNav}>
-          {collapsedNavItems.map((item) => {
-            const isActive =
-              item.key === "core.chat"
-                ? isChatActive
-                : selectedKey === item.key;
-            return (
-              <Tooltip
-                key={item.key}
-                title={item.label}
-                placement="right"
-                overlayInnerStyle={{
-                  background: "rgba(0,0,0,0.75)",
-                  color: "#fff",
-                }}
-              >
-                <button
-                  aria-label={
-                    typeof item.label === "string" ? item.label : undefined
-                  }
-                  className={`${styles.collapsedNavItem} ${
-                    isActive ? styles.collapsedNavItemActive : ""
-                  }`}
-                  onClick={() =>
-                    item.href
-                      ? window.open(item.href, "_blank", "noopener,noreferrer")
-                      : navigate(item.path)
-                  }
+      <SidebarBrand collapsed={collapsed} onToggle={onToggleCollapsed} />
+      <div className={styles.sidebarScrollRegion}>
+        {collapsed ? (
+          <nav className={styles.collapsedNav}>
+            {collapsedNavItems.map((item) => {
+              const isActive =
+                item.key === "core.chat"
+                  ? isChatActive
+                  : selectedKey === item.key;
+              return (
+                <Tooltip
+                  key={item.key}
+                  title={item.label}
+                  placement="right"
+                  overlayInnerStyle={{
+                    background: "rgba(0,0,0,0.75)",
+                    color: "#fff",
+                  }}
                 >
-                  {item.icon}
-                </button>
-              </Tooltip>
-            );
-          })}
-        </nav>
-      ) : isMobileExpanded ? (
-        <>
-          {/* Mobile: flat nav items + session list */}
-          <div className={styles.agentScopedSection}>
-            {/* Flat nav items (no groups) */}
-            <div className={styles.simpleNavItems}>
-              {mobileFlatNav.map((entry) => {
-                const isInbox = entry.key === "core.inbox";
-                const isActive = selectedKey === entry.key;
-                return (
                   <button
-                    key={entry.key}
-                    className={`${styles.simpleNavItem} ${
-                      isActive ? styles.simpleNavItemActive : ""
+                    aria-label={
+                      typeof item.label === "string" ? item.label : undefined
+                    }
+                    className={`${styles.collapsedNavItem} ${
+                      isActive ? styles.collapsedNavItemActive : ""
                     }`}
                     onClick={() =>
-                      entry.href
+                      item.href
                         ? window.open(
-                            entry.href,
+                            item.href,
                             "_blank",
                             "noopener,noreferrer",
                           )
-                        : navigate(entry.path)
+                        : navigate(item.path)
                     }
                   >
-                    {isInbox ? (
-                      <span
-                        style={{
-                          position: "relative",
-                          display: "inline-flex",
-                        }}
-                      >
-                        {entry.icon ?? <SparkEmailLine size={16} />}
-                        {hasInboxUnread && (
-                          <span
-                            style={{
-                              position: "absolute",
-                              top: -1,
-                              right: -3,
-                              width: 6,
-                              height: 6,
-                              borderRadius: "50%",
-                              background: "var(--mp-accent)",
-                            }}
-                          />
-                        )}
-                      </span>
-                    ) : (
-                      entry.icon
-                    )}
-                    <span>{entry.label}</span>
+                    {item.icon}
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Session list — fills remaining space */}
-          {canUseAgents && (
-            <SidebarSessionList
-              onNewChat={handleNewChat}
-              onSessionClick={handleSidebarSessionClick}
-            />
-          )}
-        </>
-      ) : (
-        <>
-          {/* Agent-scoped section: selector + Chat + Control + Workspace */}
-          <div className={styles.agentScopedSection}>
-            {canUseAgents && (
-              <div className={styles.agentSelectorContainer}>
-                <button
-                  className={`${styles.stickyChatButton}${
-                    isChatActive ? ` ${styles.stickyChatButtonActive}` : ""
-                  }`}
-                  onClick={() => navigate(chatPath)}
-                >
-                  <MessageSquareText size={16} />
-                  <span>{t("nav.chat")}</span>
-                </button>
+                </Tooltip>
+              );
+            })}
+          </nav>
+        ) : isMobileExpanded ? (
+          <>
+            {/* Mobile: flat nav items + session list */}
+            <div className={styles.agentScopedSection}>
+              {/* Flat nav items (no groups) */}
+              <div className={styles.simpleNavItems}>
+                {mobileFlatNav.map((entry) => {
+                  const isInbox = entry.key === "core.inbox";
+                  const isActive = selectedKey === entry.key;
+                  return (
+                    <button
+                      key={entry.key}
+                      className={`${styles.simpleNavItem} ${
+                        isActive ? styles.simpleNavItemActive : ""
+                      }`}
+                      onClick={() =>
+                        entry.href
+                          ? window.open(
+                              entry.href,
+                              "_blank",
+                              "noopener,noreferrer",
+                            )
+                          : navigate(entry.path)
+                      }
+                    >
+                      {isInbox ? (
+                        <span
+                          style={{
+                            position: "relative",
+                            display: "inline-flex",
+                          }}
+                        >
+                          {entry.icon ?? <SparkEmailLine size={16} />}
+                          {hasInboxUnread && (
+                            <span
+                              style={{
+                                position: "absolute",
+                                top: -1,
+                                right: -3,
+                                width: 6,
+                                height: 6,
+                                borderRadius: "50%",
+                                background: "var(--mp-accent)",
+                              }}
+                            />
+                          )}
+                        </span>
+                      ) : (
+                        entry.icon
+                      )}
+                      <span>{entry.label}</span>
+                    </button>
+                  );
+                })}
               </div>
+            </div>
+
+            {/* Session list — fills remaining space */}
+            {canUseAgents && (
+              <SidebarSessionList
+                onNewChat={handleNewChat}
+                onSessionClick={handleSidebarSessionClick}
+              />
             )}
-            <Slot name="sider.top" kind="fill" />
+          </>
+        ) : (
+          <>
+            {/* Agent-scoped section: selector + Chat + Control + Workspace */}
+            <div className={styles.agentScopedSection}>
+              {canUseAgents && (
+                <div className={styles.agentSelectorContainer}>
+                  <button
+                    className={`${styles.stickyChatButton}${
+                      isChatActive ? ` ${styles.stickyChatButtonActive}` : ""
+                    }`}
+                    onClick={() => navigate(chatPath)}
+                  >
+                    <MessageSquareText size={16} />
+                    <span>{t("nav.chat")}</span>
+                  </button>
+                </div>
+              )}
+              <Slot name="sider.top" kind="fill" />
+              <Menu
+                mode="inline"
+                selectedKeys={[selectedKey]}
+                openKeys={openGroupKeys}
+                onClick={({ key }) => handleMenuClick(String(key), agentMenu)}
+                items={agentMenuItems}
+                theme={isDark ? "dark" : "light"}
+                className={styles.sideMenu}
+              />
+            </div>
+
+            {/* Global settings section */}
             <Menu
               mode="inline"
               selectedKeys={[selectedKey]}
-              openKeys={openKeys}
-              onClick={({ key }) => handleMenuClick(String(key), agentMenu)}
-              items={agentMenuItems}
+              openKeys={openGroupKeys}
+              onClick={({ key }) => handleMenuClick(String(key), settingsMenu)}
+              items={settingsMenuItems}
               theme={isDark ? "dark" : "light"}
               className={styles.sideMenu}
             />
-          </div>
-
-          {/* Global settings section */}
-          <Menu
-            mode="inline"
-            selectedKeys={[selectedKey]}
-            openKeys={openKeys}
-            onClick={({ key }) => handleMenuClick(String(key), settingsMenu)}
-            items={settingsMenuItems}
-            theme={isDark ? "dark" : "light"}
-            className={styles.sideMenu}
-          />
-          <Slot name="sider.bottom" kind="fill" />
-        </>
-      )}
+            <Slot name="sider.bottom" kind="fill" />
+          </>
+        )}
+      </div>
+      <SidebarAccount collapsed={collapsed} />
     </Sider>
   );
 }

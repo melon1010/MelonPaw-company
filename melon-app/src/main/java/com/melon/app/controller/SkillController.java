@@ -96,14 +96,13 @@ public class SkillController {
     public Mono<ResponseEntity<?>> listSkillWorkspaces(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> ResponseEntity.ok(List.of(agentAccessService.ensurePersonalAgent(principal)).stream()
-                .map(id -> Map.of(
-                        "agent_id", id,
-                        "agent_name", agentName(id),
-                        "workspace_dir", skillService.workspaceDir(id).toString(),
-                        "skills", skillService.listSkills(id).stream().map(this::skillSpec).toList()
-                ))
-                .toList()));
+        return Mono.fromCallable(() -> ResponseEntity.ok(
+                agentAccessService.distributablePersonalAgents(principal).stream()
+                        .map(target -> Map.of(
+                                "agent_id", target.agentId(),
+                                "agent_name", displayName(target.displayName(), target.username())
+                        ))
+                        .toList()));
     }
 
     @GetMapping("/pool")
@@ -158,14 +157,17 @@ public class SkillController {
     public Mono<ResponseEntity<?>> startHubInstall(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
                                                   @RequestBody(required = false) Map<String, Object> body) {
         return Mono.fromCallable(() -> {
+            String workspaceId = safeAgentId(agentId);
             String taskId = UUID.randomUUID().toString();
-            Map<String, Object> task = installTask(taskId, body, "importing", null, null);
+            Map<String, Object> request = new LinkedHashMap<>(body == null ? Map.of() : body);
+            request.put("workspace_id", workspaceId);
+            Map<String, Object> task = installTask(taskId, request, "importing", null, null);
             hubInstallTasks.put(taskId, task);
             try {
-                Map<String, Object> result = installLocalHubSkill(safeAgentId(agentId), body, true);
-                task = installTask(taskId, body, "completed", null, result);
+                Map<String, Object> result = installLocalHubSkill(workspaceId, request, true);
+                task = installTask(taskId, request, "completed", null, result);
             } catch (Exception e) {
-                task = installTask(taskId, body, "failed", e.getMessage(), null);
+                task = installTask(taskId, request, "failed", e.getMessage(), null);
             }
             hubInstallTasks.put(taskId, task);
             return ResponseEntity.ok(task);
@@ -173,17 +175,20 @@ public class SkillController {
     }
 
     @GetMapping("/hub/install/status/{taskId}")
-    public Mono<ResponseEntity<?>> hubInstallStatus(@PathVariable String taskId) {
-        return Mono.just(ResponseEntity.ok(hubInstallTasks.getOrDefault(taskId,
-                installTask(taskId, null, "failed", "Unknown install task", null))));
+    public Mono<ResponseEntity<?>> hubInstallStatus(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String taskId) {
+        return Mono.just(ResponseEntity.ok(hubInstallTaskForWorkspace(taskId, safeAgentId(agentId))));
     }
 
     @PostMapping("/hub/install/cancel/{taskId}")
-    public Mono<ResponseEntity<?>> cancelHubInstall(@PathVariable String taskId) {
+    public Mono<ResponseEntity<?>> cancelHubInstall(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @PathVariable String taskId) {
         return Mono.fromCallable(() -> {
-            Map<String, Object> task = hubInstallTasks.get(taskId);
-            if (task == null || "completed".equals(task.get("status")) || "failed".equals(task.get("status"))) {
-                return ResponseEntity.ok(Map.of("task_id", taskId, "status", task == null ? "cancelled" : task.get("status")));
+            Map<String, Object> task = hubInstallTaskForWorkspace(taskId, safeAgentId(agentId));
+            if ("failed".equals(task.get("status")) || "completed".equals(task.get("status"))) {
+                return ResponseEntity.ok(Map.of("task_id", taskId, "status", task.get("status")));
             }
             Map<String, Object> cancelled = installTask(taskId, task, "cancelled", null, null);
             hubInstallTasks.put(taskId, cancelled);
@@ -306,19 +311,53 @@ public class SkillController {
                 return ResponseEntity.badRequest().body(Map.of("detail", "skill_name is required"));
             }
             boolean overwrite = Boolean.TRUE.equals(body != null ? body.get("overwrite") : null);
-            List<String> targets = List.of(agentAccessService.ensurePersonalAgent(principal));
+            boolean previewOnly = Boolean.TRUE.equals(body != null ? body.get("preview_only") : null);
+            List<String> targets = principal != null && principal.hasPermission("agents:manage")
+                    ? agentAccessService.resolveSkillDistributionTargets(
+                            principal, requestedWorkspaceIds(body),
+                            Boolean.TRUE.equals(body != null ? body.get("all_workspaces") : null))
+                    : List.of(agentAccessService.resolveConfiguration(principal, agentId));
+            if (targets.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("detail", "At least one target is required"));
+            }
             List<Map<String, Object>> downloaded = new ArrayList<>();
             List<Map<String, Object>> conflicts = new ArrayList<>();
             for (String target : targets) {
-                Map<String, Object> result = skillService.downloadPoolSkillToWorkspace(target, skillName, overwrite);
+                if (previewOnly) {
+                    if (skillService.workspaceHasSkill(target, skillName) && !overwrite) {
+                        conflicts.add(Map.of(
+                                "skill_name", skillName,
+                                "workspace_id", target,
+                                "workspace_name", agentName(target),
+                                "reason", "exists"));
+                    }
+                    continue;
+                }
+                Map<String, Object> result = skillService.downloadPoolSkillToWorkspace(
+                        target, skillName, overwrite);
                 if (Boolean.TRUE.equals(result.get("conflict"))) {
-                    conflicts.add(Map.of("skill_name", skillName, "workspace_id", target, "reason", "exists"));
+                    conflicts.add(Map.of(
+                            "skill_name", skillName,
+                            "workspace_id", target,
+                            "workspace_name", agentName(target),
+                            "reason", "exists"));
                 } else {
                     downloaded.add(result);
                 }
             }
-            targets.forEach(multiAgentManager::reload);
-            return ResponseEntity.ok(Map.of("downloaded", downloaded, "conflicts", conflicts));
+            if (previewOnly && !conflicts.isEmpty()) {
+                return ResponseEntity.status(409).body(Map.of("conflicts", conflicts));
+            }
+            if (!previewOnly) {
+                downloaded.stream()
+                        .map(item -> stringValue(item.get("workspace_id"), ""))
+                        .filter(id -> !id.isBlank())
+                        .forEach(multiAgentManager::reload);
+            }
+            return ResponseEntity.ok(Map.of(
+                    "downloaded", downloaded,
+                    "conflicts", conflicts,
+                    "preview", previewOnly));
         });
     }
 
@@ -679,6 +718,10 @@ public class SkillController {
     }
 
     private Map<String, Object> installLocalHubSkill(String agentId, Map<String, Object> body, boolean defaultEnable) throws Exception {
+        String remoteUrl = firstNonBlank(body, "source_url", "bundle_url");
+        if (remoteUrl.startsWith("http://") || remoteUrl.startsWith("https://")) {
+            return importRemoteHubSkillToWorkspace(agentId, body, remoteUrl, defaultEnable);
+        }
         Map<String, Object> poolResult = importLocalHubSkillToPool(body);
         if (hasConflicts(poolResult)) {
             return poolResult;
@@ -705,6 +748,35 @@ public class SkillController {
         result.put("workspace_id", agentId);
         result.put("installed_from", poolResult.get("source_url"));
         return result;
+    }
+
+    private Map<String, Object> importRemoteHubSkillToWorkspace(
+            String agentId,
+            Map<String, Object> body,
+            String sourceUrl,
+            boolean defaultEnable) throws Exception {
+        String targetName = stringValue(body != null ? body.get("target_name") : null, "");
+        boolean enable = body == null ? defaultEnable : !Boolean.FALSE.equals(body.get("enable"));
+        Path zip = downloadRemoteZip(sourceUrl);
+        try {
+            Map<String, Object> imported = new LinkedHashMap<>(skillService.importWorkspaceSkillZip(
+                    agentId, zip, enable, targetName, Map.of()));
+            imported.put("source_url", sourceUrl);
+            imported.put("installed_from", sourceUrl);
+            imported.put("workspace_id", agentId);
+            String name = importedSkillName(imported);
+            if (!name.isBlank()) {
+                imported.put("name", name);
+            }
+            imported.put("enabled", enable);
+            imported.put("installed", !hasConflicts(imported) && !name.isBlank());
+            if (Boolean.TRUE.equals(imported.get("installed"))) {
+                reload(agentId);
+            }
+            return imported;
+        } finally {
+            Files.deleteIfExists(zip);
+        }
     }
 
     private Map<String, Object> importLocalHubSkillToPool(Map<String, Object> body) throws Exception {
@@ -974,12 +1046,22 @@ public class SkillController {
         task.put("bundle_url", firstNonBlank(body, "bundle_url", "source_url"));
         task.put("version", stringValue(body != null ? body.get("version") : null, ""));
         task.put("enable", body == null || !Boolean.FALSE.equals(body.get("enable")));
+        task.put("workspace_id", stringValue(body != null ? body.get("workspace_id") : null, ""));
         task.put("status", hasConflicts(result) ? "failed" : status);
         task.put("error", hasConflicts(result) ? "Skill import conflict" : error);
         task.put("result", result);
         task.put("created_at", numberValue(body != null ? body.get("created_at") : null, now));
         task.put("updated_at", now);
         return task;
+    }
+
+    private Map<String, Object> hubInstallTaskForWorkspace(String taskId, String workspaceId) {
+        Map<String, Object> task = hubInstallTasks.get(taskId);
+        if (task != null && workspaceId.equals(stringValue(task.get("workspace_id"), ""))) {
+            return task;
+        }
+        return installTask(taskId, Map.of("workspace_id", workspaceId),
+                "failed", "Unknown install task", null);
     }
 
     private long numberValue(Object value, long fallback) {
@@ -991,6 +1073,22 @@ public class SkillController {
 
     private String safeAgentId(String agentId) {
         return agentId == null || agentId.isBlank() ? "default" : agentId;
+    }
+
+    private List<String> requestedWorkspaceIds(Map<String, Object> body) {
+        if (body == null || !(body.get("targets") instanceof List<?> targets)) {
+            return List.of();
+        }
+        return targets.stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(target -> stringValue(target.get("workspace_id"), ""))
+                .filter(id -> !id.isBlank())
+                .toList();
+    }
+
+    private String displayName(String displayName, String username) {
+        return displayName == null || displayName.isBlank() ? username : displayName;
     }
 
     private void reload(String agentId) {

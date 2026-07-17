@@ -1,0 +1,113 @@
+package com.melon.app.task;
+
+import com.melon.app.runner.AgentRunner;
+import com.melon.app.runner.ChatManager;
+import com.melon.app.runner.MelonPawEnvelopeMapper;
+import io.agentscope.core.event.AgentEvent;
+import io.agentscope.core.message.UserMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** Replays persisted task input through the existing AgentRunner. */
+@Component
+public class EnterpriseTaskRetryCoordinator {
+
+    private static final Logger log = LoggerFactory.getLogger(EnterpriseTaskRetryCoordinator.class);
+
+    private final EnterpriseTaskService tasks;
+    private final AgentRunner agentRunner;
+    private final ChatManager chatManager;
+
+    public EnterpriseTaskRetryCoordinator(EnterpriseTaskService tasks, AgentRunner agentRunner,
+                                          ChatManager chatManager) {
+        this.tasks = tasks;
+        this.agentRunner = agentRunner;
+        this.chatManager = chatManager;
+    }
+
+    public EnterpriseTaskService.TaskRun retry(String taskId, String actorUserId) {
+        EnterpriseTaskService.RetryStart retry = tasks.beginRetry(taskId, actorUserId);
+        Map<String, Object> task = tasks.get(taskId);
+        EnterpriseTaskService.TaskRun run = retry.run();
+        String agentId = text(task.get("agent_id"), "default");
+        String ownerUserId = text(task.get("owner_user_id"), "default");
+        String sessionId = text(task.get("session_id"), "default");
+        String chatId = text(task.get("chat_id"), "");
+        String channel = text(retry.intent().env().get("channel"), "console");
+        try {
+            if (!chatId.isBlank()) chatManager.setStatus(agentId, chatId, "running");
+            execute(retry.intent(), run, agentId, ownerUserId, sessionId)
+                    .doOnSuccess(summary -> tasks.succeed(run, summary))
+                    .doOnError(error -> tasks.fail(run, error))
+                    .doFinally(signal -> finishChat(agentId, chatId, channel, ownerUserId, sessionId))
+                    .onErrorResume(error -> {
+                        log.warn("Task retry failed: task={}, run={}", run.taskId(), run.runId(), error);
+                        return Mono.empty();
+                    })
+                    .subscribe();
+        } catch (RuntimeException error) {
+            tasks.fail(run, error);
+            finishChat(agentId, chatId, channel, ownerUserId, sessionId);
+            log.warn("Task retry could not start: task={}, run={}", run.taskId(), run.runId(), error);
+        }
+        return run;
+    }
+
+    private Mono<String> execute(EnterpriseTaskService.RetryIntent intent,
+                                 EnterpriseTaskService.TaskRun run,
+                                 String agentId, String ownerUserId, String sessionId) {
+        Map<String, Object> env = new LinkedHashMap<>(intent.env());
+        env.put("task_id", run.taskId());
+        env.put("run_id", run.runId());
+        env.put("retry_of_task_id", run.taskId());
+        return switch (intent.mode()) {
+            case "QUERY" -> agentRunner.query(agentId, List.of(userMessage(intent)),
+                            ownerUserId, sessionId, env)
+                    .map(reply -> reply != null && reply.getTextContent() != null ? reply.getTextContent() : "");
+            case "LOOP_GOAL" -> collect(agentRunner.streamLoop(agentId, AgentRunner.LoopMode.GOAL,
+                    intent.message(), ownerUserId, sessionId, env), sessionId, run);
+            case "LOOP_MISSION" -> collect(agentRunner.streamLoop(agentId, AgentRunner.LoopMode.MISSION,
+                    intent.message(), ownerUserId, sessionId, env), sessionId, run);
+            default -> collect(agentRunner.stream(agentId, List.of(userMessage(intent)),
+                    ownerUserId, sessionId, env), sessionId, run);
+        };
+    }
+
+    private UserMessage userMessage(EnterpriseTaskService.RetryIntent intent) {
+        return intent.internal()
+                ? new UserMessage("__internal__", intent.message())
+                : new UserMessage(intent.message());
+    }
+
+    private Mono<String> collect(Flux<AgentEvent> events, String sessionId,
+                                 EnterpriseTaskService.TaskRun run) {
+        MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId, run.taskId(), run.runId());
+        return events.doOnNext(envelope::translate)
+                .then(Mono.fromSupplier(() -> {
+                    envelope.finish();
+                    return envelope.visibleAssistantText();
+                }));
+    }
+
+    private void finishChat(String agentId, String chatId, String channel,
+                            String ownerUserId, String sessionId) {
+        try {
+            if (!chatId.isBlank()) chatManager.setStatus(agentId, chatId, "idle");
+            chatManager.saveSessionShadowFromStateStore(agentId, channel, ownerUserId, sessionId);
+        } catch (RuntimeException e) {
+            log.warn("Failed to refresh chat after task retry: agent={}, session={}", agentId, sessionId, e);
+        }
+    }
+
+    private String text(Object value, String fallback) {
+        String result = value == null ? "" : String.valueOf(value);
+        return result.isBlank() ? fallback : result;
+    }
+}

@@ -18,6 +18,14 @@ export interface PageHeaderProps {
   className?: string;
 }
 
+export interface SectionHeaderProps {
+  title: ReactNode;
+  description?: ReactNode;
+  icon?: ReactNode;
+  extra?: ReactNode;
+  className?: string;
+}
+
 function buildItemsFromParentCurrent(
   parent: ReactNode | undefined,
   current: ReactNode | undefined,
@@ -71,6 +79,27 @@ export function PageHeader({
       </div>
       {center ? <div className={styles.center}>{center}</div> : null}
       {extra ? <div className={styles.extra}>{extra}</div> : null}
+    </div>
+  );
+}
+
+export function SectionHeader({
+  title,
+  description,
+  icon,
+  extra,
+  className,
+}: SectionHeaderProps) {
+  return (
+    <div className={`${styles.sectionHeader} ${className ?? ""}`.trim()}>
+      <div className={styles.sectionHeading}>
+        {icon ? <span className={styles.sectionIcon}>{icon}</span> : null}
+        <div className={styles.sectionCopy}>
+          <h2>{title}</h2>
+          {description ? <p>{description}</p> : null}
+        </div>
+      </div>
+      {extra ? <div className={styles.sectionExtra}>{extra}</div> : null}
     </div>
   );
 }

@@ -21,6 +21,7 @@ export interface ApprovalCardProps {
   agentId: string;
   ownerAgentId?: string;
   showInboxAgentContext?: boolean;
+  compact?: boolean;
   sessionId?: string;
   rootSessionId?: string;
   // Approval-scope choice (console-only). When true the card renders
@@ -47,6 +48,7 @@ export function ApprovalCard({
   agentId,
   ownerAgentId,
   showInboxAgentContext = false,
+  compact = false,
   sessionId,
   rootSessionId,
   isGeneralized,
@@ -166,7 +168,10 @@ export function ApprovalCard({
   };
 
   return (
-    <Card className={styles.approvalCard} bordered={false}>
+    <Card
+      className={`${styles.approvalCard} ${compact ? styles.composerCard : ""}`}
+      bordered={false}
+    >
       <div className={styles.header}>
         <Space size={8} align="center" className={styles.titleRow}>
           <Shield size={16} className={styles.icon} />
@@ -287,6 +292,8 @@ export function ApprovalCard({
               }`}
               onClick={() => handleCopy(findingsSummary, "summary")}
               title={t("common.copy", "Copy")}
+              aria-label={t("common.copy", "Copy")}
+              type="button"
             >
               <Copy size={12} />
             </button>
@@ -310,6 +317,8 @@ export function ApprovalCard({
                   handleCopy(JSON.stringify(toolParams, null, 2), "params")
                 }
                 title={t("common.copy", "Copy")}
+                aria-label={t("common.copy", "Copy")}
+                type="button"
               >
                 <Copy size={12} />
               </button>

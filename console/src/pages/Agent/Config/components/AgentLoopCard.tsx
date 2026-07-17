@@ -24,7 +24,6 @@ import {
   Rocket,
   Gauge,
   Wallet,
-  Lock,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import styles from "../index.module.less";
@@ -70,7 +69,7 @@ function SectionDivider() {
   );
 }
 
-function MockGateCard({
+function RuntimeGateCard({
   icon,
   title,
   description,
@@ -87,7 +86,6 @@ function MockGateCard({
         borderRadius: 8,
         padding: "16px 20px",
         marginBottom: 12,
-        opacity: 0.6,
         position: "relative",
       }}
     >
@@ -117,8 +115,8 @@ function MockGateCard({
             gap: 4,
           }}
         >
-          <Lock size={10} />
-          {t("agentConfig.comingSoon", "Coming Soon")}
+          <CheckCircle size={10} />
+          {t("agentConfig.active", "Active")}
         </Tag>
       </div>
       <p
@@ -129,19 +127,6 @@ function MockGateCard({
         }}
       >
         {description}
-      </p>
-      <p
-        style={{
-          margin: "6px 0 0",
-          fontSize: 11,
-          color: "var(--text-quaternary, rgba(0,0,0,0.25))",
-          fontStyle: "italic",
-        }}
-      >
-        {t(
-          "agentConfig.comingSoonEditable",
-          "Custom configuration will be available in a future release.",
-        )}
       </p>
     </div>
   );
@@ -557,7 +542,7 @@ function GoalModeTab() {
         )}
         style={{ marginBottom: 16 }}
       />
-      <MockGateCard
+      <RuntimeGateCard
         icon={<Repeat size={14} style={{ opacity: 0.5 }} />}
         title={t("agentConfig.goalIterationGate", "Goal Iteration Gate")}
         description={t(
@@ -565,15 +550,15 @@ function GoalModeTab() {
           "Limits the number of agent turns within a goal session. Tracks iteration count and token usage.",
         )}
       />
-      <MockGateCard
+      <RuntimeGateCard
         icon={<Wallet size={14} style={{ opacity: 0.5 }} />}
-        title={t("agentConfig.goalBudgetGate", "Token Budget Gate")}
+        title={t("agentConfig.goalBoundedExecution", "Bounded Execution")}
         description={t(
-          "agentConfig.goalBudgetGateDesc",
-          "Enforces a token spending limit for the goal session. Stops the agent when budget is exceeded.",
+          "agentConfig.goalBoundedExecutionDesc",
+          "Caps outer goal rounds using the configured iteration limit, with a hard runtime ceiling.",
         )}
       />
-      <MockGateCard
+      <RuntimeGateCard
         icon={<CheckCircle size={14} style={{ opacity: 0.5 }} />}
         title={t("agentConfig.goalRubricGate", "Goal Completion Rubric")}
         description={t(
@@ -581,12 +566,12 @@ function GoalModeTab() {
           "Evaluates whether the goal has been achieved by checking the session status.",
         )}
       />
-      <MockGateCard
+      <RuntimeGateCard
         icon={<Shield size={14} style={{ opacity: 0.5 }} />}
-        title={t("agentConfig.goalDoomGate", "Repetition Protection")}
+        title={t("agentConfig.goalTerminationGuard", "Termination Guard")}
         description={t(
-          "agentConfig.goalDoomGateDesc",
-          "Detects repetitive patterns during goal execution and triggers intervention.",
+          "agentConfig.goalTerminationGuardDesc",
+          "Stops when the completion rubric passes, output is empty, evaluation is unavailable, or the round limit is reached.",
         )}
       />
     </div>
@@ -611,20 +596,20 @@ function MissionModeTab() {
         )}
         style={{ marginBottom: 16 }}
       />
-      <MockGateCard
+      <RuntimeGateCard
         icon={<Gauge size={14} style={{ opacity: 0.5 }} />}
-        title={t("agentConfig.missionProgressGate", "Mission Progress Gate")}
+        title={t("agentConfig.missionOrchestration", "Mission Orchestration")}
         description={t(
-          "agentConfig.missionProgressGateDesc",
-          "Tracks PRD user story completion. Continues until all stories pass or max iterations reached.",
+          "agentConfig.missionOrchestrationDesc",
+          "Uses native isolated subagents for delegated work, then requires the coordinator to reconcile their results.",
         )}
       />
-      <MockGateCard
+      <RuntimeGateCard
         icon={<Repeat size={14} style={{ opacity: 0.5 }} />}
-        title={t("agentConfig.missionIterBypass", "Iteration Bypass")}
+        title={t("agentConfig.missionCompletionLoop", "Completion Loop")}
         description={t(
-          "agentConfig.missionIterBypassDesc",
-          "Temporarily lifts the ReAct iteration limit during mission execution to allow long-running phases.",
+          "agentConfig.missionCompletionLoopDesc",
+          "Runs coordinator rounds until the mission rubric confirms a reconciled result or the configured limit is reached.",
         )}
       />
     </div>

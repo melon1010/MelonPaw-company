@@ -159,7 +159,27 @@ function extractUrlFromResultBlocks(
       if (typeof src.url === "string" && src.url) {
         return {
           url: src.url,
-          filename: typeof b.filename === "string" ? b.filename : undefined,
+          filename:
+            typeof b.filename === "string"
+              ? b.filename
+              : typeof b.name === "string"
+                ? b.name
+                : undefined,
+        };
+      }
+      if (typeof src.data === "string" && src.data) {
+        const mediaType =
+          typeof src.media_type === "string"
+            ? src.media_type
+            : "application/octet-stream";
+        return {
+          url: `data:${mediaType};base64,${src.data}`,
+          filename:
+            typeof b.filename === "string"
+              ? b.filename
+              : typeof b.name === "string"
+                ? b.name
+                : undefined,
         };
       }
     }
@@ -176,6 +196,10 @@ function extractUrlFromResultBlocks(
         url: b.path,
         filename: typeof b.filename === "string" ? b.filename : undefined,
       };
+    }
+    if (typeof b.text === "string") {
+      const url = extractUrlFromText(b.text);
+      if (url) return { url };
     }
   }
 
@@ -206,13 +230,17 @@ export function getMediaInfo(tc: ToolCallContent): MediaInfo | null {
     textUrl = extractUrlFromText(tc.result) || "";
   }
 
-  const rawUrl = fromResult?.url || paramPath || textUrl || "";
+  const rawUrl = fromResult?.url || textUrl || paramPath || "";
   if (!rawUrl) return null;
 
+  const dataName = rawUrl.startsWith("data:")
+    ? dataUrlFileName(rawUrl)
+    : "";
   const name =
     fromResult?.filename ||
-    rawUrl.split("/").pop() ||
     paramPath.split("/").pop() ||
+    dataName ||
+    decodeFileName(rawUrl.split("/").pop() || "") ||
     "file";
   const ext = getFileExtFromPath(name);
   const mediaType = classifyMediaType(ext);
@@ -222,6 +250,9 @@ export function getMediaInfo(tc: ToolCallContent): MediaInfo | null {
 
 /** Try to extract a file URL from a text result via regex patterns */
 export function extractUrlFromText(resultStr: string): string | null {
+  const fileUrlMatch = resultStr.match(/file:\/\/\/[^\s"']+/i);
+  if (fileUrlMatch) return fileUrlMatch[0];
+
   // 1. "Saved to" pattern
   const pathMatch = resultStr.match(
     /(?:saved to|Saved to|保存到|输出到)[:\s]+([^\s\n]+)/i,
@@ -235,6 +266,22 @@ export function extractUrlFromText(resultStr: string): string | null {
   if (filePathMatch) return filePathMatch[0];
 
   return null;
+}
+
+function decodeFileName(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function dataUrlFileName(value: string): string {
+  const match = value.match(/^data:([^;,]+)[;,]/i);
+  if (!match) return "file";
+  const [, mimeType] = match;
+  const [kind, subtype = "bin"] = mimeType.split("/");
+  return `${kind || "file"}.${subtype.replace("+xml", "")}`;
 }
 
 // ---------------------------------------------------------------------------

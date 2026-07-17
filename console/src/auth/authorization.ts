@@ -23,12 +23,6 @@ export const PROJECT_MANAGER_ROLES = new Set([
 
 const AUDIT_ROLES = new Set([...SYSTEM_ADMIN_ROLES, "AUDITOR"]);
 
-const OPERATOR_ROUTES = new Set([
-  "core.mcp",
-  "core.agent-config",
-  "core.agent-stats",
-]);
-
 const ADMIN_ROUTES = new Set([
   "core.models",
   "core.environments",
@@ -137,12 +131,25 @@ export function canAccessRoute(
   if (routeId === "core.skill-pool") {
     return hasPermission(user, "agents:manage");
   }
-  if (ADMIN_ROUTES.has(routeId)) return hasPermission(user, "system:manage");
-  if (OPERATOR_ROUTES.has(routeId)) {
+  if (routeId === "core.mcp") {
     return (
-      hasPermission(user, "agents:manage") || hasAnyRole(user, OPERATOR_ROLES)
+      hasPermission(user, "mcp:personal") ||
+      hasPermission(user, "agents:manage")
     );
   }
+  if (routeId === "core.agent-config") {
+    return (
+      hasPermission(user, "workspace:personal") ||
+      hasPermission(user, "agents:manage")
+    );
+  }
+  if (routeId === "core.agent-stats") {
+    return (
+      hasPermission(user, "agents:use") ||
+      hasPermission(user, "agents:manage")
+    );
+  }
+  if (ADMIN_ROUTES.has(routeId)) return hasPermission(user, "system:manage");
   if (routeId === "core.token-usage") {
     return (
       hasPermission(user, "audit:read") ||

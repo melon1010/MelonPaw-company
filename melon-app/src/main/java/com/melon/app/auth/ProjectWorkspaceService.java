@@ -71,8 +71,8 @@ public class ProjectWorkspaceService {
 
     public Path workspaceDir(String projectId) {
         String safeProjectId = safeProjectId(projectId);
-        Path root = configManager.resolveHomeDir().toAbsolutePath().normalize();
-        Path projectsRoot = root.resolve("project-workspaces").normalize();
+        Path projectsRoot = configManager.resolveWorkspaceRootDir().toAbsolutePath().normalize()
+                .resolve("projects").normalize();
         Path workspace = projectsRoot.resolve(safeProjectId).normalize();
         if (!workspace.startsWith(projectsRoot) || workspace.equals(projectsRoot)) {
             throw new IllegalArgumentException("Invalid project workspace");
@@ -90,10 +90,25 @@ public class ProjectWorkspaceService {
         }
         Files.createDirectories(workspace);
         requireDirectory(workspace, "Project workspace");
+        migrateLegacyDocuments(projectId, workspace);
         createIfMissing(workspace.resolve("PROJECT.md"), "# Project\n");
         createIfMissing(workspace.resolve("KNOWLEDGE.md"), "# Knowledge\n");
         createIfMissing(workspace.resolve("POLICY.md"), "# Policy\n");
         return workspace;
+    }
+
+    private void migrateLegacyDocuments(String projectId, Path workspace) throws IOException {
+        Path legacy = configManager.resolveHomeDir().toAbsolutePath().normalize()
+                .resolve("project-workspaces").resolve(safeProjectId(projectId)).normalize();
+        if (!Files.isDirectory(legacy, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(legacy)) return;
+        for (String name : DOCUMENTS) {
+            Path source = legacy.resolve(name).normalize();
+            Path target = workspace.resolve(name).normalize();
+            if (!Files.exists(target) && Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS)
+                    && !Files.isSymbolicLink(source) && Files.size(source) <= MAX_DOCUMENT_BYTES) {
+                Files.copy(source, target);
+            }
+        }
     }
 
     private void createIfMissing(Path file, String content) throws IOException {

@@ -2,6 +2,7 @@ package com.melon.app.service;
 
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.ConfigManager;
+import com.melon.app.task.EnterpriseTaskService;
 import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.message.ToolUseBlock;
 import org.slf4j.Logger;
@@ -28,6 +29,7 @@ public class ApprovalService {
 
     private final ConfigManager configManager;
     private final AuditLogService auditLogService;
+    private final EnterpriseTaskService taskService;
 
     // agentId + ownerUserId + sessionId -> live approval gate for the paused AgentScope stream
     private final ConcurrentHashMap<String, PendingApprovalSession> pendingApprovalSessions = new ConcurrentHashMap<>();
@@ -35,13 +37,19 @@ public class ApprovalService {
     private final ConcurrentHashMap<String, Map<String, Object>> pendingPlans = new ConcurrentHashMap<>();
 
     public ApprovalService(ConfigManager configManager) {
-        this(configManager, null);
+        this(configManager, null, null);
+    }
+
+    public ApprovalService(ConfigManager configManager, AuditLogService auditLogService) {
+        this(configManager, auditLogService, null);
     }
 
     @Autowired
-    public ApprovalService(ConfigManager configManager, AuditLogService auditLogService) {
+    public ApprovalService(ConfigManager configManager, AuditLogService auditLogService,
+                           EnterpriseTaskService taskService) {
         this.configManager = configManager;
         this.auditLogService = auditLogService;
+        this.taskService = taskService;
     }
 
     /**
@@ -50,7 +58,7 @@ public class ApprovalService {
     public String getApprovalMode(String agentId) {
         var agentConfig = configManager.getConfig().getAgents().get(agentId);
         if (agentConfig == null || agentConfig.getApproval() == null) {
-            return "AUTO";
+            return "RISK_BASED";
         }
         return agentConfig.getApproval().getLevel();
     }
@@ -122,7 +130,17 @@ public class ApprovalService {
                 toolCalls, approvalRequests);
         PendingApprovalSession previous = pendingApprovalSessions.put(key, session);
         if (previous != null) {
+            recordApprovalCancellation(previous, "replaced by a newer approval gate");
             previous.cancel();
+        }
+        if (taskService != null && approvalRequests != null) {
+            for (Map<String, Object> approval : approvalRequests) {
+                String taskId = stringValue(approval.get("task_id"));
+                String runId = stringValue(approval.get("run_id"));
+                if (!taskId.isBlank() && !runId.isBlank()) {
+                    taskService.waitingApproval(taskId, runId, approvalEvent(approval, "PENDING", ""));
+                }
+            }
         }
         return Mono.fromFuture(session.future());
     }
@@ -131,6 +149,7 @@ public class ApprovalService {
         PendingApprovalSession session = findPendingSession(agentId, sessionId, "");
         if (session == null) return false;
         pendingApprovalSessions.remove(session.scopeKey(), session);
+        recordApprovalCancellation(session, "approval cancelled");
         session.cancel();
         return true;
     }
@@ -139,6 +158,7 @@ public class ApprovalService {
         PendingApprovalSession session = pendingApprovalSessions.remove(
                 approvalScopeKey(agentId, ownerUserId, sessionId));
         if (session == null) return false;
+        recordApprovalCancellation(session, "approval cancelled by task owner");
         session.cancel();
         return true;
     }
@@ -157,6 +177,7 @@ public class ApprovalService {
         if (!elevated && !session.belongsTo(actorUserId)) return false;
         ApprovalDecision decision = session.decide(requestId, approved);
         boolean accepted = decision != null;
+        boolean done = accepted && session.isDone();
         if (accepted && auditLogService != null) {
             Map<String, Object> approval = new LinkedHashMap<>(
                     decision.approval() != null ? decision.approval() : Map.of());
@@ -172,10 +193,43 @@ public class ApprovalService {
                     approved ? "approved by user" : "denied by user",
                     approval);
         }
-        if (session.isDone()) {
+        if (accepted && taskService != null) {
+            Map<String, Object> approval = decision.approval() != null ? decision.approval() : Map.of();
+            String taskId = stringValue(approval.get("task_id"));
+            String runId = stringValue(approval.get("run_id"));
+            if (!taskId.isBlank() && !runId.isBlank()) {
+                Map<String, Object> payload = approvalEvent(
+                        approval, approved ? "ALLOW" : "DENY", normalizeUserId(actorUserId));
+                taskService.approvalResolved(taskId, runId, payload, done);
+            }
+        }
+        if (done) {
             pendingApprovalSessions.remove(session.scopeKey(), session);
         }
         return accepted;
+    }
+
+    private void recordApprovalCancellation(PendingApprovalSession session, String reason) {
+        if (taskService == null || session == null) return;
+        for (Map<String, Object> approval : session.approvals()) {
+            String taskId = stringValue(approval.get("task_id"));
+            String runId = stringValue(approval.get("run_id"));
+            if (!taskId.isBlank() && !runId.isBlank()) {
+                taskService.approvalResolved(taskId, runId,
+                        approvalEvent(approval, "CANCELLED", reason), false);
+            }
+        }
+    }
+
+    private Map<String, Object> approvalEvent(Map<String, Object> approval, String decision, String actor) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("approval_id", stringValue(approval.get("request_id")));
+        payload.put("tool_call_id", stringValue(approval.get("request_id")));
+        payload.put("tool_name", stringValue(approval.get("tool_name")));
+        payload.put("risk", stringValue(approval.get("severity")));
+        payload.put("decision", decision);
+        if (actor != null && !actor.isBlank()) payload.put("actor", actor);
+        return payload;
     }
 
     /**

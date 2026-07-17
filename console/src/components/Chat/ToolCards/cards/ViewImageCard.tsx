@@ -16,7 +16,7 @@ const ViewImageCard: React.FC<ViewImageCardProps> = ({
 }) => {
   const { t } = useTranslation();
   const params = content.params || {};
-  const imgPath = (params.image_path || "") as string;
+  const imgPath = (params.image_path || params.file_path || params.path || "") as string;
   const file = shortFileName(imgPath);
   const title = file
     ? t("tool.viewImage", { file })
@@ -30,6 +30,7 @@ const ViewImageCard: React.FC<ViewImageCardProps> = ({
       isStreaming={isStreaming}
       icon={<PictureOutlined />}
       title={title}
+      defaultOpen={Boolean(media) && !isStreaming}
     >
       {media && <MediaPreview media={media} />}
     </ToolCardShell>

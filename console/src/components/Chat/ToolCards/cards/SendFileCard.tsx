@@ -33,6 +33,7 @@ const SendFileCard: React.FC<SendFileCardProps> = ({
       isStreaming={isStreaming}
       icon={<SendOutlined />}
       title={title}
+      defaultOpen={Boolean(media) && !isStreaming}
     >
       {media && <MediaPreview media={media} />}
     </ToolCardShell>

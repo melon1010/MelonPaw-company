@@ -33,8 +33,6 @@ function AgentConfigPage() {
     savingLang,
     timezone,
     savingTimezone,
-    approvalLevel,
-    setApprovalLevel,
     fetchConfig,
     handleSave,
     handleLanguageChange,
@@ -177,11 +175,7 @@ function AgentConfigPage() {
       ),
       children: (
         <div className={styles.tabContent}>
-          <ToolExecutionLevelCard
-            value={approvalLevel}
-            onChange={setApprovalLevel}
-            disabled={saving}
-          />
+          <ToolExecutionLevelCard />
         </div>
       ),
     });
@@ -199,9 +193,6 @@ function AgentConfigPage() {
     maxInputLength,
     contextBackend,
     memoryBackend,
-    approvalLevel,
-    setApprovalLevel,
-    saving,
   ]);
 
   useEffect(() => {
