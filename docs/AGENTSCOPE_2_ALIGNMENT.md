@@ -90,11 +90,15 @@ Agent 构建时通过 `PermissionContextState` 配置工具规则，由 AgentSco
 
 企业接口 RBAC 应在事件进入审批服务前已经完成；不能因为 AgentScope 返回 ASK 就默认当前用户有审批权。
 
-## Subagent 暂停策略
+## Subagent 受限开放策略
 
-当前 `HarnessAgent` 构建时显式调用 `disableSubagents()`。前端和后端不应暴露 `agent_spawn`、`agent_send`、`agent_list` 或旧式自制多 Agent 任务入口。
+当前协调 `HarnessAgent` 只注册固定的 `researcher`、`executor`、`reviewer` 原生 Subagent Factory，另保留
+`general-purpose` 到 `researcher` 的兼容别名，并禁止动态 Subagent。Worker 禁止 Shell、禁止再次派生、
+禁用会话持久化，按角色限制继承的文件工具，仅供 `/mission` 在同一授权 Workspace 内执行受限任务；
+`AgentRunner` 将每次原生 `agent_spawn` 映射为 Enterprise 子 Task/Run/Delegation，继承父任务的用户、项目、
+版本和配额边界，限制为单层委派，父任务终止时取消未完成子任务。
 
-重新启用官方 Subagent 前，至少完成以下能力：
+继续扩展子 Agent 前，至少完成以下能力：
 
 1. 明确任务所有者、发起 Agent、目标 Agent 和根会话的不可伪造关联。
 2. 根据企业角色、项目成员关系和目标 Agent 可见性校验每次委派。
@@ -105,7 +109,7 @@ Agent 构建时通过 `PermissionContextState` 配置工具规则，由 AgentSco
 7. Web 端能展示父子任务关系、执行状态、审批与结果，移动端同样可用。
 8. 覆盖越权委派、循环委派、跨项目访问、取消、重试和服务重启恢复测试。
 
-在这些条件完成前，保留官方事件映射代码不等于允许执行 Subagent。
+在这些条件完成前，不得把受限 Worker 扩展为跨 Agent、跨项目、可后台恢复或可获得更高权限的企业委派。
 
 ## 不再维护的重复实现
 
@@ -129,7 +133,7 @@ Agent 构建时通过 `PermissionContextState` 配置工具规则，由 AgentSco
 - `AGENTS.md`、`MEMORY.md`、附加上下文和用户技能只从授权工作区加载。
 - 绝对路径、`..`、符号链接和跨工作区文件访问受到拒绝或约束。
 - ALLOW、ASK、DENY 三类权限决策及确认恢复流程正常。
-- Subagent 仍保持关闭，除非本文的开放条件已经全部完成并评审。
+- 当前仅开放上述固定角色；动态 Agent、跨项目委派和超过一层的嵌套委派仍保持关闭。
 - 后端测试、前端测试、前端生产构建和打包后的 Web 启动检查全部通过。
 
 ## 官方资料

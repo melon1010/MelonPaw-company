@@ -6,15 +6,20 @@ import io.agentscope.core.permission.PermissionBehavior;
 import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
 import io.agentscope.core.permission.PermissionRule;
+import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.tool.Tool;
+import io.agentscope.core.tool.ToolParam;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.IsolationScope;
+import io.agentscope.harness.agent.filesystem.sandbox.AbstractSandboxFilesystem;
 import io.agentscope.harness.agent.memory.compaction.CompactionConfig;
 import io.agentscope.harness.agent.memory.compaction.ToolResultEvictionConfig;
 import io.agentscope.harness.agent.memory.MemoryConfig;
 import io.agentscope.harness.agent.sandbox.impl.docker.DockerFilesystemSpec;
 import io.agentscope.harness.agent.sandbox.WorkspaceSpec;
 import io.agentscope.harness.agent.sandbox.layout.BindMountEntry;
+import io.agentscope.harness.agent.tool.ShellExecuteTool;
 import io.agentscope.harness.agent.tool.SkillManageConfig;
 import io.agentscope.harness.agent.tools.ToolsConfig;
 import io.agentscope.harness.agent.workspace.LocalFsMode;
@@ -168,9 +173,15 @@ public class MelonAgentFactory {
             builder.model(activeModel);
         }
         builder.subagentFactory("general-purpose", ignored ->
-                createRestrictedSubagent(agentId, agentConfig, workspaceDir));
-        // Keep mission workers fixed to the restricted factory above. Runtime workspace
-        // declarations must not replace it with a worker that inherits coordinator tools.
+                createRestrictedSubagent(agentId, agentConfig, workspaceDir, "researcher"));
+        builder.subagentFactory("researcher", ignored ->
+                createRestrictedSubagent(agentId, agentConfig, workspaceDir, "researcher"));
+        builder.subagentFactory("executor", ignored ->
+                createRestrictedSubagent(agentId, agentConfig, workspaceDir, "executor"));
+        builder.subagentFactory("reviewer", ignored ->
+                createRestrictedSubagent(agentId, agentConfig, workspaceDir, "reviewer"));
+        // Keep mission workers fixed to these role-scoped factories. Runtime workspace
+        // declarations must not replace them with a worker that inherits coordinator tools.
         builder.disableDynamicSubagents();
 
         if (agentConfig.getPlanMode().isEnabled()) {
@@ -181,24 +192,43 @@ public class MelonAgentFactory {
             builder.fallbackModel(agentConfig.getRunning().getFallbackModel());
         }
 
-        return builder.build();
+        HarnessAgent agent = builder.build();
+        if (isEnabled(agentConfig, "execute_shell_command")) {
+            installOptionalShellTool(agent);
+        }
+        return agent;
     }
 
     /**
      * Mission workers can perform ordinary isolated workspace work, but risky capabilities remain
      * on the coordinator so AgentRunner can apply the interactive risk policy.
      */
-    private HarnessAgent createRestrictedSubagent(String parentAgentId, AgentConfig config, Path workspaceDir) {
+    private HarnessAgent createRestrictedSubagent(String parentAgentId, AgentConfig config,
+                                                  Path workspaceDir, String role) {
+        String normalizedRole = role == null || role.isBlank() ? "researcher" : role;
+        boolean shellEnabled = "researcher".equalsIgnoreCase(normalizedRole)
+                || "executor".equalsIgnoreCase(normalizedRole);
         HarnessAgent.Builder subagent = HarnessAgent.builder()
-                .name("general-purpose-subagent")
+                .name(normalizedRole + "-subagent")
                 .agentId(parentAgentId + "-worker")
-                .description("Isolated mission worker with workspace-only tools")
+                .description("Isolated " + normalizedRole + " worker with role-scoped workspace tools")
                 .workspace(workspaceDir)
                 .maxIters(config.getRunning().getMaxIters())
+                .sysPrompt("You are the " + normalizedRole + " role in a single-level enterprise delegation. "
+                        + "Stay within the assigned workspace and return concise evidence for the coordinator.")
                 .permissionContext(PermissionContextState.builder().mode(PermissionMode.BYPASS).build())
-                .disableShellTool()
                 .disableSubagents()
                 .disableSessionPersistence();
+        io.agentscope.harness.agent.tools.ToolsConfig roleTools = new io.agentscope.harness.agent.tools.ToolsConfig();
+        List<String> allowedTools = new ArrayList<>("executor".equalsIgnoreCase(normalizedRole)
+                ? List.of("read_file", "write_file", "edit_file", "grep_files", "glob_files", "list_files")
+                : List.of("read_file", "grep_files", "glob_files", "list_files"));
+        if (shellEnabled) {
+            allowedTools.add("execute");
+            allowedTools.add("execute_shell_command");
+        }
+        roleTools.setAllow(List.copyOf(allowedTools));
+        subagent.toolsConfig(roleTools);
         String sandboxMode = executionSandboxMode();
         if ("local".equals(sandboxMode)) {
             subagent.filesystem(localFilesystem(workspaceDir, config));
@@ -213,7 +243,68 @@ public class MelonAgentFactory {
             subagent.model(config.getActiveModel());
         }
         addContextFiles(subagent, config);
-        return subagent.build();
+        HarnessAgent agent = subagent.build();
+        if (shellEnabled) {
+            installOptionalShellTool(agent);
+        }
+        return agent;
+    }
+
+    /** Keeps the Harness shell contract compatible with skills that omit optional cwd/timeout. */
+    private void installOptionalShellTool(HarnessAgent agent) {
+        if (agent == null || agent.getWorkspaceManager() == null
+                || !(agent.getWorkspaceManager().getFilesystem() instanceof AbstractSandboxFilesystem sandbox)) {
+            return;
+        }
+        Toolkit toolkit = agent.getToolkit();
+        toolkit.removeTool("execute");
+        toolkit.removeTool("execute_shell_command");
+        toolkit.registerTool(new OptionalShellTool(new ShellExecuteTool(sandbox),
+                agent.getWorkspaceManager().getWorkspace()));
+    }
+
+    private static final class OptionalShellTool {
+        private final ShellExecuteTool delegate;
+        private final Path workspace;
+
+        private OptionalShellTool(ShellExecuteTool delegate, Path workspace) {
+            this.delegate = delegate;
+            this.workspace = workspace != null ? workspace.toAbsolutePath().normalize() : null;
+        }
+
+        @Tool(name = "execute", description = "Execute a shell command in the isolated Agent workspace.")
+        public String execute(RuntimeContext runtimeContext,
+                              @ToolParam(name = "command", description = "Shell command to execute") String command,
+                              @ToolParam(name = "working_directory", required = false,
+                                      description = "Relative workspace directory; defaults to the workspace root") String workingDirectory,
+                              @ToolParam(name = "timeout", required = false,
+                                      description = "Timeout in seconds; defaults to 30") Integer timeout) {
+            return delegate.execute(runtimeContext, command, normalizeWorkingDirectory(workingDirectory),
+                    timeout != null ? timeout : 30);
+        }
+
+        @Tool(name = "execute_shell_command", description = "Execute a shell command in the isolated Agent workspace.")
+        public String executeShellCommand(RuntimeContext runtimeContext,
+                                          @ToolParam(name = "command", description = "Shell command to execute") String command,
+                                          @ToolParam(name = "working_directory", required = false,
+                                                  description = "Relative workspace directory; defaults to the workspace root") String workingDirectory,
+                                          @ToolParam(name = "timeout", required = false,
+                                                  description = "Timeout in seconds; defaults to 30") Integer timeout) {
+            return execute(runtimeContext, command, workingDirectory, timeout);
+        }
+
+        private String normalizeWorkingDirectory(String value) {
+            if (value == null || value.isBlank() || workspace == null) return value;
+            try {
+                Path requested = Path.of(value).toAbsolutePath().normalize();
+                if (requested.startsWith(workspace)) {
+                    return workspace.relativize(requested).toString();
+                }
+            } catch (RuntimeException ignored) {
+                // Let the Harness validator return its normal path error.
+            }
+            return value;
+        }
     }
 
     private Toolkit buildToolkit(String agentId, AgentConfig config, Path workspaceDir) {

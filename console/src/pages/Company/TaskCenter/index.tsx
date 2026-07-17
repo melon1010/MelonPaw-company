@@ -121,8 +121,8 @@ export default function TaskCenter() {
         <div className={styles.nameCell}>
           <div className={styles.primaryText}>{title || row.session_id}</div>
           <div className={styles.secondaryText}>
-            {row.task_id} ·{" "}
-            {t("enterprise.tasks.attempt", { count: row.attempt })}
+            {row.task_id} · {t("enterprise.tasks.attempt", { count: row.attempt })}
+            {row.parent_task_id ? ` · ${t("enterprise.tasks.child", { defaultValue: "Child task" })}` : ""}
           </div>
         </div>
       ),

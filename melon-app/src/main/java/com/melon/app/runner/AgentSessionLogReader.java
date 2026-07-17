@@ -88,7 +88,10 @@ public class AgentSessionLogReader {
     private List<Map<String, Object>> deduplicateMessages(List<Map<String, Object>> messages) {
         List<Map<String, Object>> result = new ArrayList<>();
         List<String> currentTurn = new ArrayList<>();
+        java.util.Set<String> seenMessageIds = new java.util.HashSet<>();
         for (Map<String, Object> message : messages) {
+            String messageId = stringValue(message.get("id"));
+            if (!messageId.isBlank() && !seenMessageIds.add(messageId)) continue;
             if ("user".equals(lower(message.get("role")))) {
                 currentTurn.clear();
                 result.add(message);
@@ -179,10 +182,17 @@ public class AgentSessionLogReader {
         Map<String, Object> current = null;
         String currentType = null;
         int splitIndex = 0;
+        java.util.Set<String> seenBlocks = new java.util.HashSet<>();
         for (Object item : blocks) {
             if (!(item instanceof Map<?, ?> blockRaw)) continue;
             Map<String, Object> block = asMap(blockRaw);
             String blockType = normalizedBlockType(block);
+            if ("tool_use".equals(blockType) || "tool_call".equals(blockType)
+                    || "tool_result".equals(blockType)) {
+                String blockId = stringValue(block.get("id"));
+                String blockKey = blockType + ":" + blockId;
+                if (!blockId.isBlank() && !seenBlocks.add(blockKey)) continue;
+            }
             if ("text".equals(blockType) || isMediaBlock(blockType)) {
                 if (!"message".equals(currentType)) {
                     current = startStateMessage(raw, "message", role, metadata, splitIndex++);

@@ -310,7 +310,7 @@ public class ModelsCompatController {
     public Mono<ResponseEntity<?>> deleteCustomProvider(@PathVariable String providerId) {
         Map<String, Object> configs = providerConfigs();
         configs.remove(providerId);
-        JsonUtils.save(providerConfigFile(), configs);
+        JsonUtils.save(providerConfigFile(), configManager.protectSecrets(configs));
         providerManager.refreshProviderConfig();
         return listCustomProviders();
     }
@@ -798,12 +798,20 @@ public class ModelsCompatController {
     private void saveProviderConfig(String providerId, Map<String, Object> config) {
         Map<String, Object> configs = providerConfigs();
         configs.put(providerId, config);
-        JsonUtils.save(providerConfigFile(), configs);
+        JsonUtils.save(providerConfigFile(), configManager.protectSecrets(configs));
         providerManager.refreshProviderConfig();
     }
 
+    @SuppressWarnings("unchecked")
     private Map<String, Object> providerConfigs() {
-        return JsonUtils.loadAsMap(providerConfigFile());
+        Map<String, Object> stored = JsonUtils.loadAsMap(providerConfigFile());
+        Object runtime = configManager.unprotectSecrets(stored);
+        Map<String, Object> result = runtime instanceof Map<?, ?> map
+                ? new LinkedHashMap<>((Map<String, Object>) map) : new LinkedHashMap<>();
+        if (configManager.hasPlaintextSecrets(stored) && !result.isEmpty()) {
+            JsonUtils.save(providerConfigFile(), configManager.protectSecrets(result));
+        }
+        return result;
     }
 
     private Path providerConfigFile() {

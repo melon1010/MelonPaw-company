@@ -1,6 +1,7 @@
 package com.melon.app.controller;
 
 import com.melon.app.task.EnterpriseTaskService;
+import com.melon.app.task.EnterpriseQuotaService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -24,5 +25,15 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> agentMutationConflict(
             EnterpriseTaskService.AgentMutationInProgressException e) {
         return ResponseEntity.status(409).body(Map.of("detail", e.getMessage()));
+    }
+
+    @ExceptionHandler(EnterpriseQuotaService.QuotaExceededException.class)
+    public ResponseEntity<Map<String, Object>> quotaExceeded(
+            EnterpriseQuotaService.QuotaExceededException e) {
+        return ResponseEntity.status(429).body(Map.of(
+                "detail", e.getMessage(),
+                "code", "quota_exceeded",
+                "scope_type", e.scopeType(),
+                "limit_type", e.limitType()));
     }
 }

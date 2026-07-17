@@ -170,6 +170,13 @@ export DEEPSEEK_API_KEY=sk-xxxx
 
 API Key 和渠道密钥不得提交到仓库、工作区文档或日志中。Ollama 为本地模型接入，通常不需要 API Key。
 
+模型、渠道和 MCP 凭据使用 AES-256-GCM 加密落盘。未设置 `MELON_MASTER_KEY` 时，系统会自动生成
+`${MELON_HOME}/master.key` 并在支持 POSIX 权限的平台设为 `0600`；生产环境也可以注入 Base64 或
+64 位十六进制的 256-bit `MELON_MASTER_KEY`。轮换时使用新 `MELON_MASTER_KEY` 启动，并通过
+`MELON_MASTER_KEY_PREVIOUS`（多个旧密钥以逗号分隔）提供解密来源，随后调用
+`POST /api/config/security/secrets/rotate` 重写全部已知密文。普通备份始终排除 `master.key` 和
+`bootstrap.token`，跨机器恢复前必须单独恢复原主密钥；主密钥丢失后密文不可恢复。
+
 ## 开发与验证
 
 后端开发服务：

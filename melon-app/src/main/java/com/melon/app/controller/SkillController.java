@@ -3,6 +3,7 @@ package com.melon.app.controller;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.auth.ProjectAgentService;
 import com.melon.app.service.BuiltinSkillService;
 import com.melon.app.service.SecuritySettingsService;
 import com.melon.app.service.SkillService;
@@ -17,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.http.codec.multipart.FilePart;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import reactor.core.publisher.Flux;
@@ -57,17 +59,29 @@ public class SkillController {
     private final SkillScanner skillScanner;
     private final MultiAgentManager multiAgentManager;
     private final EnterpriseAgentAccessService agentAccessService;
+    private final ProjectAgentService projectAgentService;
     private final Map<String, Map<String, Object>> hubInstallTasks = new ConcurrentHashMap<>();
 
     public SkillController(SkillService skillService, BuiltinSkillService builtinSkillService,
                            SecuritySettingsService securitySettingsService,
                            MultiAgentManager multiAgentManager,
                            EnterpriseAgentAccessService agentAccessService) {
+        this(skillService, builtinSkillService, securitySettingsService,
+                multiAgentManager, agentAccessService, null);
+    }
+
+    @Autowired
+    public SkillController(SkillService skillService, BuiltinSkillService builtinSkillService,
+                           SecuritySettingsService securitySettingsService,
+                           MultiAgentManager multiAgentManager,
+                           EnterpriseAgentAccessService agentAccessService,
+                           ProjectAgentService projectAgentService) {
         this.skillService = skillService;
         this.builtinSkillService = builtinSkillService;
         this.securitySettingsService = securitySettingsService;
         this.multiAgentManager = multiAgentManager;
         this.agentAccessService = agentAccessService;
+        this.projectAgentService = projectAgentService;
         this.skillScanner = new SkillScanner();
     }
 
@@ -155,7 +169,8 @@ public class SkillController {
 
     @PostMapping("/hub/install/start")
     public Mono<ResponseEntity<?>> startHubInstall(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                                  @RequestBody(required = false) Map<String, Object> body) {
+                                                  @RequestBody(required = false) Map<String, Object> body,
+                                                  @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
             String workspaceId = safeAgentId(agentId);
             String taskId = UUID.randomUUID().toString();
@@ -164,7 +179,9 @@ public class SkillController {
             Map<String, Object> task = installTask(taskId, request, "importing", null, null);
             hubInstallTasks.put(taskId, task);
             try {
-                Map<String, Object> result = installLocalHubSkill(workspaceId, request, true);
+                Map<String, Object> result = versionedMutation(
+                        workspaceId, principal, "Project skill installed from hub",
+                        () -> installLocalHubSkill(workspaceId, request, true));
                 task = installTask(taskId, request, "completed", null, result);
             } catch (Exception e) {
                 task = installTask(taskId, request, "failed", e.getMessage(), null);
@@ -236,28 +253,32 @@ public class SkillController {
 
     @PostMapping("/batch-enable")
     public Mono<ResponseEntity<?>> batchEnable(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                               @RequestBody List<String> names) {
-        return Mono.fromCallable(() -> {
+                                               @RequestBody List<String> names,
+                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skills enabled", () -> {
             Map<String, Object> results = batchSetEnabled(agentId, names, true);
             reload(agentId);
             return ResponseEntity.ok(Map.of("results", results));
-        });
+        }));
     }
 
     @PostMapping("/batch-disable")
     public Mono<ResponseEntity<?>> batchDisable(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                                @RequestBody List<String> names) {
-        return Mono.fromCallable(() -> {
+                                                @RequestBody List<String> names,
+                                                @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skills disabled", () -> {
             Map<String, Object> results = batchSetEnabled(agentId, names, false);
             reload(agentId);
             return ResponseEntity.ok(Map.of("results", results));
-        });
+        }));
     }
 
     @PostMapping("/batch-delete")
     public Mono<ResponseEntity<?>> batchDelete(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                               @RequestBody List<String> names) {
-        return Mono.fromCallable(() -> ResponseEntity.ok(Map.of("results", deleteMany(agentId, names))));
+                                               @RequestBody List<String> names,
+                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skills deleted",
+                () -> ResponseEntity.ok(Map.of("results", deleteMany(agentId, names)))));
     }
 
     @PostMapping("/pool/batch-delete")
@@ -333,8 +354,9 @@ public class SkillController {
                     }
                     continue;
                 }
-                Map<String, Object> result = skillService.downloadPoolSkillToWorkspace(
-                        target, skillName, overwrite);
+                Map<String, Object> result = versionedMutation(
+                        target, principal, "Project skill imported from pool",
+                        () -> skillService.downloadPoolSkillToWorkspace(target, skillName, overwrite));
                 if (Boolean.TRUE.equals(result.get("conflict"))) {
                     conflicts.add(Map.of(
                             "skill_name", skillName,
@@ -366,13 +388,15 @@ public class SkillController {
                                                @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
                                                @RequestParam(defaultValue = "true") boolean enable,
                                                @RequestParam(defaultValue = "") String targetName,
-                                               @RequestParam(defaultValue = "") String renameMap) {
-        return uploadZip(filePart, path -> {
+                                               @RequestParam(defaultValue = "") String renameMap,
+                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return uploadZip(filePart, path -> versionedMutation(
+                safeAgentId(agentId), principal, "Project skill archive imported", () -> {
             Map<String, Object> result = skillService.importWorkspaceSkillZip(
                     safeAgentId(agentId), path, enable, targetName, parseRenameMap(renameMap));
             reload(agentId);
             return result;
-        });
+        }));
     }
 
     @PostMapping(value = "/pool/upload-zip", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -412,8 +436,9 @@ public class SkillController {
      */
     @PostMapping
     public Mono<ResponseEntity<?>> createSkill(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                               @RequestBody Map<String, String> body) {
-        return Mono.fromCallable(() -> {
+                                               @RequestBody Map<String, String> body,
+                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skill created", () -> {
             try {
                 String name = body.get("name");
                 String content = body.getOrDefault("content", "");
@@ -439,13 +464,14 @@ public class SkillController {
                 log.error("Failed to create skill", e);
                 return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
             }
-        });
+        }));
     }
 
     @PutMapping("/save")
     public Mono<ResponseEntity<?>> saveSkill(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                             @RequestBody Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
+                                             @RequestBody Map<String, Object> body,
+                                             @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skill saved", () -> {
             String name = stringValue(body.get("name"), "");
             String sourceName = stringValue(body.get("source_name"), name);
             String content = stringValue(body.get("content"), "");
@@ -470,51 +496,55 @@ public class SkillController {
             skillService.createSkill(agentId, name, content);
             reload(agentId);
             return ResponseEntity.ok(Map.of("success", true, "mode", sourceName.equals(name) ? "edit" : "rename", "name", name));
-        });
+        }));
     }
 
     @PostMapping("/{name}/enable")
     public Mono<ResponseEntity<?>> enableSkill(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                               @PathVariable String name) {
-        return Mono.fromCallable(() -> {
+                                               @PathVariable String name,
+                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skill enabled", () -> {
             Map<String, Object> result = skillService.enableSkill(agentId, name);
             reload(agentId);
             return ResponseEntity.ok(result);
-        });
+        }));
     }
 
     @PostMapping("/{name}/disable")
     public Mono<ResponseEntity<?>> disableSkill(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                                @PathVariable String name) {
-        return Mono.fromCallable(() -> {
+                                                @PathVariable String name,
+                                                @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skill disabled", () -> {
             Map<String, Object> result = skillService.disableSkill(agentId, name);
             reload(agentId);
             return ResponseEntity.ok(result);
-        });
+        }));
     }
 
     @PutMapping("/{name}/channels")
     public Mono<ResponseEntity<?>> updateSkillChannels(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
                                                        @PathVariable String name,
-                                                       @RequestBody List<String> channels) {
-        return Mono.fromCallable(() -> {
+                                                       @RequestBody List<String> channels,
+                                                       @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skill channels updated", () -> {
             List<String> values = channels != null ? channels : List.of();
             skillService.setSkillChannels(agentId, name, values);
             reload(agentId);
             return ResponseEntity.ok(Map.of("updated", true, "channels", values));
-        });
+        }));
     }
 
     @PutMapping("/{name}/tags")
     public Mono<ResponseEntity<?>> updateSkillTags(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
                                                    @PathVariable String name,
-                                                   @RequestBody List<String> tags) {
-        return Mono.fromCallable(() -> {
+                                                   @RequestBody List<String> tags,
+                                                   @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skill tags updated", () -> {
             List<String> values = tags != null ? tags : List.of();
             skillService.setSkillTags(agentId, name, values);
             reload(agentId);
             return ResponseEntity.ok(Map.of("updated", true, "tags", values));
-        });
+        }));
     }
 
     @GetMapping("/{name}/config")
@@ -526,22 +556,24 @@ public class SkillController {
     @PutMapping("/{name}/config")
     public Mono<ResponseEntity<?>> updateSkillConfig(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
                                                      @PathVariable String name,
-                                                     @RequestBody(required = false) Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
+                                                     @RequestBody(required = false) Map<String, Object> body,
+                                                     @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skill configuration updated", () -> {
             skillService.setSkillConfig(agentId, name, configPayload(body));
             reload(agentId);
             return ResponseEntity.ok(Map.of("updated", true));
-        });
+        }));
     }
 
     @DeleteMapping("/{name}/config")
     public Mono<ResponseEntity<?>> deleteSkillConfig(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                                     @PathVariable String name) {
-        return Mono.fromCallable(() -> {
+                                                     @PathVariable String name,
+                                                     @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skill configuration cleared", () -> {
             skillService.clearSkillConfig(agentId, name);
             reload(agentId);
             return ResponseEntity.ok(Map.of("cleared", true));
-        });
+        }));
     }
 
     @GetMapping("/pool/{name}/config")
@@ -596,8 +628,9 @@ public class SkillController {
      */
     @DeleteMapping("/{name}")
     public Mono<ResponseEntity<?>> deleteSkill(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                               @PathVariable String name) {
-        return Mono.fromCallable(() -> {
+                                               @PathVariable String name,
+                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Mono.fromCallable(() -> versionedMutation(agentId, principal, "Project skill deleted", () -> {
             try {
                 skillService.deleteSkill(agentId, name);
                 reload(agentId);
@@ -606,7 +639,14 @@ public class SkillController {
                 log.error("Failed to delete skill: {}", name, e);
                 return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
             }
-        });
+        }));
+    }
+
+    private <T> T versionedMutation(String agentId, EnterprisePrincipal principal,
+                                    String summary, java.util.concurrent.Callable<T> mutation) throws Exception {
+        if (projectAgentService == null || principal == null) return mutation.call();
+        return projectAgentService.mutateResource(
+                AgentRequestSupport.agentId(agentId), principal, summary, mutation);
     }
 
     private Map<String, Object> skillSpec(Map<String, Object> raw) {

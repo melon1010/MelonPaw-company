@@ -45,7 +45,7 @@ public class AgentScopeConfig {
     @Bean
     public ProviderManager providerManager(ConfigManager configManager) {
         ProviderManager pm = new ProviderManager();
-        pm.init(configManager.getConfig());
+        pm.init(configManager);
         return pm;
     }
 

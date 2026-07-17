@@ -43,6 +43,7 @@ public class EnterpriseTaskService {
     private final String jdbcUrl;
     private final EnterpriseIdentityStore identityStore;
     private final EnterpriseAgentDefinitionService agentDefinitions;
+    private final EnterpriseQuotaService quotaService;
     private final Set<String> mutatingAgents = new HashSet<>();
 
     @Autowired
@@ -50,17 +51,19 @@ public class EnterpriseTaskService {
             @Value("${melon.enterprise.database-path:}") String configuredPath,
             @Value("${melon.home_dir:~/.melonAI}") String homeDir,
             EnterpriseIdentityStore identityStore,
-            EnterpriseAgentDefinitionService agentDefinitions) {
-        this(resolveDatabasePath(configuredPath, homeDir), identityStore, agentDefinitions);
+            EnterpriseAgentDefinitionService agentDefinitions,
+            EnterpriseQuotaService quotaService) {
+        this(resolveDatabasePath(configuredPath, homeDir), identityStore, agentDefinitions, quotaService);
     }
 
     public EnterpriseTaskService(Path databasePath) {
-        this(databasePath, null, null);
+        this(databasePath, null, null, null);
     }
 
     private EnterpriseTaskService(Path databasePath,
                                   EnterpriseIdentityStore identityStore,
-                                  EnterpriseAgentDefinitionService agentDefinitions) {
+                                  EnterpriseAgentDefinitionService agentDefinitions,
+                                  EnterpriseQuotaService quotaService) {
         try {
             Path parent = databasePath.toAbsolutePath().normalize().getParent();
             if (parent != null) Files.createDirectories(parent);
@@ -70,8 +73,10 @@ public class EnterpriseTaskService {
         this.jdbcUrl = "jdbc:sqlite:" + databasePath.toAbsolutePath().normalize();
         this.identityStore = identityStore;
         this.agentDefinitions = agentDefinitions;
+        this.quotaService = quotaService;
         initialize();
         recoverInterruptedRuns();
+        if (quotaService != null) quotaService.reconcile();
     }
 
     public synchronized TaskRun startPersonal(
@@ -169,6 +174,10 @@ public class EnterpriseTaskService {
                 String trigger = normalized(triggerType, "console").toLowerCase(Locale.ROOT);
                 String initiatorType = "AUTOMATION".equals(type) ? "SYSTEM"
                         : ("CHANNEL".equals(type) ? "CHANNEL" : "USER");
+                EnterpriseQuotaService.AdmissionLease lease = quotaService != null
+                        ? quotaService.reserve(connection, taskId, runId, type,
+                                owner, scope, scopeOwner, agent)
+                        : null;
 
                 try (PreparedStatement statement = connection.prepareStatement("""
                         INSERT INTO enterprise_tasks (
@@ -200,13 +209,16 @@ public class EnterpriseTaskService {
                 }
                 try (PreparedStatement statement = connection.prepareStatement("""
                         INSERT INTO enterprise_task_runs (
-                            run_id, task_id, attempt, state, phase, agent_version_id, started_at
-                        ) VALUES (?, ?, 1, 'RUNNING', 'AGENT', ?, ?)
+                            run_id, task_id, attempt, state, phase, agent_version_id, started_at,
+                            timeout_at, max_tokens
+                        ) VALUES (?, ?, 1, 'RUNNING', 'AGENT', ?, ?, ?, ?)
                         """)) {
                     statement.setString(1, runId);
                     statement.setString(2, taskId);
                     statement.setString(3, blankToNull(agentVersionId));
                     statement.setString(4, now);
+                    statement.setString(5, lease != null ? lease.expiresAt() : null);
+                    statement.setInt(6, lease != null ? lease.tokenLimit() : 0);
                     statement.executeUpdate();
                 }
                 Map<String, Object> created = new LinkedHashMap<>();
@@ -237,6 +249,178 @@ public class EnterpriseTaskService {
         } catch (SQLException e) {
             log.warn("Failed to append task event: task={}, run={}, type={}", taskId, runId, eventType, e);
         }
+    }
+
+    /** Registers one native AgentScope worker as a first-level enterprise child task. */
+    public synchronized Delegation startDelegation(String parentTaskId, String parentRunId, String role) {
+        String parent = required(parentTaskId, "parent task");
+        String parentRun = required(parentRunId, "parent run");
+        String delegatedRole = normalizeDelegationRole(role);
+        try (Connection connection = open()) {
+            connection.setAutoCommit(false);
+            try {
+                String owner;
+                String scopeType;
+                String scopeId;
+                String agent;
+                String version;
+                String session;
+                String rootTask;
+                int depth;
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        SELECT owner_user_id, scope_type, scope_id, agent_id, agent_version_id,
+                               session_id, COALESCE(root_task_id, task_id), COALESCE(depth, 0)
+                        FROM enterprise_tasks WHERE task_id = ? AND status IN ('RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED')
+                        """)) {
+                    statement.setString(1, parent);
+                    try (ResultSet result = statement.executeQuery()) {
+                        if (!result.next()) throw new IllegalStateException("Parent task is no longer active");
+                        owner = result.getString(1);
+                        scopeType = result.getString(2);
+                        scopeId = result.getString(3);
+                        agent = result.getString(4);
+                        version = result.getString(5);
+                        session = result.getString(6);
+                        rootTask = result.getString(7);
+                        depth = result.getInt(8);
+                    }
+                }
+                if (depth >= 1) throw new IllegalStateException("Nested Agent delegation is not allowed");
+                String delegationId = UUID.randomUUID().toString();
+                String childTask = UUID.randomUUID().toString();
+                String childRun = UUID.randomUUID().toString();
+                String now = Instant.now().toString();
+                EnterpriseQuotaService.AdmissionLease lease = quotaService != null
+                        ? quotaService.reserve(connection, childTask, childRun, "SUBAGENT",
+                                owner, scopeType, scopeId, agent)
+                        : null;
+                String childSession = session + ":subagent:" + delegationId;
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO enterprise_tasks (
+                            task_id, task_type, scope_type, scope_id, owner_user_id,
+                            initiator_type, initiator_id, agent_id, agent_version_id, title, status,
+                            session_id, trigger_type, trigger_ref, chat_id, idempotency_key,
+                            root_task_id, parent_task_id, delegation_id, depth, created_at, updated_at
+                        ) VALUES (?, 'SUBAGENT', ?, ?, ?, 'SUBAGENT', ?, ?, ?, ?, 'RUNNING', ?, 'subagent', ?, NULL, NULL, ?, ?, ?, 1, ?, ?)
+                        """)) {
+                    int i = 1;
+                    statement.setString(i++, childTask);
+                    statement.setString(i++, scopeType);
+                    statement.setString(i++, scopeId);
+                    statement.setString(i++, owner);
+                    statement.setString(i++, parent);
+                    statement.setString(i++, agent);
+                    statement.setString(i++, blankToNull(version));
+                    statement.setString(i++, "Subagent " + delegatedRole);
+                    statement.setString(i++, childSession);
+                    statement.setString(i++, parent);
+                    statement.setString(i++, rootTask);
+                    statement.setString(i++, parent);
+                    statement.setString(i++, delegationId);
+                    statement.setString(i++, now);
+                    statement.setString(i, now);
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO enterprise_task_runs (
+                            run_id, task_id, attempt, state, phase, agent_version_id, started_at,
+                            timeout_at, max_tokens
+                        ) VALUES (?, ?, 1, 'RUNNING', 'SUBAGENT', ?, ?, ?, ?)
+                        """)) {
+                    statement.setString(1, childRun);
+                    statement.setString(2, childTask);
+                    statement.setString(3, blankToNull(version));
+                    statement.setString(4, now);
+                    statement.setString(5, lease != null ? lease.expiresAt() : null);
+                    statement.setInt(6, lease != null ? lease.tokenLimit() : 0);
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO enterprise_delegations (
+                            delegation_id, root_task_id, parent_task_id, child_task_id,
+                            parent_run_id, child_run_id, role, capability_json, status, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', ?)
+                        """)) {
+                    statement.setString(1, delegationId);
+                    statement.setString(2, rootTask);
+                    statement.setString(3, parent);
+                    statement.setString(4, childTask);
+                    statement.setString(5, parentRun);
+                    statement.setString(6, childRun);
+                    statement.setString(7, delegatedRole);
+                    statement.setString(8, JsonUtils.toJson(delegationCapabilities(delegatedRole)));
+                    statement.setString(9, now);
+                    statement.executeUpdate();
+                }
+                appendEvent(connection, parent, parentRun, "subtask_spawned", "AGENT", agent,
+                        Map.of("delegation_id", delegationId, "child_task_id", childTask,
+                                "child_run_id", childRun, "role", delegatedRole));
+                appendEvent(connection, childTask, childRun, "task_created", "SUBAGENT", parent,
+                        Map.of("delegation_id", delegationId, "parent_task_id", parent,
+                                "role", delegatedRole));
+                connection.commit();
+                return new Delegation(delegationId, parent, parentRun, childTask, childRun, delegatedRole);
+            } catch (RuntimeException | SQLException e) {
+                rollback(connection);
+                throw e;
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("start Agent delegation", e);
+        }
+    }
+
+    public synchronized void completeDelegation(Delegation delegation, String state, String summary) {
+        if (delegation == null) return;
+        String normalizedState = TERMINAL.contains(state) ? state : "SUCCEEDED";
+        transition(delegation.childTaskId(), delegation.childRunId(), normalizedState,
+                "SUCCEEDED".equals(normalizedState) ? "run_succeeded" : "run_failed",
+                Map.of("delegation_id", delegation.delegationId()), summary,
+                "SUCCEEDED".equals(normalizedState) ? null : summary, true);
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement("""
+                UPDATE enterprise_delegations SET status = ?, completed_at = ?, error = ?
+                WHERE delegation_id = ? AND status = 'RUNNING'
+                """)) {
+            statement.setString(1, normalizedState);
+            statement.setString(2, Instant.now().toString());
+            statement.setString(3, "SUCCEEDED".equals(normalizedState) ? null : limited(summary, 1000));
+            statement.setString(4, delegation.delegationId());
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            log.warn("Failed to close Agent delegation {}", delegation.delegationId(), e);
+        }
+    }
+
+    private void cancelChildDelegations(String parentTaskId, String reason) {
+        List<Delegation> active = new ArrayList<>();
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement("""
+                SELECT delegation_id, parent_task_id, parent_run_id, child_task_id, child_run_id, role
+                FROM enterprise_delegations WHERE parent_task_id = ? AND status = 'RUNNING'
+                """)) {
+            statement.setString(1, parentTaskId);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) active.add(new Delegation(result.getString(1), result.getString(2),
+                        result.getString(3), result.getString(4), result.getString(5), result.getString(6)));
+            }
+        } catch (SQLException e) {
+            log.warn("Failed to list active Agent delegations for {}", parentTaskId, e);
+        }
+        for (Delegation delegation : active) completeDelegation(delegation, "CANCELLED", reason);
+    }
+
+    private String normalizeDelegationRole(String role) {
+        String value = role == null || role.isBlank() ? "researcher" : role.trim().toLowerCase(Locale.ROOT);
+        if (!Set.of("researcher", "executor", "reviewer").contains(value)) {
+            throw new IllegalArgumentException("Unsupported Agent delegation role");
+        }
+        return value;
+    }
+
+    private Map<String, Object> delegationCapabilities(String role) {
+        return switch (role) {
+            case "executor" -> Map.of("mode", "intersection", "tools", List.of("read_workspace", "write_workspace"));
+            case "reviewer" -> Map.of("mode", "intersection", "tools", List.of("read_workspace"));
+            default -> Map.of("mode", "intersection", "tools", List.of("read_workspace"));
+        };
     }
 
     /** Stores the normalized execution input needed to create a real retry later. */
@@ -274,10 +458,11 @@ public class EnterpriseTaskService {
                 String agent;
                 String session;
                 String scopeType;
+                String scopeId;
                 String storedVersionId;
                 String retryJson;
                 try (PreparedStatement statement = connection.prepareStatement("""
-                        SELECT status, owner_user_id, agent_id, session_id, scope_type,
+                        SELECT status, owner_user_id, agent_id, session_id, scope_type, scope_id,
                                agent_version_id, retry_intent_json
                         FROM enterprise_tasks WHERE task_id = ?
                         """)) {
@@ -289,6 +474,7 @@ public class EnterpriseTaskService {
                         agent = result.getString("agent_id");
                         session = result.getString("session_id");
                         scopeType = result.getString("scope_type");
+                        scopeId = result.getString("scope_id");
                         storedVersionId = result.getString("agent_version_id");
                         retryJson = result.getString("retry_intent_json");
                     }
@@ -323,16 +509,23 @@ public class EnterpriseTaskService {
                 String versionId = agentDefinitions != null
                         ? value(agentDefinitions.currentVersionId(agent), storedVersionId)
                         : storedVersionId;
+                EnterpriseQuotaService.AdmissionLease lease = quotaService != null
+                        ? quotaService.reserve(connection, id, runId, "AGENT",
+                                owner, scopeType, scopeId, agent)
+                        : null;
                 try (PreparedStatement statement = connection.prepareStatement("""
                         INSERT INTO enterprise_task_runs (
-                            run_id, task_id, attempt, state, phase, agent_version_id, started_at)
-                        VALUES (?, ?, ?, 'RUNNING', 'AGENT', ?, ?)
+                            run_id, task_id, attempt, state, phase, agent_version_id, started_at,
+                            timeout_at, max_tokens)
+                        VALUES (?, ?, ?, 'RUNNING', 'AGENT', ?, ?, ?, ?)
                         """)) {
                     statement.setString(1, runId);
                     statement.setString(2, id);
                     statement.setInt(3, attempt);
                     statement.setString(4, blankToNull(versionId));
                     statement.setString(5, now);
+                    statement.setString(6, lease != null ? lease.expiresAt() : null);
+                    statement.setInt(7, lease != null ? lease.tokenLimit() : 0);
                     statement.executeUpdate();
                 }
                 try (PreparedStatement statement = connection.prepareStatement("""
@@ -389,6 +582,13 @@ public class EnterpriseTaskService {
         } catch (SQLException e) {
             log.warn("Failed to record task usage: task={}, run={}", taskId, runId, e);
         }
+        if (quotaService != null && quotaService.tokenLimitExceeded(runId)) {
+            EnterpriseQuotaService.QuotaExceededException error =
+                    new EnterpriseQuotaService.QuotaExceededException(
+                            "TASK", "task_token_limit", "Task token budget exceeded");
+            fail(taskId, runId, error);
+            throw error;
+        }
     }
 
     public void waitingApproval(String taskId, String runId, Map<String, Object> approval) {
@@ -425,6 +625,29 @@ public class EnterpriseTaskService {
     public void cancel(String taskId, String runId, String reason) {
         transition(taskId, runId, "CANCELLED", "run_cancelled",
                 Map.of("reason", limited(value(reason, "cancelled"), 500)), null, null, true);
+    }
+
+    public void timeout(String taskId, String runId, String reason) {
+        String message = limited(value(reason, "Task runtime limit exceeded"), 1000);
+        transition(taskId, runId, "TIMED_OUT", "run_timed_out",
+                Map.of("reason", limited(message, 500)), null, message, true);
+    }
+
+    /** Zero means that the run has no enterprise runtime deadline. */
+    public long remainingRuntimeSeconds(String taskId, String runId) {
+        if (blank(taskId) || blank(runId)) return 0;
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(
+                "SELECT timeout_at FROM enterprise_task_runs WHERE task_id = ? AND run_id = ?")) {
+            statement.setString(1, taskId);
+            statement.setString(2, runId);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next() || blank(result.getString(1))) return 0;
+                return Math.max(1, java.time.Duration.between(
+                        Instant.now(), Instant.parse(result.getString(1))).getSeconds());
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("read task runtime budget", e);
+        }
     }
 
     public synchronized Map<String, Object> cancelActiveSession(
@@ -465,7 +688,7 @@ public class EnterpriseTaskService {
         List<Object> params = new ArrayList<>();
         StringBuilder sql = new StringBuilder("""
                 SELECT t.*, r.run_id, r.attempt, r.started_at, r.ended_at,
-                       r.input_tokens, r.output_tokens, r.safe_error
+                       r.input_tokens, r.output_tokens, r.safe_error, r.timeout_at, r.max_tokens
                 FROM enterprise_tasks t
                 JOIN enterprise_task_runs r ON r.run_id = (
                     SELECT r2.run_id FROM enterprise_task_runs r2
@@ -517,7 +740,7 @@ public class EnterpriseTaskService {
     public synchronized Map<String, Object> get(String taskId) {
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement("""
                 SELECT t.*, r.run_id, r.attempt, r.started_at, r.ended_at,
-                       r.input_tokens, r.output_tokens, r.safe_error
+                       r.input_tokens, r.output_tokens, r.safe_error, r.timeout_at, r.max_tokens
                 FROM enterprise_tasks t
                 JOIN enterprise_task_runs r ON r.run_id = (
                     SELECT r2.run_id FROM enterprise_task_runs r2
@@ -634,6 +857,10 @@ public class EnterpriseTaskService {
         } catch (SQLException e) {
             throw databaseFailure("transition task", e);
         }
+        if (terminal) {
+            if (quotaService != null) safeReleaseQuota(runId, state);
+            cancelChildDelegations(taskId, "Parent task finished with status " + state);
+        }
     }
 
     private void initialize() {
@@ -666,6 +893,10 @@ public class EnterpriseTaskService {
                     """);
             ensureColumn(connection, "enterprise_tasks", "retry_intent_json", "TEXT");
             ensureColumn(connection, "enterprise_tasks", "agent_version_id", "TEXT");
+            ensureColumn(connection, "enterprise_tasks", "root_task_id", "TEXT");
+            ensureColumn(connection, "enterprise_tasks", "parent_task_id", "TEXT");
+            ensureColumn(connection, "enterprise_tasks", "delegation_id", "TEXT");
+            ensureColumn(connection, "enterprise_tasks", "depth", "INTEGER NOT NULL DEFAULT 0");
             statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS enterprise_task_runs (
                         run_id TEXT PRIMARY KEY,
@@ -685,6 +916,8 @@ public class EnterpriseTaskService {
                     )
                     """);
             ensureColumn(connection, "enterprise_task_runs", "agent_version_id", "TEXT");
+            ensureColumn(connection, "enterprise_task_runs", "timeout_at", "TEXT");
+            ensureColumn(connection, "enterprise_task_runs", "max_tokens", "INTEGER NOT NULL DEFAULT 0");
             statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS enterprise_task_events (
                         event_id TEXT PRIMARY KEY,
@@ -703,6 +936,24 @@ public class EnterpriseTaskService {
                         FOREIGN KEY (run_id) REFERENCES enterprise_task_runs(run_id) ON DELETE CASCADE
                     )
                     """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS enterprise_delegations (
+                        delegation_id TEXT PRIMARY KEY,
+                        root_task_id TEXT NOT NULL,
+                        parent_task_id TEXT NOT NULL,
+                        child_task_id TEXT NOT NULL UNIQUE,
+                        parent_run_id TEXT NOT NULL,
+                        child_run_id TEXT NOT NULL UNIQUE,
+                        role TEXT NOT NULL,
+                        capability_json TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        completed_at TEXT,
+                        error TEXT,
+                        FOREIGN KEY (parent_task_id) REFERENCES enterprise_tasks(task_id) ON DELETE CASCADE,
+                        FOREIGN KEY (child_task_id) REFERENCES enterprise_tasks(task_id) ON DELETE CASCADE
+                    )
+                    """);
             statement.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_task_idempotency "
                     + "ON enterprise_tasks(owner_user_id, idempotency_key) WHERE idempotency_key IS NOT NULL");
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_task_owner_updated "
@@ -713,6 +964,10 @@ public class EnterpriseTaskService {
                     + "ON enterprise_tasks(owner_user_id, agent_id, session_id, status)");
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_task_event_task "
                     + "ON enterprise_task_events(task_id, occurred_at)");
+            statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_task_parent "
+                    + "ON enterprise_tasks(parent_task_id, created_at)");
+            statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_delegation_parent "
+                    + "ON enterprise_delegations(parent_task_id, status)");
         } catch (SQLException e) {
             throw databaseFailure("initialize task schema", e);
         }
@@ -879,7 +1134,8 @@ public class EnterpriseTaskService {
                 "initiator_type", "initiator_id", "agent_id", "agent_version_id", "title", "status", "session_id",
                 "trigger_type", "trigger_ref", "chat_id", "idempotency_key", "result_summary",
                 "error_code", "created_at", "updated_at", "run_id", "attempt", "started_at", "ended_at",
-                "input_tokens", "output_tokens", "safe_error")) {
+                "input_tokens", "output_tokens", "safe_error", "timeout_at", "max_tokens",
+                "root_task_id", "parent_task_id", "delegation_id", "depth")) {
             row.put(column, result.getObject(column));
         }
         row.put("retryable", RETRYABLE.contains(result.getString("status"))
@@ -890,7 +1146,8 @@ public class EnterpriseTaskService {
     private Map<String, Object> runRow(ResultSet result) throws SQLException {
         Map<String, Object> row = new LinkedHashMap<>();
         for (String column : List.of("run_id", "task_id", "attempt", "state", "phase", "started_at",
-                "agent_version_id", "ended_at", "error_code", "safe_error", "input_tokens", "output_tokens")) {
+                "agent_version_id", "ended_at", "error_code", "safe_error", "input_tokens", "output_tokens",
+                "timeout_at", "max_tokens")) {
             row.put(column, result.getObject(column));
         }
         return row;
@@ -971,11 +1228,23 @@ public class EnterpriseTaskService {
         }
     }
 
+    private void safeReleaseQuota(String runId, String outcome) {
+        try {
+            quotaService.release(runId, outcome);
+        } catch (RuntimeException e) {
+            log.error("Failed to release task quota lease: run={}, outcome={}", runId, outcome, e);
+        }
+    }
+
     private IllegalStateException databaseFailure(String operation, SQLException error) {
         return new IllegalStateException("Failed to " + operation + ": " + error.getMessage(), error);
     }
 
     public record TaskRun(String taskId, String runId, boolean created) {
+    }
+
+    public record Delegation(String delegationId, String parentTaskId, String parentRunId,
+                             String childTaskId, String childRunId, String role) {
     }
 
     public static final class AgentMutationInProgressException extends IllegalStateException {

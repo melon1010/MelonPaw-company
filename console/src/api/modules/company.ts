@@ -76,6 +76,7 @@ export interface ProjectAgentVersion {
   version_id: string;
   version: number;
   config_sha256: string;
+  resource_sha256?: string;
   change_summary: string;
   published_by: string;
   published_at: string;
@@ -91,6 +92,13 @@ export interface EnterpriseRole {
 
 export interface RoleCatalogue {
   roles: EnterpriseRole[];
+  permissions: string[];
+}
+
+export interface EnterpriseRoleInput {
+  code: string;
+  name: string;
+  description?: string;
   permissions: string[];
 }
 
@@ -211,4 +219,11 @@ export const companyApi = {
       method: "DELETE",
     }),
   listRoles: () => request<RoleCatalogue>("/roles"),
+  createRole: (body: EnterpriseRoleInput) =>
+    request<EnterpriseRole>("/roles", { method: "POST", body: JSON.stringify(body) }),
+  updateRole: (code: string, body: Omit<EnterpriseRoleInput, "code">) =>
+    request<EnterpriseRole>(`/roles/${encodeURIComponent(code)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 };

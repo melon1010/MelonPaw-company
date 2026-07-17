@@ -1,6 +1,8 @@
 package com.melon.core.provider;
 
 import com.melon.core.config.MelonConfig;
+import com.melon.core.config.ConfigManager;
+import com.melon.core.security.SecretValueCodec;
 import com.melon.core.util.JsonUtils;
 import io.agentscope.core.model.ExecutionConfig;
 import io.agentscope.core.model.GenerateOptions;
@@ -32,6 +34,7 @@ public class ProviderManager {
     private Map<String, Object> providerConfigCache = Map.of();
     private long providerConfigCacheMtime = Long.MIN_VALUE;
     private Map<String, String> activeModel = Map.of();
+    private SecretValueCodec secretValueCodec;
 
     /** Environment variable names for API keys by provider */
     private static final Map<String, String> API_KEY_ENV_VARS = Map.ofEntries(
@@ -73,6 +76,11 @@ public class ProviderManager {
 
         log.info("ProviderManager initialized with {} providers (AgentScope ModelProvider SPI)",
                 providers.size());
+    }
+
+    public void init(ConfigManager configManager) {
+        this.secretValueCodec = configManager.secretCodec();
+        init(configManager.getConfig());
     }
 
     /**
@@ -531,7 +539,15 @@ public class ProviderManager {
                     ? Files.getLastModifiedTime(providerConfigFile).toMillis()
                     : -1L;
             if (mtime != providerConfigCacheMtime) {
-                providerConfigCache = new LinkedHashMap<>(JsonUtils.loadAsMap(providerConfigFile));
+                Map<String, Object> stored = JsonUtils.loadAsMap(providerConfigFile);
+                Object runtime = secretValueCodec != null ? secretValueCodec.unprotect(stored) : stored;
+                providerConfigCache = runtime instanceof Map<?, ?> map
+                        ? stringMap(map) : new LinkedHashMap<>();
+                if (secretValueCodec != null && secretValueCodec.hasPlaintextSecrets(stored)
+                        && !providerConfigCache.isEmpty()) {
+                    JsonUtils.save(providerConfigFile, secretValueCodec.protect(providerConfigCache));
+                    mtime = Files.getLastModifiedTime(providerConfigFile).toMillis();
+                }
                 providerConfigCacheMtime = mtime;
             }
             return providerConfigCache;
@@ -539,6 +555,12 @@ public class ProviderManager {
             log.warn("Failed to load provider config from {}", providerConfigFile, e);
             return providerConfigCache;
         }
+    }
+
+    private Map<String, Object> stringMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
     }
 
     private Path resolveHomeDir(MelonConfig config) {

@@ -64,6 +64,7 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.GET,
                                 "/api/auth/status", "/api/agent/health").permitAll()
                         .pathMatchers(HttpMethod.GET, "/api/channels/onebot/websocket").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/api/channels/*/webhook").permitAll()
                         .pathMatchers("/", "/console", "/console/**", "/assets/**", "/favicon.ico",
                                 "/*.js", "/*.css", "/*.map", "/*.png", "/*.svg", "/*.woff", "/*.woff2").permitAll()
 
@@ -94,6 +95,8 @@ public class SecurityConfig {
                         // Usage and audit data are operational records, not general employee data.
                         .pathMatchers("/api/token-usage/**", "/api/config/security/audit-events")
                                 .hasAnyAuthority("audit:read", "agents:manage", "system:manage")
+                        .pathMatchers("/api/audit/**")
+                                .hasAnyAuthority("audit:read", "system:manage")
 
                         // Employees may inspect the published model catalog and select an
                         // effective model for their own runtime. Provider credentials and global
@@ -151,7 +154,8 @@ public class SecurityConfig {
                         // Secrets, executable extensions, backups and host-level controls are
                         // intentionally reserved for system administrators.
                         .pathMatchers("/api/envs/**", "/api/backups/**", "/api/plugins/**", "/api/models/**",
-                                "/api/providers/**", "/api/local-models/**", "/api/config/security/**",
+                                "/api/providers/**", "/api/local-models/**", "/api/quotas/**",
+                                "/api/config/security/**",
                                 "/api/debug/**", "/api/console/debug/**", "/api/agent/shutdown",
                                 "/api/agent/admin/**")
                                 .hasAuthority("system:manage")

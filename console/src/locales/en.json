@@ -39,11 +39,14 @@
       "workbench": "Workbench",
       "projects": "Project Spaces",
       "members": "Members & Roles",
+      "roles": "Roles & permissions",
       "tasks": "Tasks & Results",
       "work": "Work",
       "mySpace": "My space",
       "operations": "Operations",
-      "administration": "Administration"
+      "administration": "Administration",
+      "quotas": "Quotas",
+      "audit": "Management audit"
     },
     "auth": {
       "privateEdition": "Private deployment",
@@ -95,6 +98,8 @@
       "retryStarted": "A new run has started",
       "retryFailed": "Failed to retry task",
       "attempt": "Run {{count}}",
+      "child": "Child task",
+      "parent": "Parent",
       "statuses": {
         "RUNNING": "Running",
         "WAITING_APPROVAL": "Waiting for approval",
@@ -123,6 +128,50 @@
         "run_cancelled": "Run cancelled",
         "run_interrupted": "Run interrupted"
       }
+    },
+    "quotas": {
+      "title": "Quota policies",
+      "create": "Add override",
+      "edit": "Edit quota override",
+      "hint": "Limits are applied in order: enterprise, user, project and Agent. Zero means unlimited.",
+      "scope": "Scope",
+      "scopeType": "Scope type",
+      "scopeId": "Scope ID",
+      "scopeRequired": "A scope identifier is required",
+      "concurrent": "Concurrent",
+      "dailyTasks": "Daily tasks",
+      "dailyTokens": "Daily tokens",
+      "taskTokens": "Task tokens",
+      "unlimited": "Unlimited",
+      "runtime": "Runtime (s)",
+      "updatedAt": "Updated",
+      "loadFailed": "Failed to load quota policies",
+      "saveFailed": "Failed to save quota policy",
+      "saved": "Quota policy saved",
+      "deleteTitle": "Remove quota override?",
+      "deleted": "Quota override removed",
+      "fields": {
+        "max_concurrent": "Maximum concurrent tasks",
+        "daily_task_limit": "Daily task limit",
+        "daily_token_limit": "Daily token limit",
+        "task_token_limit": "Per-task token limit",
+        "max_runtime_seconds": "Maximum runtime (seconds)"
+      }
+    },
+    "audit": {
+      "title": "Management audit",
+      "verify": "Verify chain",
+      "search": "Search actor, action, target, or request ID",
+      "time": "Time",
+      "actor": "Actor",
+      "action": "Action",
+      "target": "Target",
+      "result": "Result",
+      "request": "Request ID",
+      "loadFailed": "Failed to load management audit",
+      "verifyFailed": "Failed to verify audit chain",
+      "chainValid": "Audit chain valid ({{count}} events)",
+      "chainBroken": "Audit chain is broken at {{id}}"
     },
     "projects": {
       "title": "Project Spaces",
@@ -189,6 +238,20 @@
       "rollbackConfirm": "Rollback to v{{version}}? The rollback will be published as a new version.",
       "rollbackComplete": "Rollback published as a new version",
       "rollbackFailed": "Failed to rollback Project Agent"
+    },
+    "roles": {
+      "title": "Roles & permissions",
+      "create": "Create role",
+      "edit": "Edit role",
+      "hint": "System roles are read-only. Custom roles can grant only permissions available to the editor.",
+      "code": "Code",
+      "name": "Name",
+      "description": "Description",
+      "permissions": "Permissions",
+      "system": "System",
+      "loadFailed": "Failed to load roles",
+      "saveFailed": "Failed to save role",
+      "saved": "Role saved"
     },
     "members": {
       "title": "Members & Roles",

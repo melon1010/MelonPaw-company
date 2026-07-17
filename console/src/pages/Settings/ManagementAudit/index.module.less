@@ -1,0 +1,8 @@
+.page { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.content { flex: 1; overflow: auto; padding: 0 16px 24px; }
+.search { width: 360px; max-width: 100%; margin: 4px 0 16px; }
+.secondary { color: var(--ant-color-text-secondary); font-size: 12px; margin-top: 2px; }
+.details { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.details section { min-width: 0; }
+.details pre { max-height: 240px; overflow: auto; margin: 8px 0 0; padding: 10px; background: var(--ant-color-fill-quaternary); border: 1px solid var(--ant-color-border-secondary); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+@media (max-width: 900px) { .details { grid-template-columns: 1fr; } }

@@ -234,6 +234,13 @@ export default function TaskResultPage() {
               <span>
                 {t("enterprise.tasks.attempt", { count: task?.attempt || 1 })}
               </span>
+              {task?.parent_task_id ? (
+                <span>
+                  {t("enterprise.tasks.parent", { defaultValue: "Parent" })}: {task.parent_task_id.slice(0, 8)}
+                </span>
+              ) : null}
+              {task?.max_tokens ? <span>Max tokens: {task.max_tokens.toLocaleString()}</span> : null}
+              {task?.timeout_at ? <span>Deadline: {formatTime(task.timeout_at)}</span> : null}
             </div>
             {messages.length > 0 ? (
               <ChatAnywhereOptionsContextProvider options={cardOptions}>

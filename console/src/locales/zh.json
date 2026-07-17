@@ -39,11 +39,14 @@
       "workbench": "\u5de5\u4f5c\u53f0",
       "projects": "\u9879\u76ee\u7a7a\u95f4",
       "members": "\u6210\u5458\u4e0e\u89d2\u8272",
+      "roles": "\u89d2\u8272\u4e0e\u6743\u9650",
       "tasks": "\u4efb\u52a1\u4e0e\u7ed3\u679c",
       "work": "\u5de5\u4f5c",
       "mySpace": "\u6211\u7684\u7a7a\u95f4",
       "operations": "\u8fd0\u8425\u4e2d\u5fc3",
-      "administration": "\u7ba1\u7406\u540e\u53f0"
+      "administration": "\u7ba1\u7406\u540e\u53f0",
+      "quotas": "\u914d\u989d\u7ba1\u7406",
+      "audit": "\u7ba1\u7406\u5ba1\u8ba1"
     },
     "auth": {
       "privateEdition": "\u4f01\u4e1a\u79c1\u6709\u5316\u90e8\u7f72",
@@ -95,6 +98,8 @@
       "retryStarted": "\u5df2\u521b\u5efa\u65b0\u7684\u6267\u884c\u8bb0\u5f55",
       "retryFailed": "\u4efb\u52a1\u91cd\u8bd5\u5931\u8d25",
       "attempt": "\u7b2c {{count}} \u6b21\u6267\u884c",
+      "child": "\u5b50\u4efb\u52a1",
+      "parent": "\u7236\u4efb\u52a1",
       "statuses": {
         "RUNNING": "\u8fd0\u884c\u4e2d",
         "WAITING_APPROVAL": "\u7b49\u5f85\u5ba1\u6279",
@@ -123,6 +128,50 @@
         "run_cancelled": "\u6267\u884c\u5df2\u53d6\u6d88",
         "run_interrupted": "\u6267\u884c\u5df2\u4e2d\u65ad"
       }
+    },
+    "quotas": {
+      "title": "\u914d\u989d\u7ba1\u7406",
+      "create": "\u6dfb\u52a0\u8986\u76d6\u7b56\u7565",
+      "edit": "\u7f16\u8f91\u914d\u989d\u7b56\u7565",
+      "hint": "\u9650\u5236\u6309\u4f01\u4e1a\u3001\u7528\u6237\u3001\u9879\u76ee\u3001Agent \u4f9d\u6b21\u53d6\u4e25\u683c\u503c\uff0c0 \u8868\u793a\u4e0d\u9650\u5236\u3002",
+      "scope": "\u4f5c\u7528\u8303\u56f4",
+      "scopeType": "\u8303\u56f4\u7c7b\u578b",
+      "scopeId": "\u8303\u56f4 ID",
+      "scopeRequired": "\u8bf7\u8f93\u5165\u8303\u56f4 ID",
+      "concurrent": "\u5e76\u53d1\u6570",
+      "dailyTasks": "\u6bcf\u65e5\u4efb\u52a1",
+      "dailyTokens": "\u6bcf\u65e5 Token",
+      "taskTokens": "\u5355\u4efb\u52a1 Token",
+      "unlimited": "\u4e0d\u9650\u5236",
+      "runtime": "\u8fd0\u884c\u65f6\u9650\uff08\u79d2\uff09",
+      "updatedAt": "\u66f4\u65b0\u65f6\u95f4",
+      "loadFailed": "\u914d\u989d\u7b56\u7565\u52a0\u8f7d\u5931\u8d25",
+      "saveFailed": "\u914d\u989d\u7b56\u7565\u4fdd\u5b58\u5931\u8d25",
+      "saved": "\u914d\u989d\u7b56\u7565\u5df2\u4fdd\u5b58",
+      "deleteTitle": "\u5220\u9664\u8be5\u914d\u989d\u8986\u76d6\u7b56\u7565\uff1f",
+      "deleted": "\u914d\u989d\u8986\u76d6\u7b56\u7565\u5df2\u5220\u9664",
+      "fields": {
+        "max_concurrent": "\u6700\u5927\u5e76\u53d1\u4efb\u52a1\u6570",
+        "daily_task_limit": "\u6bcf\u65e5\u4efb\u52a1\u4e0a\u9650",
+        "daily_token_limit": "\u6bcf\u65e5 Token \u4e0a\u9650",
+        "task_token_limit": "\u5355\u4efb\u52a1 Token \u4e0a\u9650",
+        "max_runtime_seconds": "\u6700\u957f\u8fd0\u884c\u65f6\u95f4\uff08\u79d2\uff09"
+      }
+    },
+    "audit": {
+      "title": "\u7ba1\u7406\u5ba1\u8ba1",
+      "verify": "\u6821\u9a8c\u94fe",
+      "search": "\u641c\u7d22\u64cd\u4f5c\u4eba\u3001\u64cd\u4f5c\u3001\u76ee\u6807\u6216\u8bf7\u6c42 ID",
+      "time": "\u65f6\u95f4",
+      "actor": "\u64cd\u4f5c\u4eba",
+      "action": "\u64cd\u4f5c",
+      "target": "\u76ee\u6807",
+      "result": "\u7ed3\u679c",
+      "request": "\u8bf7\u6c42 ID",
+      "loadFailed": "\u7ba1\u7406\u5ba1\u8ba1\u52a0\u8f7d\u5931\u8d25",
+      "verifyFailed": "\u5ba1\u8ba1\u94fe\u6821\u9a8c\u5931\u8d25",
+      "chainValid": "\u5ba1\u8ba1\u94fe\u6709\u6548\uff08{{count}} \u6761\uff09",
+      "chainBroken": "\u5ba1\u8ba1\u94fe\u5728 {{id}} \u5904\u65ad\u88c2"
     },
     "projects": {
       "title": "\u9879\u76ee\u7a7a\u95f4",
@@ -189,6 +238,20 @@
       "rollbackConfirm": "\u786e\u5b9a\u56de\u6eda\u5230 v{{version}}\uff1f\u56de\u6eda\u4f1a\u53d1\u5e03\u4e00\u4e2a\u65b0\u7248\u672c\u3002",
       "rollbackComplete": "\u5df2\u56de\u6eda\u5e76\u53d1\u5e03\u65b0\u7248\u672c",
       "rollbackFailed": "\u9879\u76ee Agent \u56de\u6eda\u5931\u8d25"
+    },
+    "roles": {
+      "title": "\u89d2\u8272\u4e0e\u6743\u9650",
+      "create": "\u65b0\u5efa\u89d2\u8272",
+      "edit": "\u7f16\u8f91\u89d2\u8272",
+      "hint": "\u7cfb\u7edf\u89d2\u8272\u53ea\u8bfb\uff0c\u81ea\u5b9a\u4e49\u89d2\u8272\u53ea\u80fd\u6388\u4e88\u5f53\u524d\u7ba1\u7406\u5458\u53ef\u7528\u7684\u6743\u9650\u3002",
+      "code": "\u7f16\u7801",
+      "name": "\u540d\u79f0",
+      "description": "\u63cf\u8ff0",
+      "permissions": "\u6743\u9650",
+      "system": "\u7cfb\u7edf\u89d2\u8272",
+      "loadFailed": "\u89d2\u8272\u5217\u8868\u52a0\u8f7d\u5931\u8d25",
+      "saveFailed": "\u89d2\u8272\u4fdd\u5b58\u5931\u8d25",
+      "saved": "\u89d2\u8272\u5df2\u4fdd\u5b58"
     },
     "members": {
       "title": "\u6210\u5458\u4e0e\u89d2\u8272",

@@ -615,7 +615,12 @@ public class McpClientManager {
     }
 
     private void loadPersisted() {
-        Map<String, Object> payload = JsonUtils.loadAsMap(configFile());
+        Map<String, Object> stored = JsonUtils.loadAsMap(configFile());
+        Object runtime = configManager.unprotectSecrets(stored);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (runtime instanceof Map<?, ?> map) {
+            map.forEach((key, value) -> payload.put(String.valueOf(key), value));
+        }
         Object rawServers = payload.get("servers");
         if (rawServers instanceof List<?> list) {
             for (Object item : list) {
@@ -631,10 +636,13 @@ public class McpClientManager {
                 }
             }
         }
+        if (configManager.hasPlaintextSecrets(stored) && !payload.isEmpty()) persist();
     }
 
     private void persist() {
-        JsonUtils.save(configFile(), Map.of("servers", servers.values().stream().map(McpServerConfig::toMap).toList()));
+        Map<String, Object> value = Map.of(
+                "servers", servers.values().stream().map(McpServerConfig::toMap).toList());
+        JsonUtils.save(configFile(), configManager.protectSecrets(value));
     }
 
     private Path configFile() {

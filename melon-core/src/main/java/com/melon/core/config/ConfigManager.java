@@ -3,6 +3,7 @@ package com.melon.core.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.melon.core.security.SecretValueCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +30,7 @@ public class ConfigManager {
     private final ObjectMapper jsonMapper;
     private Path configPath;
     private MelonConfig config;
+    private SecretValueCodec secretValueCodec;
     private boolean lastLoadSuccessful = true;
     private String defaultHomeDir = "~/.melon";
 
@@ -43,6 +45,7 @@ public class ConfigManager {
 
     public void setConfigPath(Path configPath) {
         this.configPath = configPath;
+        this.secretValueCodec = null;
     }
 
     public void setHomeDir(String homeDir) {
@@ -56,10 +59,13 @@ public class ConfigManager {
     public synchronized MelonConfig load() {
         if (Files.exists(configPath)) {
             try {
-                config = yamlMapper.readValue(configPath.toFile(), MelonConfig.class);
+                Object stored = yamlMapper.readValue(configPath.toFile(), Object.class);
+                boolean migrateSecrets = secretCodec().hasPlaintextSecrets(stored);
+                config = yamlMapper.convertValue(secretCodec().unprotect(stored), MelonConfig.class);
                 config = mergeDefaults(config);
                 lastLoadSuccessful = true;
                 log.info("Config loaded from {}", configPath);
+                if (migrateSecrets) save();
             } catch (IOException e) {
                 lastLoadSuccessful = false;
                 log.error("Failed to load config; keeping the last known-good configuration", e);
@@ -80,7 +86,7 @@ public class ConfigManager {
         try {
             Files.createDirectories(configPath.getParent());
             Path tmp = configPath.resolveSibling(CONFIG_FILE + ".tmp");
-            yamlMapper.writeValue(tmp.toFile(), globalConfigPayload());
+            yamlMapper.writeValue(tmp.toFile(), protectSecrets(globalConfigPayload()));
             try {
                 Files.move(tmp, configPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
@@ -107,6 +113,29 @@ public class ConfigManager {
 
     public Path getConfigPath() {
         return configPath;
+    }
+
+    public Object protectSecrets(Object value) {
+        return secretCodec().protect(value);
+    }
+
+    public Object unprotectSecrets(Object value) {
+        return secretCodec().unprotect(value);
+    }
+
+    public boolean hasPlaintextSecrets(Object value) {
+        return secretCodec().hasPlaintextSecrets(value);
+    }
+
+    public SecretValueCodec secretCodec() {
+        if (secretValueCodec == null) {
+            Path normalized = configPath != null ? configPath.toAbsolutePath().normalize() : null;
+            Path home = normalized != null && normalized.getParent() != null
+                    ? normalized.getParent()
+                    : Path.of(System.getProperty("user.home"), CONFIG_DIR);
+            secretValueCodec = SecretValueCodec.forHome(home);
+        }
+        return secretValueCodec;
     }
 
     /**

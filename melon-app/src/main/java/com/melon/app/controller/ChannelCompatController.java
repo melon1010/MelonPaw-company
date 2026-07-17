@@ -6,8 +6,13 @@ import com.melon.channels.ChannelConfigService;
 import com.melon.channels.ChannelHealth;
 import com.melon.channels.ChannelManager;
 import com.melon.channels.ChannelTypes;
+import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.auth.ProjectAgentService;
+import com.melon.app.service.ChannelWebhookSecurityService;
+import com.melon.core.util.JsonUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -25,15 +30,37 @@ public class ChannelCompatController {
     private final ChannelManager channelManager;
     private final ChannelAccessControlStore accessControlStore;
     private final ChannelAdapterRegistry registry;
+    private final ProjectAgentService projectAgentService;
+    private final ChannelWebhookSecurityService webhookSecurityService;
 
     public ChannelCompatController(ChannelConfigService configService,
                                    ChannelManager channelManager,
                                    ChannelAccessControlStore accessControlStore,
                                    ChannelAdapterRegistry registry) {
+        this(configService, channelManager, accessControlStore, registry, null);
+    }
+
+    public ChannelCompatController(ChannelConfigService configService,
+                                   ChannelManager channelManager,
+                                   ChannelAccessControlStore accessControlStore,
+                                   ChannelAdapterRegistry registry,
+                                   ProjectAgentService projectAgentService) {
+        this(configService, channelManager, accessControlStore, registry, projectAgentService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ChannelCompatController(ChannelConfigService configService,
+                                   ChannelManager channelManager,
+                                   ChannelAccessControlStore accessControlStore,
+                                   ChannelAdapterRegistry registry,
+                                   ProjectAgentService projectAgentService,
+                                   ChannelWebhookSecurityService webhookSecurityService) {
         this.configService = configService;
         this.channelManager = channelManager;
         this.accessControlStore = accessControlStore;
         this.registry = registry;
+        this.projectAgentService = projectAgentService;
+        this.webhookSecurityService = webhookSecurityService;
     }
 
     @GetMapping("/config/channels/types")
@@ -57,9 +84,16 @@ public class ChannelCompatController {
 
     @PutMapping("/config/channels")
     public Mono<ResponseEntity<?>> updateChannels(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                                  @RequestBody(required = false) Map<String, Object> body) {
+                                                  @RequestBody(required = false) Map<String, Object> body,
+                                                  @AuthenticationPrincipal EnterprisePrincipal principal) {
         String currentAgent = agent(agentId);
-        Map<String, Map<String, Object>> updated = configService.updateAll(currentAgent, body);
+        Map<String, Map<String, Object>> updated;
+        try {
+            updated = versionedMutation(currentAgent, principal, "Project channel configuration updated",
+                    () -> configService.updateAll(currentAgent, body));
+        } catch (Exception e) {
+            return Mono.error(e);
+        }
         var futures = updated.entrySet().stream()
                 .filter(entry -> entry.getValue() != null)
                 .map(entry -> Boolean.TRUE.equals(entry.getValue().get("enabled"))
@@ -79,9 +113,16 @@ public class ChannelCompatController {
     @PutMapping("/config/channels/{channel}")
     public Mono<ResponseEntity<?>> updateChannel(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
                                                  @PathVariable String channel,
-                                                 @RequestBody(required = false) Map<String, Object> body) {
+                                                 @RequestBody(required = false) Map<String, Object> body,
+                                                 @AuthenticationPrincipal EnterprisePrincipal principal) {
         String currentAgent = agent(agentId);
-        Map<String, Object> updated = configService.update(currentAgent, channel, body != null ? body : Map.of());
+        Map<String, Object> updated;
+        try {
+            updated = versionedMutation(currentAgent, principal, "Project channel configuration updated",
+                    () -> configService.update(currentAgent, channel, body != null ? body : Map.of()));
+        } catch (Exception e) {
+            return Mono.error(e);
+        }
         if (Boolean.TRUE.equals(updated.get("enabled"))) {
             return Mono.fromFuture(channelManager.start(currentAgent, channel))
                     .thenReturn(ResponseEntity.ok(updated));
@@ -168,14 +209,28 @@ public class ChannelCompatController {
     public Mono<ResponseEntity<?>> webhook(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
                                            @PathVariable String channel,
                                            @RequestHeader Map<String, String> headers,
-                                           @RequestBody(required = false) Map<String, Object> body) {
-        Map<String, Object> payload = body != null ? body : Map.of();
+                                           @RequestParam(required = false) Map<String, String> params,
+                                           @RequestBody(required = false) String rawBody) {
+        String rawPayload = rawBody == null ? "" : rawBody;
+        Map<String, Object> payload = rawPayload.isBlank() ? Map.of()
+                : java.util.Optional.ofNullable(JsonUtils.fromJson(rawPayload, Map.class)).orElse(Map.of());
         if (!ChannelTypes.supported(channel)) {
             return Mono.error(new IllegalArgumentException("Unsupported channel in domestic deployment: " + channel));
         }
+        String currentAgent = agent(agentId);
+        Map<String, Object> channelConfig = runtimeConfig(currentAgent, channel, params);
         ResponseEntity<?> challenge = challengeResponse(channel, payload);
-        if (challenge != null) return Mono.just(challenge);
-        return Mono.fromFuture(channelManager.handleWebhook(agent(agentId), channel,
+        if (challenge != null) {
+            if (webhookSecurityService == null || webhookSecurityService.validChallenge(channel, channelConfig, payload)) {
+                return Mono.just(challenge);
+            }
+            return Mono.error(new SecurityException("Invalid webhook challenge token"));
+        }
+        if (webhookSecurityService == null) return Mono.error(new SecurityException("Webhook signature verifier is unavailable"));
+        Map<String, String> signedHeaders = new LinkedHashMap<>(headers == null ? Map.of() : headers);
+        if (params != null) params.forEach(signedHeaders::putIfAbsent);
+        webhookSecurityService.verify(channel, currentAgent, channelConfig, signedHeaders, rawPayload, payload);
+        return Mono.fromFuture(channelManager.handleWebhook(currentAgent, channel,
                         payload, headers))
                 .<ResponseEntity<?>>map(out -> {
                     Map<String, Object> result = new LinkedHashMap<>();
@@ -327,6 +382,12 @@ public class ChannelCompatController {
 
     private String agent(String agentId) {
         return AgentRequestSupport.agentId(agentId);
+    }
+
+    private <T> T versionedMutation(String agentId, EnterprisePrincipal principal,
+                                    String summary, java.util.concurrent.Callable<T> mutation) throws Exception {
+        if (projectAgentService == null || principal == null) return mutation.call();
+        return projectAgentService.mutateResource(agentId, principal, summary, mutation);
     }
 
     private Map<String, Object> runtimeConfig(String agentId, String channel, Map<String, String> params) {

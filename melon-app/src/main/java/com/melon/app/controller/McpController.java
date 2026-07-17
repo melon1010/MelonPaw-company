@@ -2,6 +2,7 @@ package com.melon.app.controller;
 
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.auth.ProjectAgentService;
 import com.melon.app.mcp.McpAccessPolicyService;
 import com.melon.app.mcp.McpClientManager;
 import com.melon.app.mcp.McpClientRegistry;
@@ -46,15 +47,18 @@ public class McpController {
     private final MultiAgentManager multiAgentManager;
     private final McpAccessPolicyService accessPolicyService;
     private final EnterpriseAgentAccessService agentAccessService;
+    private final ProjectAgentService projectAgentService;
 
     public McpController(McpClientRegistry mcpClientRegistry, ConfigManager configManager,
                          MultiAgentManager multiAgentManager, McpAccessPolicyService accessPolicyService,
-                         EnterpriseAgentAccessService agentAccessService) {
+                         EnterpriseAgentAccessService agentAccessService,
+                         ProjectAgentService projectAgentService) {
         this.mcpClientRegistry = mcpClientRegistry;
         this.configManager = configManager;
         this.multiAgentManager = multiAgentManager;
         this.accessPolicyService = accessPolicyService;
         this.agentAccessService = agentAccessService;
+        this.projectAgentService = projectAgentService;
     }
 
     @GetMapping
@@ -92,13 +96,13 @@ public class McpController {
             @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
-        return blocking(() -> {
+        return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP client created", () -> {
             McpClientManager manager = manager(resolvedAgentId);
             var config = McpClientManager.McpServerConfig.fromMap(normalizeClientBody(body));
             manager.register(config);
             reloadAgent(resolvedAgentId);
             return ResponseEntity.status(201).body(clientInfo(resolvedAgentId, manager, config));
-        });
+        }));
     }
 
     @PutMapping("/{clientKey}")
@@ -107,7 +111,7 @@ public class McpController {
             @PathVariable String clientKey, @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
-        return blocking(() -> {
+        return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP client updated", () -> {
             McpClientManager manager = manager(resolvedAgentId);
             var existing = manager.getServer(clientKey);
             if (existing == null) {
@@ -120,7 +124,7 @@ public class McpController {
             manager.register(config);
             reloadAgent(resolvedAgentId);
             return ResponseEntity.ok(clientInfo(resolvedAgentId, manager, config));
-        });
+        }));
     }
 
     @PatchMapping("/toggle/{clientKey}")
@@ -129,7 +133,7 @@ public class McpController {
             @PathVariable String clientKey,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
-        return blocking(() -> {
+        return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP client toggled", () -> {
             McpClientManager manager = manager(resolvedAgentId);
             var config = manager.getServer(clientKey);
             if (config == null) {
@@ -138,7 +142,7 @@ public class McpController {
             manager.setEnabled(clientKey, !config.isEnabled());
             reloadAgent(resolvedAgentId);
             return ResponseEntity.ok(clientInfo(resolvedAgentId, manager, config));
-        });
+        }));
     }
 
     @DeleteMapping("/{clientKey}")
@@ -147,14 +151,14 @@ public class McpController {
             @PathVariable String clientKey,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
-        return blocking(() -> {
+        return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP client deleted", () -> {
             boolean removed = manager(resolvedAgentId).unregister(clientKey);
             if (!removed) {
                 return ResponseEntity.notFound().build();
             }
             reloadAgent(resolvedAgentId);
             return ResponseEntity.ok(Map.of("message", "deleted"));
-        });
+        }));
     }
 
     @GetMapping("/tools/{clientKey}")
@@ -172,14 +176,14 @@ public class McpController {
             @PathVariable String clientKey, @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
-        return blocking(() -> {
+        return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP tool policy updated", () -> {
             McpClientManager manager = manager(resolvedAgentId);
             var config = manager.getServer(clientKey);
             if (config == null) return ResponseEntity.notFound().build();
             manager.setToolWhitelist(clientKey, toStringListOrNull(body != null ? body.get("tools") : null));
             reloadAgent(resolvedAgentId);
             return ResponseEntity.ok(toolInfos(manager, clientKey));
-        });
+        }));
     }
 
     @GetMapping("/access-principals")
@@ -205,8 +209,9 @@ public class McpController {
             @PathVariable String clientKey, @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
-        return blocking(() -> ResponseEntity.ok(
-                accessPolicyService.save(scope(resolvedAgentId), clientKey, body)));
+        return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP access policy updated",
+                () -> ResponseEntity.ok(
+                        accessPolicyService.save(scope(resolvedAgentId), clientKey, body))));
     }
 
     @PostMapping("/oauth/start/{clientKey}")
@@ -216,7 +221,7 @@ public class McpController {
             @RequestBody(required = false) Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
-        return blocking(() -> {
+        return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP OAuth configured", () -> {
             try {
                 Map<String, Object> status = new LinkedHashMap<>(
                         manager(resolvedAgentId).configureOAuth(clientKey, body));
@@ -227,7 +232,7 @@ public class McpController {
             } catch (Exception e) {
                 return ResponseEntity.badRequest().body(Map.of("detail", e.getMessage()));
             }
-        });
+        }));
     }
 
     @GetMapping("/oauth/status/{clientKey}")
@@ -246,12 +251,12 @@ public class McpController {
             @PathVariable String clientKey,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
-        return blocking(() -> {
+        return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP OAuth removed", () -> {
             if (!manager(resolvedAgentId).clearOAuth(clientKey)) {
                 return ResponseEntity.notFound().build();
             }
             return ResponseEntity.ok(Map.of("message", "oauth disabled"));
-        });
+        }));
     }
 
     /**
@@ -313,7 +318,7 @@ public class McpController {
             @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
-        return blocking(() -> {
+        return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP server registered", () -> {
             try {
                 McpClientManager manager = manager(resolvedAgentId);
                 var config = McpClientManager.McpServerConfig.fromMap(body);
@@ -326,7 +331,7 @@ public class McpController {
                 log.error("Failed to register MCP server", e);
                 return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
             }
-        });
+        }));
     }
 
     /**
@@ -338,14 +343,14 @@ public class McpController {
             @PathVariable String id,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
-        return blocking(() -> {
+        return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP server removed", () -> {
             boolean removed = manager(resolvedAgentId).unregister(id);
             if (!removed) {
                 return ResponseEntity.notFound().build();
             }
             reloadAgent(resolvedAgentId);
             return ResponseEntity.ok(Map.of("status", "removed", "id", id));
-        });
+        }));
     }
 
     /**
@@ -511,6 +516,11 @@ public class McpController {
 
     private McpClientManager manager(String agentId) {
         return mcpClientRegistry.forAgent(scope(agentId));
+    }
+
+    private <T> T versionedMutation(String agentId, EnterprisePrincipal principal,
+                                    String summary, Callable<T> mutation) throws Exception {
+        return projectAgentService.mutateResource(scope(agentId), principal, summary, mutation);
     }
 
     private <T> Mono<T> blocking(Callable<T> task) {

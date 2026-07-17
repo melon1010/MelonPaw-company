@@ -37,11 +37,14 @@ const AgentStatsPage = lazyWithRetry(() => import("../../pages/Settings/AgentSta
 const VoiceTranscriptionPage = lazyWithRetry(() => import("../../pages/Settings/VoiceTranscription"));
 const DebugPage = lazyWithRetry(() => import("../../pages/Settings/Debug"));
 const BackupsPage = lazyWithRetry(() => import("../../pages/Settings/Backups"));
+const QuotasPage = lazyWithRetry(() => import("../../pages/Settings/Quotas"));
+const ManagementAuditPage = lazyWithRetry(() => import("../../pages/Settings/ManagementAudit"));
 const PluginManagerPage = lazyWithRetry(() => import("../../pages/Settings/PluginManager"));
 const CompanyWorkbenchPage = lazyWithRetry(() => import("../../pages/Company/Workbench"));
 const ProjectSpacesPage = lazyWithRetry(() => import("../../pages/Company/Projects"));
 const ProjectWorkspacePage = lazyWithRetry(() => import("../../pages/Company/ProjectWorkspace"));
 const EnterpriseMembersPage = lazyWithRetry(() => import("../../pages/Company/Members"));
+const EnterpriseRolesPage = lazyWithRetry(() => import("../../pages/Company/Roles"));
 const TaskCenterPage = lazyWithRetry(() => import("../../pages/Company/TaskCenter"));
 const TaskResultPage = lazyWithRetry(() => import("../../pages/Company/TaskResult"));
 
@@ -72,6 +75,7 @@ export const BUILTIN_ROUTES: Route[] = [
     path: "/members",
     component: EnterpriseMembersPage,
   },
+  { id: "company.roles", path: "/roles", component: EnterpriseRolesPage },
   { id: "company.tasks", path: "/tasks", component: TaskCenterPage },
   {
     id: "company.task-result",
@@ -110,6 +114,8 @@ export const BUILTIN_ROUTES: Route[] = [
   },
   { id: "core.debug", path: "/debug", component: DebugPage },
   { id: "core.backups", path: "/backups", component: BackupsPage },
+  { id: "core.quotas", path: "/quotas", component: QuotasPage },
+  { id: "core.management-audit", path: "/management-audit", component: ManagementAuditPage },
   {
     id: "core.plugin-manager",
     path: "/plugin-manager",

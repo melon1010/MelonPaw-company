@@ -129,13 +129,16 @@ public class EnterpriseTaskController {
             String agentId = String.valueOf(task.get("agent_id"));
             String owner = String.valueOf(task.get("owner_user_id"));
             String sessionId = String.valueOf(task.get("session_id"));
-            boolean executionCancelled = agentRunner.cancel(agentId, owner, sessionId);
-            boolean approvalCancelled = approvalService.cancelPendingApproval(agentId, sessionId, owner);
+            Map<String, Object> parent = task.get("parent_task_id") == null ? Map.of()
+                    : tasks.get(String.valueOf(task.get("parent_task_id")));
+            String executionSession = parent.isEmpty() ? sessionId : String.valueOf(parent.get("session_id"));
+            boolean executionCancelled = agentRunner.cancel(agentId, owner, executionSession);
+            boolean approvalCancelled = approvalService.cancelPendingApproval(agentId, executionSession, owner);
             boolean interrupted = false;
             try {
                 HarnessAgent agent = multiAgentManager.getAgent(agentId);
                 if (agent != null) {
-                    agent.getDelegate().interrupt(owner, sessionId);
+                    agent.getDelegate().interrupt(owner, executionSession);
                     interrupted = true;
                 }
             } catch (RuntimeException ignored) {

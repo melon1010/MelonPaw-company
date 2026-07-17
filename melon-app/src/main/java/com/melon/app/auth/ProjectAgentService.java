@@ -32,6 +32,7 @@ public class ProjectAgentService {
     private final MultiAgentManager multiAgentManager;
     private final SkillService skillService;
     private final EnterpriseTaskService taskService;
+    private final ProjectResourceVersionService resourceVersions;
 
     public ProjectAgentService(EnterpriseIdentityStore identityStore,
                                EnterpriseAgentDefinitionService definitions,
@@ -40,7 +41,8 @@ public class ProjectAgentService {
                                WorkspaceManager workspaceManager,
                                MultiAgentManager multiAgentManager,
                                SkillService skillService,
-                               EnterpriseTaskService taskService) {
+                               EnterpriseTaskService taskService,
+                               ProjectResourceVersionService resourceVersions) {
         this.identityStore = identityStore;
         this.definitions = definitions;
         this.projectWorkspaceService = projectWorkspaceService;
@@ -49,6 +51,7 @@ public class ProjectAgentService {
         this.multiAgentManager = multiAgentManager;
         this.skillService = skillService;
         this.taskService = taskService;
+        this.resourceVersions = resourceVersions;
     }
 
     public synchronized Map<String, Object> get(String projectId) {
@@ -98,10 +101,12 @@ public class ProjectAgentService {
                 configManager.save();
                 workspaceManager.writeAgentJson(workspace, agentId, config);
                 identityStore.bindProjectAgent(agentId, projectId);
+                Map<String, Object> resources = resourceVersions.capture(projectId, agentId);
                 EnterpriseAgentDefinitionService.AgentDefinition definition = definitions.publish(
-                        agentId, "PROJECT", projectId, config, actor.id(), "Initial project Agent release");
+                        agentId, "PROJECT", projectId, config, resources,
+                        actor.id(), "Initial project Agent release");
                 return payload(agentId, projectId, config, definition);
-            } catch (RuntimeException e) {
+            } catch (IOException | RuntimeException e) {
                 rollbackCreate(agentId, agents, e);
                 throw e;
             }
@@ -113,6 +118,7 @@ public class ProjectAgentService {
         EnterpriseIdentityStore.AgentBindingRecord binding = requireBinding(projectId);
         String agentId = binding.agentId();
         AgentConfig before = copy(requireConfig(agentId));
+        Map<String, Object> beforeResources = resourceVersions.capture(projectId, agentId);
         AgentConfig updated = copy(before);
         List<String> requestedSkills = null;
         if (body != null) {
@@ -128,17 +134,19 @@ public class ProjectAgentService {
         }
         synchronized (taskService) {
             requireIdle(agentId);
-            if (requestedSkills != null) {
-                updated.setSkills(materializeSkills(agentId, requestedSkills, null, null));
-            }
             try {
+                if (requestedSkills != null) {
+                    updated.setSkills(materializeSkills(agentId, requestedSkills, null, null));
+                }
                 replaceConfig(agentId, updated);
+                Map<String, Object> resources = resourceVersions.capture(projectId, agentId);
                 EnterpriseAgentDefinitionService.AgentDefinition definition = definitions.publish(
-                        agentId, "PROJECT", projectId, updated, actor.id(),
+                        agentId, "PROJECT", projectId, updated, resources, actor.id(),
                         trimmedStringValue(body != null ? body.get("change_summary") : null,
                                 "Project Agent configuration updated"));
                 return payload(agentId, projectId, updated, definition);
-            } catch (RuntimeException e) {
+            } catch (IOException | RuntimeException e) {
+                restoreResources(projectId, agentId, beforeResources, e);
                 restoreConfig(agentId, before, e);
                 throw e;
             }
@@ -146,11 +154,13 @@ public class ProjectAgentService {
     }
 
     public synchronized Map<String, Object> rollback(String projectId, String versionId,
-                                                      EnterprisePrincipal actor) {
+                                                      EnterprisePrincipal actor) throws IOException {
         EnterpriseIdentityStore.AgentBindingRecord binding = requireBinding(projectId);
         String agentId = binding.agentId();
         AgentConfig current = requireConfig(agentId);
         AgentConfig before = copy(current);
+        Map<String, Object> beforeResources = resourceVersions.capture(projectId, agentId);
+        Map<String, Object> targetResources = definitions.versionResources(agentId, versionId);
         AgentConfig restored = definitions.versionConfig(agentId, versionId);
         restored.setWorkspaceDir(current.getWorkspaceDir());
         restored.setChannels(current.getChannels());
@@ -158,12 +168,16 @@ public class ProjectAgentService {
         synchronized (taskService) {
             requireIdle(agentId);
             try {
+                boolean restoredSnapshot = resourceVersions.restore(projectId, agentId, targetResources);
                 replaceConfig(agentId, restored);
+                Map<String, Object> publishedResources = restoredSnapshot
+                        ? targetResources : resourceVersions.capture(projectId, agentId);
                 EnterpriseAgentDefinitionService.AgentDefinition definition = definitions.publish(
-                        agentId, "PROJECT", projectId, restored, actor.id(),
+                        agentId, "PROJECT", projectId, restored, publishedResources, actor.id(),
                         "Rollback from version " + versionId);
                 return payload(agentId, projectId, restored, definition);
-            } catch (RuntimeException e) {
+            } catch (IOException | RuntimeException e) {
+                restoreResources(projectId, agentId, beforeResources, e);
                 restoreConfig(agentId, before, e);
                 throw e;
             }
@@ -190,6 +204,38 @@ public class ProjectAgentService {
 
     public void endResourceMutation(String agentId) {
         taskService.endAgentMutation(agentId);
+    }
+
+    public synchronized void publishResourceMutation(String agentId, EnterprisePrincipal actor,
+                                                     String changeSummary) throws IOException {
+        EnterpriseIdentityStore.AgentBindingRecord binding = identityStore.findAgentBinding(agentId)
+                .orElse(null);
+        if (binding == null || !"PROJECT".equals(binding.scopeType())) return;
+        AgentConfig config = requireConfig(agentId);
+        requireIdle(agentId);
+        Map<String, Object> resources = resourceVersions.capture(binding.projectId(), agentId);
+        definitions.publish(agentId, "PROJECT", binding.projectId(), config, resources,
+                actor.id(), changeSummary);
+    }
+
+    public synchronized <T> T mutateResource(String agentId, EnterprisePrincipal actor,
+                                             String changeSummary,
+                                             java.util.concurrent.Callable<T> mutation) throws Exception {
+        EnterpriseIdentityStore.AgentBindingRecord binding = identityStore.findAgentBinding(agentId)
+                .orElse(null);
+        if (binding == null || !"PROJECT".equals(binding.scopeType())) return mutation.call();
+        requireIdle(agentId);
+        Map<String, Object> before = resourceVersions.capture(binding.projectId(), agentId);
+        try {
+            T result = mutation.call();
+            Map<String, Object> after = resourceVersions.capture(binding.projectId(), agentId);
+            definitions.publish(agentId, "PROJECT", binding.projectId(), requireConfig(agentId), after,
+                    actor.id(), changeSummary);
+            return result;
+        } catch (Exception e) {
+            restoreResources(binding.projectId(), agentId, before, e);
+            throw e;
+        }
     }
 
     private void inheritDefaults(AgentConfig config) {
@@ -223,7 +269,7 @@ public class ProjectAgentService {
         return skillService.syncPoolSkillsToWorkspace(agentId, skills);
     }
 
-    private void rollbackCreate(String agentId, Map<String, AgentConfig> agents, RuntimeException failure) {
+    private void rollbackCreate(String agentId, Map<String, AgentConfig> agents, Throwable failure) {
         try {
             identityStore.unbindAgent(agentId);
         } catch (RuntimeException cleanupError) {
@@ -238,10 +284,19 @@ public class ProjectAgentService {
         }
     }
 
-    private void restoreConfig(String agentId, AgentConfig config, RuntimeException failure) {
+    private void restoreConfig(String agentId, AgentConfig config, Throwable failure) {
         try {
             replaceConfig(agentId, config);
         } catch (RuntimeException cleanupError) {
+            failure.addSuppressed(cleanupError);
+        }
+    }
+
+    private void restoreResources(String projectId, String agentId,
+                                  Map<String, Object> resources, Throwable failure) {
+        try {
+            resourceVersions.restore(projectId, agentId, resources);
+        } catch (IOException | RuntimeException cleanupError) {
             failure.addSuppressed(cleanupError);
         }
     }

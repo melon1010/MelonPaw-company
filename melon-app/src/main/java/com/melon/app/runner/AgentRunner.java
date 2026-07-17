@@ -23,6 +23,7 @@ import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.config.ConfigManager;
 import com.melon.app.service.ApprovalService;
 import com.melon.app.mcp.McpToolkitContributor;
+import com.melon.app.task.EnterpriseQuotaService;
 import com.melon.app.task.EnterpriseTaskService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
@@ -36,6 +37,8 @@ import org.reactivestreams.Subscription;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
+import java.time.Duration;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -57,6 +60,8 @@ public class AgentRunner {
     private final ToolRiskClassifier toolRiskClassifier;
     private final EnterpriseTaskService taskService;
     private final ConcurrentMap<String, java.util.Set<Subscription>> activeExecutions = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, EnterpriseTaskService.Delegation> activeDelegations = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, String> delegationRoles = new ConcurrentHashMap<>();
 
     public AgentRunner(MultiAgentManager multiAgentManager, ApprovalService approvalService) {
         this(multiAgentManager, approvalService, null, new ToolRiskClassifier(), null);
@@ -88,13 +93,17 @@ public class AgentRunner {
                     AtomicReference<Subscription> tracked = new AtomicReference<>();
                     HarnessAgent agent = multiAgentManager.getOrCreate(agentId);
                     RuntimeContext ctx = buildContext(agentId, userId, sessionId, envInfo);
-                    return streamWithApprovals(agent, msgs, ctx, agentId, sessionId)
+                    return enforceRuntimeBudget(
+                            streamWithApprovals(agent, msgs, ctx, agentId, sessionId), ctx)
                             .doOnNext(event -> recordTaskEvent(ctx, event))
                             .doOnSubscribe(subscription -> {
                                 tracked.set(subscription);
                                 registerExecution(executionKey, subscription);
                             })
-                            .doFinally(signal -> unregisterExecution(executionKey, tracked.get()));
+                            .doFinally(signal -> {
+                                unregisterExecution(executionKey, tracked.get());
+                                clearDelegations(taskIdFrom(ctx));
+                            });
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnError(e -> log.error("Agent stream failed: agent={}, user={}, session={}", agentId, userId, sessionId, e));
@@ -110,14 +119,18 @@ public class AgentRunner {
                     HarnessAgent agent = multiAgentManager.getOrCreate(agentId);
                     RuntimeContext ctx = buildContext(agentId, userId, sessionId, envInfo);
                     int maxIterations = loopMaxIterations(agentId);
-                    return streamLoopIteration(agent, mode, objective, ctx, agentId,
-                                    sessionId, 1, maxIterations, null)
+                    return enforceRuntimeBudget(
+                            streamLoopIteration(agent, mode, objective, ctx, agentId,
+                                    sessionId, 1, maxIterations, null), ctx)
                             .doOnNext(event -> recordTaskEvent(ctx, event))
                             .doOnSubscribe(subscription -> {
                                 tracked.set(subscription);
                                 registerExecution(executionKey, subscription);
                             })
-                            .doFinally(signal -> unregisterExecution(executionKey, tracked.get()));
+                            .doFinally(signal -> {
+                                unregisterExecution(executionKey, tracked.get());
+                                clearDelegations(taskIdFrom(ctx));
+                            });
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnError(e -> log.error("Agent loop failed: mode={}, agent={}, session={}",
@@ -137,7 +150,8 @@ public class AgentRunner {
                     AtomicReference<Subscription> tracked = new AtomicReference<>();
                     HarnessAgent agent = multiAgentManager.getOrCreate(agentId);
                     RuntimeContext ctx = buildContext(agentId, userId, sessionId, envInfo);
-                    return streamWithApprovals(agent, msgs, ctx, agentId, sessionId)
+                    return enforceRuntimeBudget(
+                            streamWithApprovals(agent, msgs, ctx, agentId, sessionId), ctx)
                             .doOnNext(event -> recordTaskEvent(ctx, event))
                             .ofType(AgentResultEvent.class)
                             .map(AgentResultEvent::getResult)
@@ -146,9 +160,28 @@ public class AgentRunner {
                                 tracked.set(subscription);
                                 registerExecution(executionKey, subscription);
                             })
-                            .doFinally(signal -> unregisterExecution(executionKey, tracked.get()));
+                            .doFinally(signal -> {
+                                unregisterExecution(executionKey, tracked.get());
+                                clearDelegations(taskIdFrom(ctx));
+                            });
                 })
                 .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private Flux<AgentEvent> enforceRuntimeBudget(Flux<AgentEvent> source, RuntimeContext ctx) {
+        if (taskService == null || ctx == null) return source;
+        String taskId = stringValue(ctx.get("task_id"));
+        String runId = stringValue(ctx.get("run_id"));
+        if (taskId.isBlank() || runId.isBlank()) return source;
+        long seconds = taskService.remainingRuntimeSeconds(taskId, runId);
+        if (seconds <= 0) return source;
+        return source.timeout(Duration.ofSeconds(seconds))
+                .onErrorMap(TimeoutException.class, error -> {
+                    String message = "Task exceeded its " + seconds + " second remaining runtime budget";
+                    taskService.timeout(taskId, runId, message);
+                    return new EnterpriseQuotaService.QuotaExceededException(
+                            "TASK", "max_runtime_seconds", message);
+                });
     }
 
     /** Cancel the active Web/channel/automation execution for one authenticated scope. */
@@ -212,7 +245,19 @@ public class AgentRunner {
                                                  String agentId, String sessionId) {
         String sid = sessionId != null ? sessionId : "default";
         AtomicReference<Mono<List<ConfirmResult>>> pending = new AtomicReference<>();
-        return Flux.defer(() -> agent.streamEvents(msgs, ctx))
+        return Flux.defer(() -> {
+                    List<ToolUseBlock> staleAsking = pendingAsking(agent, ctx);
+                    if (staleAsking.isEmpty()) return agent.streamEvents(msgs, ctx);
+                    List<ConfirmResult> recovered = recoverPendingConfirmations(agent, staleAsking, ctx, agentId);
+                    Msg confirmation = UserMessage.builder()
+                            .metadata(Map.of(Msg.METADATA_CONFIRM_RESULTS, recovered))
+                            .build();
+                    // A disconnected client can leave an ASKING tool call in the persisted
+                    // AgentScope state. Resolve that orphan first, then process the new input.
+                    return agent.streamEvents(List.of(confirmation), ctx)
+                            .filter(event -> !isPermissionStopEvent(event))
+                            .concatWith(Flux.defer(() -> agent.streamEvents(msgs, ctx)));
+                })
                 .subscribeOn(Schedulers.boundedElastic())
                 .<AgentEvent>handle((event, sink) -> {
                     if (event instanceof RequireUserConfirmEvent confirm) {
@@ -224,6 +269,16 @@ public class AgentRunner {
                         List<Map<String, Object>> requests = new ArrayList<>();
                         List<ConfirmResult> immediate = new ArrayList<>();
                         for (ToolUseBlock toolCall : confirm.getToolCalls()) {
+                            if ("agent_spawn".equalsIgnoreCase(toolCall.getName())) {
+                                String role = stringValue(toolCall.getInput() != null
+                                        ? toolCall.getInput().get("role") : null);
+                                if (role.isBlank()) role = stringValue(toolCall.getInput() != null
+                                        ? toolCall.getInput().get("agent_id") : null);
+                                String contextTaskId = stringValue(ctx != null ? ctx.get("task_id") : null);
+                                if (!role.isBlank() && toolCall.getId() != null && !contextTaskId.isBlank()) {
+                                    delegationRoles.put(delegationKey(contextTaskId, toolCall.getId()), role);
+                                }
+                            }
                             String mcpEffect = mcpAccessEffect(agent, toolCall.getName(), ctx);
                             ToolRiskClassifier.Assessment assessment = switch (mcpEffect) {
                                 case "deny" -> toolRiskClassifier.forceDeny(toolCall);
@@ -275,6 +330,45 @@ public class AgentRunner {
                         return streamWithApprovals(agent, List.of(confirm), ctx, agentId, sid);
                     });
                 }));
+    }
+
+    private List<ToolUseBlock> pendingAsking(HarnessAgent agent, RuntimeContext ctx) {
+        if (agent == null || agent.getDelegate() == null) return List.of();
+        List<Msg> context = agent.getDelegate().getAgentState(ctx).getContext();
+        for (int i = context.size() - 1; i >= 0; i--) {
+            Msg message = context.get(i);
+            List<ToolUseBlock> asking = message.getContentBlocks(ToolUseBlock.class).stream()
+                    .filter(call -> call.getState() == io.agentscope.core.message.ToolCallState.ASKING)
+                    .toList();
+            if (!asking.isEmpty()) return asking;
+            if (message.getRole() == io.agentscope.core.message.MsgRole.ASSISTANT) return List.of();
+        }
+        return List.of();
+    }
+
+    private List<ConfirmResult> recoverPendingConfirmations(HarnessAgent agent,
+                                                              List<ToolUseBlock> calls,
+                                                              RuntimeContext ctx,
+                                                              String agentId) {
+        String mode = approvalService != null ? approvalService.getApprovalMode(agentId) : "RISK_BASED";
+        boolean strict = "STRICT".equalsIgnoreCase(mode);
+        boolean disabled = "OFF".equalsIgnoreCase(mode);
+        List<ConfirmResult> results = new ArrayList<>();
+        for (ToolUseBlock call : calls) {
+            String mcpEffect = mcpAccessEffect(agent, call.getName(), ctx);
+            ToolRiskClassifier.Assessment assessment = switch (mcpEffect) {
+                case "deny" -> toolRiskClassifier.forceDeny(call);
+                case "ask" -> toolRiskClassifier.forceStrict(call);
+                default -> disabled
+                        ? toolRiskClassifier.forceAllow(call)
+                        : (strict ? toolRiskClassifier.forceStrict(call)
+                                  : toolRiskClassifier.classify(call,
+                                          isMcpTool(agent, call.getName()),
+                                          isReadOnlyTool(agent, call.getName())));
+            };
+            results.add(new ConfirmResult(assessment.decision() == ToolRiskClassifier.Decision.ALLOW, call));
+        }
+        return List.copyOf(results);
     }
 
     private boolean isPermissionStopEvent(AgentEvent event) {
@@ -344,27 +438,50 @@ public class AgentRunner {
         String taskId = stringValue(ctx.get("task_id"));
         String runId = stringValue(ctx.get("run_id"));
         if (taskId.isBlank() || runId.isBlank()) return;
+        EnterpriseTaskService.Delegation sourceDelegation = delegationForSource(taskId, event.getSource());
+        String eventTaskId = sourceDelegation == null ? taskId : sourceDelegation.childTaskId();
+        String eventRunId = sourceDelegation == null ? runId : sourceDelegation.childRunId();
         try {
             switch (event.getType()) {
                 case MODEL_CALL_START -> taskService.appendRuntimeEvent(
-                        taskId, runId, "model_request_started", Map.of());
+                        eventTaskId, eventRunId, "model_request_started", Map.of());
                 case MODEL_CALL_END -> {
                     ModelCallEndEvent ended = (ModelCallEndEvent) event;
                     if (ended.getUsage() != null) {
-                        taskService.recordUsage(taskId, runId,
+                        taskService.recordUsage(eventTaskId, eventRunId,
                                 ended.getUsage().getInputTokens(), ended.getUsage().getOutputTokens());
                     }
-                    taskService.appendRuntimeEvent(taskId, runId, "model_request_completed", Map.of());
+                    taskService.appendRuntimeEvent(eventTaskId, eventRunId, "model_request_completed", Map.of());
                 }
                 case TOOL_CALL_START -> {
                     ToolCallStartEvent started = (ToolCallStartEvent) event;
-                    taskService.appendRuntimeEvent(taskId, runId, "tool_started", Map.of(
-                            "tool_call_id", stringValue(started.getToolCallId()),
-                            "tool_name", FrontendToolCompat.displayToolName(started.getToolCallName())));
+                    Map<String, Object> payload = new java.util.LinkedHashMap<>();
+                    payload.put("tool_call_id", stringValue(started.getToolCallId()));
+                    payload.put("tool_name", FrontendToolCompat.displayToolName(started.getToolCallName()));
+                    if ("agent_spawn".equalsIgnoreCase(started.getToolCallName())) {
+                        String role = started.getToolCallId() == null ? null
+                                : delegationRoles.remove(delegationKey(taskId, started.getToolCallId()));
+                        if ("general-purpose".equalsIgnoreCase(role)) role = "researcher";
+                        EnterpriseTaskService.Delegation delegation = taskService.startDelegation(taskId, runId, role);
+                        activeDelegations.put(delegationKey(taskId, started.getToolCallId()), delegation);
+                        payload.put("delegation_id", delegation.delegationId());
+                        payload.put("child_task_id", delegation.childTaskId());
+                    }
+                    taskService.appendRuntimeEvent(eventTaskId, eventRunId, "tool_started", payload);
                 }
                 case TOOL_RESULT_END -> {
                     ToolResultEndEvent ended = (ToolResultEndEvent) event;
-                    taskService.appendRuntimeEvent(taskId, runId, "tool_completed", Map.of(
+                    if ("agent_spawn".equalsIgnoreCase(ended.getToolCallName())) {
+                        EnterpriseTaskService.Delegation delegation = activeDelegations.remove(
+                                delegationKey(taskId, ended.getToolCallId()));
+                        if (delegation != null) {
+                            String state = "FAILED".equalsIgnoreCase(String.valueOf(ended.getState()))
+                                    ? "FAILED" : "SUCCEEDED";
+                            taskService.completeDelegation(delegation, state,
+                                    "SUCCEEDED".equals(state) ? null : "Subagent returned " + ended.getState());
+                        }
+                    }
+                    taskService.appendRuntimeEvent(eventTaskId, eventRunId, "tool_completed", Map.of(
                             "tool_call_id", stringValue(ended.getToolCallId()),
                             "tool_name", FrontendToolCompat.displayToolName(ended.getToolCallName()),
                             "state", String.valueOf(ended.getState())));
@@ -375,10 +492,39 @@ public class AgentRunner {
                     // Token deltas and display-only events stay in the session stream.
                 }
             }
+        } catch (EnterpriseQuotaService.QuotaExceededException e) {
+            throw e;
         } catch (RuntimeException e) {
             log.warn("Failed to record task event: task={}, run={}, event={}",
                     taskId, runId, event.getType(), e);
         }
+    }
+
+    private String delegationKey(String taskId, String toolCallId) {
+        return stringValue(taskId) + "\u0000" + stringValue(toolCallId);
+    }
+
+    private String taskIdFrom(RuntimeContext context) {
+        return context == null ? "" : stringValue(context.get("task_id"));
+    }
+
+    private void clearDelegations(String taskId) {
+        if (taskId == null || taskId.isBlank()) return;
+        String prefix = taskId + "\u0000";
+        activeDelegations.keySet().removeIf(key -> key.startsWith(prefix));
+        delegationRoles.keySet().removeIf(key -> key.startsWith(prefix));
+    }
+
+    private EnterpriseTaskService.Delegation delegationForSource(String taskId, String source) {
+        if (source == null || source.isBlank()) return null;
+        String prefix = stringValue(taskId) + "\u0000";
+        for (Map.Entry<String, EnterpriseTaskService.Delegation> entry : activeDelegations.entrySet()) {
+            if (!entry.getKey().startsWith(prefix)) continue;
+            EnterpriseTaskService.Delegation delegation = entry.getValue();
+            if (source.endsWith("/" + delegation.role())
+                    || source.contains("/" + delegation.role() + "/")) return delegation;
+        }
+        return null;
     }
 
     private Flux<AgentEvent> streamLoopIteration(HarnessAgent agent, LoopMode mode, String objective,
@@ -471,7 +617,8 @@ public class AgentRunner {
     private String initialLoopPrompt(LoopMode mode, String objective, int maxIterations) {
         if (mode == LoopMode.MISSION) {
             return "MISSION MODE. Complete the mission below using the native subagent tools. "
-                    + "Decompose it into independent work, delegate meaningful subtasks with agent_spawn, "
+                    + "Decompose it into independent work, delegate meaningful subtasks with agent_spawn "
+                    + "using only researcher, executor, or reviewer roles, "
                     + "collect the results, verify them, and return one reconciled final result. "
                     + "Do not merely describe a plan. You have at most " + maxIterations + " coordinator rounds.\n\n"
                     + "Mission:\n" + objective;

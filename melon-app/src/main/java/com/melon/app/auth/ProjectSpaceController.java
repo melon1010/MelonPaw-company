@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.io.IOException;
 import java.util.Map;
 
 /** Project spaces provide the data and authorization boundary inside one private deployment. */
@@ -163,9 +164,29 @@ public class ProjectSpaceController {
             }
             String mutationAgentId = projectAgentService != null
                     ? projectAgentService.beginResourceMutation(projectId) : null;
+            String previous = "";
             try {
-                return ResponseEntity.ok(workspaceService.write(
-                        projectId, fileName, rawText(body, "content")));
+                previous = workspaceService.list(projectId).stream()
+                        .filter(document -> fileName.equalsIgnoreCase(String.valueOf(document.get("name"))))
+                        .map(document -> String.valueOf(document.getOrDefault("content", "")))
+                        .findFirst()
+                        .orElse("");
+                Map<String, Object> updated = workspaceService.write(
+                        projectId, fileName, rawText(body, "content"));
+                if (mutationAgentId != null) {
+                    try {
+                        projectAgentService.publishResourceMutation(
+                                mutationAgentId, principal, "Project document updated: " + fileName);
+                    } catch (IOException | RuntimeException e) {
+                        try {
+                            workspaceService.write(projectId, fileName, previous);
+                        } catch (IOException restoreError) {
+                            e.addSuppressed(restoreError);
+                        }
+                        throw e;
+                    }
+                }
+                return ResponseEntity.ok(updated);
             } finally {
                 if (mutationAgentId != null) {
                     projectAgentService.endResourceMutation(mutationAgentId);

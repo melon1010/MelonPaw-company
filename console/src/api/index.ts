@@ -29,6 +29,8 @@ import { consoleApi } from "./modules/console";
 import { accessControlApi } from "./modules/accessControl";
 import { companyApi } from "./modules/company";
 import { taskApi } from "./modules/tasks";
+import { quotaApi } from "./modules/quotas";
+import { auditApi } from "./modules/audit";
 
 export const api = {
   // Root
@@ -104,6 +106,8 @@ export const api = {
   // Enterprise project spaces and membership
   ...companyApi,
   ...taskApi,
+  ...quotaApi,
+  ...auditApi,
 };
 
 export default api;
@@ -112,6 +116,15 @@ export default api;
 export { agentsApi };
 export { companyApi };
 export { taskApi };
+export { quotaApi };
+export { auditApi };
+export type { AuditChainVerification, ManagementAuditEvent } from "./modules/audit";
+export type {
+  QuotaCatalogue,
+  QuotaPolicy,
+  QuotaPolicyInput,
+  QuotaScope,
+} from "./modules/quotas";
 export type {
   EnterpriseTask,
   EnterpriseTaskEvent,
@@ -121,6 +134,7 @@ export type {
 } from "./modules/tasks";
 export type {
   EnterpriseRole,
+  EnterpriseRoleInput,
   EnterpriseUserInput,
   ProjectSpace,
   ProjectAgent,

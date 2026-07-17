@@ -39,6 +39,16 @@ public class McpClientRegistry {
         return manager;
     }
 
+    public void reloadAgent(String agentId) {
+        String scope = normalize(agentId);
+        if ("default".equals(scope)) {
+            defaultManager.reload();
+            return;
+        }
+        McpClientManager manager = scopedManagers.remove(scope);
+        if (manager != null) manager.shutdown();
+    }
+
     private String normalize(String agentId) {
         String value = agentId == null || agentId.isBlank() ? "default" : agentId.trim();
         if (!value.matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")) {

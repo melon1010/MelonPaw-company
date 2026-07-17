@@ -3,6 +3,7 @@ package com.melon.app.auth;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.BuiltinToolConfig;
+import com.melon.core.config.ConfigManager;
 import com.melon.core.config.ToolsConfig;
 import com.melon.core.util.JsonUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,6 +59,12 @@ public class EnterpriseAgentDefinitionService {
     public synchronized AgentDefinition publish(String agentId, String scopeType, String scopeId,
                                                 AgentConfig config, String actorUserId,
                                                 String changeSummary) {
+        return publish(agentId, scopeType, scopeId, config, Map.of(), actorUserId, changeSummary);
+    }
+
+    public synchronized AgentDefinition publish(String agentId, String scopeType, String scopeId,
+                                                AgentConfig config, Map<String, Object> resourceSnapshot,
+                                                String actorUserId, String changeSummary) {
         if (config == null) throw new IllegalArgumentException("Agent configuration is required");
         String aid = required(agentId, "Agent id");
         String scope = required(scopeType, "scope type").toUpperCase(Locale.ROOT);
@@ -66,6 +73,9 @@ public class EnterpriseAgentDefinitionService {
         String now = Instant.now().toString();
         String snapshot = JsonUtils.toJson(snapshot(config));
         String hash = sha256(snapshot);
+        String resources = JsonUtils.toJson(resourceSnapshot == null ? Map.of() : resourceSnapshot);
+        String resourceHash = resourceSnapshot != null && resourceSnapshot.get("content_sha256") != null
+                ? String.valueOf(resourceSnapshot.get("content_sha256")) : sha256(resources);
         try (Connection connection = open()) {
             connection.setAutoCommit(false);
             try {
@@ -99,17 +109,20 @@ public class EnterpriseAgentDefinitionService {
                 try (PreparedStatement statement = connection.prepareStatement("""
                         INSERT INTO enterprise_agent_versions (
                             version_id, definition_id, version_number, config_snapshot_json,
-                            config_sha256, change_summary, published_by, published_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            config_sha256, resource_snapshot_json, resource_sha256,
+                            change_summary, published_by, published_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """)) {
                     statement.setString(1, versionId);
                     statement.setString(2, definitionId);
                     statement.setInt(3, versionNumber);
                     statement.setString(4, snapshot);
                     statement.setString(5, hash);
-                    statement.setString(6, value(changeSummary, "Configuration published"));
-                    statement.setString(7, actor);
-                    statement.setString(8, now);
+                    statement.setString(6, resources);
+                    statement.setString(7, resourceHash);
+                    statement.setString(8, value(changeSummary, "Configuration published"));
+                    statement.setString(9, actor);
+                    statement.setString(10, now);
                     statement.executeUpdate();
                 }
                 try (PreparedStatement statement = connection.prepareStatement("""
@@ -201,6 +214,71 @@ public class EnterpriseAgentDefinitionService {
             }
         } catch (SQLException e) {
             throw databaseFailure("load Agent version", e);
+        }
+    }
+
+    public synchronized Map<String, Object> versionResources(String agentId, String versionId) {
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement("""
+                SELECT v.resource_snapshot_json FROM enterprise_agent_versions v
+                JOIN enterprise_agent_definitions d ON d.definition_id = v.definition_id
+                WHERE d.agent_id = ? AND v.version_id = ?
+                """)) {
+            statement.setString(1, required(agentId, "Agent id"));
+            statement.setString(2, required(versionId, "version id"));
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) throw new IllegalArgumentException("Agent version not found");
+                String value = result.getString(1);
+                return value == null || value.isBlank()
+                        ? Map.of() : JsonUtils.getMapper().readValue(value, MAP_TYPE);
+            } catch (IllegalArgumentException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalStateException("Invalid Agent resource snapshot", e);
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("load Agent resource version", e);
+        }
+    }
+
+    /** Re-encrypt historical resource snapshots without changing their content hash. */
+    public synchronized int reencryptResourceSnapshots(ConfigManager configManager) {
+        if (configManager == null) return 0;
+        int rewritten = 0;
+        try (Connection connection = open();
+             PreparedStatement query = connection.prepareStatement(
+                     "SELECT version_id, resource_snapshot_json, resource_sha256 "
+                             + "FROM enterprise_agent_versions");
+             PreparedStatement update = connection.prepareStatement(
+                     "UPDATE enterprise_agent_versions SET resource_snapshot_json = ?, resource_sha256 = ? "
+                             + "WHERE version_id = ?")) {
+            connection.setAutoCommit(false);
+            try (ResultSet result = query.executeQuery()) {
+                while (result.next()) {
+                    String value = result.getString("resource_snapshot_json");
+                    if (value == null || value.isBlank()) continue;
+                    Map<String, Object> stored = JsonUtils.getMapper().readValue(value, MAP_TYPE);
+                    Object runtime = configManager.unprotectSecrets(stored);
+                    if (!(runtime instanceof Map<?, ?> map)) continue;
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> snapshot = new LinkedHashMap<>((Map<String, Object>) map);
+                    String resourceHash = result.getString("resource_sha256");
+                    if (resourceHash == null || resourceHash.isBlank()) {
+                        Object contentHash = snapshot.get("content_sha256");
+                        resourceHash = contentHash == null ? sha256(JsonUtils.toJson(snapshot)) : String.valueOf(contentHash);
+                    }
+                    Object protectedSnapshot = configManager.protectSecrets(snapshot);
+                    update.setString(1, JsonUtils.toJson(protectedSnapshot));
+                    update.setString(2, resourceHash);
+                    update.setString(3, result.getString("version_id"));
+                    update.addBatch();
+                    rewritten++;
+                }
+            }
+            update.executeBatch();
+            connection.commit();
+            return rewritten;
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to rotate Agent resource snapshots", e);
         }
     }
 
@@ -298,6 +376,8 @@ public class EnterpriseAgentDefinitionService {
                         version_number INTEGER NOT NULL,
                         config_snapshot_json TEXT NOT NULL,
                         config_sha256 TEXT NOT NULL,
+                        resource_snapshot_json TEXT NOT NULL DEFAULT '{}',
+                        resource_sha256 TEXT NOT NULL DEFAULT '',
                         change_summary TEXT NOT NULL DEFAULT '',
                         published_by TEXT NOT NULL,
                         published_at TEXT NOT NULL,
@@ -306,6 +386,10 @@ public class EnterpriseAgentDefinitionService {
                             ON DELETE CASCADE
                     )
                     """);
+            ensureColumn(statement, "enterprise_agent_versions", "resource_snapshot_json",
+                    "TEXT NOT NULL DEFAULT '{}'");
+            ensureColumn(statement, "enterprise_agent_versions", "resource_sha256",
+                    "TEXT NOT NULL DEFAULT ''");
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_agent_definition_scope "
                     + "ON enterprise_agent_definitions(scope_type, scope_id)");
             statement.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_project_agent_definition "
@@ -339,6 +423,7 @@ public class EnterpriseAgentDefinitionService {
                 result.getString("version_id"),
                 result.getInt("version_number"),
                 result.getString("config_sha256"),
+                result.getString("resource_sha256"),
                 result.getString("change_summary"),
                 result.getString("published_by"),
                 result.getString("published_at"));
@@ -351,6 +436,15 @@ public class EnterpriseAgentDefinitionService {
         } catch (Exception e) {
             throw new IllegalStateException("SHA-256 is unavailable", e);
         }
+    }
+
+    private void ensureColumn(Statement statement, String table, String column, String definition) throws SQLException {
+        try (ResultSet result = statement.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (result.next()) {
+                if (column.equalsIgnoreCase(result.getString("name"))) return;
+            }
+        }
+        statement.executeUpdate("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
     }
 
     private Connection open() throws SQLException {
@@ -432,6 +526,7 @@ public class EnterpriseAgentDefinitionService {
             String versionId,
             int version,
             String configSha256,
+            String resourceSha256,
             String changeSummary,
             String publishedBy,
             String publishedAt) {
@@ -441,6 +536,7 @@ public class EnterpriseAgentDefinitionService {
                     "version_id", versionId,
                     "version", version,
                     "config_sha256", configSha256,
+                    "resource_sha256", resourceSha256,
                     "change_summary", changeSummary,
                     "published_by", publishedBy,
                     "published_at", publishedAt);

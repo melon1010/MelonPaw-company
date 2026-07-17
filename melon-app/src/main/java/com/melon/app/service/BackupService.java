@@ -4,6 +4,7 @@ import com.melon.core.config.ConfigManager;
 import com.melon.core.util.JsonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -28,6 +29,7 @@ import java.util.zip.ZipOutputStream;
 public class BackupService {
 
     private static final Logger log = LoggerFactory.getLogger(BackupService.class);
+    private static final List<String> NEVER_BACK_UP = List.of("master.key", "bootstrap.token");
 
     private final ConfigManager configManager;
 
@@ -131,6 +133,35 @@ public class BackupService {
         return false;
     }
 
+    /** Applies the configured age and count limits to completed backup archives. */
+    @Scheduled(fixedDelayString = "${melon.backup.retention.interval-ms:21600000}")
+    public void scheduledRetention() {
+        try {
+            pruneRetention();
+        } catch (RuntimeException e) {
+            log.warn("Backup retention pass failed", e);
+        }
+    }
+
+    public int pruneRetention() {
+        int retentionDays = positiveSetting("MELON_BACKUP_RETENTION_DAYS", 30);
+        int retentionCount = positiveSetting("MELON_BACKUP_RETENTION_COUNT", 50);
+        long cutoff = System.currentTimeMillis() - retentionDays * 86_400_000L;
+        List<Path> archives = listBackups();
+        archives.sort(Comparator.comparingLong(this::lastModified).reversed());
+        int deleted = 0;
+        for (int index = 0; index < archives.size(); index++) {
+            Path archive = archives.get(index);
+            if (index < retentionCount && lastModified(archive) >= cutoff) continue;
+            try {
+                if (deleteBackup(archive)) deleted++;
+            } catch (IOException | RuntimeException e) {
+                log.warn("Failed to prune backup {}", archive, e);
+            }
+        }
+        return deleted;
+    }
+
     public Path importBackup(Path source, String originalName) throws IOException {
         Path backupDir = backupDir();
         if (source == null || !Files.isRegularFile(source)) {
@@ -164,7 +195,9 @@ public class BackupService {
         try (Stream<Path> stream = Files.list(current)) {
             for (Path path : (Iterable<Path>) stream::iterator) {
                 // Skip the backup directory itself and the zip being created
-                if (path.equals(backupDir) || path.equals(zipFile)) {
+                if (path.equals(backupDir) || path.equals(zipFile)
+                        || (path.getParent() != null && path.getParent().equals(root)
+                            && NEVER_BACK_UP.contains(path.getFileName().toString()))) {
                     continue;
                 }
 
@@ -245,6 +278,8 @@ public class BackupService {
         meta.put("agent_count", agents == null || agents.isEmpty() ? 0 : agents.size());
         meta.put("signature", "");
         meta.put("accepted_via_trust", false);
+        meta.put("requires_master_key", true);
+        meta.put("excluded_security_files", NEVER_BACK_UP);
         return meta;
     }
 
@@ -265,5 +300,23 @@ public class BackupService {
         String value = name == null || name.isBlank() ? "melon-backup" : name.trim();
         value = value.replaceAll("[^A-Za-z0-9._-]", "-");
         return value.isBlank() ? "melon-backup" : value;
+    }
+
+    private long lastModified(Path path) {
+        try {
+            return Files.getLastModifiedTime(path).toMillis();
+        } catch (IOException e) {
+            return 0;
+        }
+    }
+
+    private int positiveSetting(String name, int fallback) {
+        String value = System.getProperty(name);
+        if (value == null || value.isBlank()) value = System.getenv(name);
+        try {
+            return value == null || value.isBlank() ? fallback : Math.max(1, Integer.parseInt(value.trim()));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 }

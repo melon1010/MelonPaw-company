@@ -31,6 +31,7 @@ const ADMIN_ROUTES = new Set([
   "core.voice-transcription",
   "core.debug",
   "core.plugin-manager",
+  "core.quotas",
 ]);
 
 function normalize(value: string): string {
@@ -80,6 +81,9 @@ export function canAccessRoute(
     return (
       hasPermission(user, "users:read") || hasPermission(user, "users:manage")
     );
+  }
+  if (routeId === "company.roles") {
+    return hasPermission(user, "roles:read") || hasPermission(user, "roles:manage");
   }
   if (
     routeId === "company.projects" ||
@@ -156,6 +160,9 @@ export function canAccessRoute(
       hasPermission(user, "agents:manage") ||
       hasAnyRole(user, new Set([...OPERATOR_ROLES, ...AUDIT_ROLES]))
     );
+  }
+  if (routeId === "core.management-audit") {
+    return hasPermission(user, "audit:read") || hasPermission(user, "system:manage");
   }
   if (routeId.startsWith("plugin.")) return false;
   return false;

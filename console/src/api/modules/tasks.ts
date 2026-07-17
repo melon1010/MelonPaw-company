@@ -21,6 +21,10 @@ export interface EnterpriseTask {
   owner_user_id: string;
   agent_id: string;
   agent_version_id?: string | null;
+  root_task_id?: string | null;
+  parent_task_id?: string | null;
+  delegation_id?: string | null;
+  depth?: number;
   title: string;
   status: EnterpriseTaskStatus;
   session_id: string;
@@ -35,6 +39,8 @@ export interface EnterpriseTask {
   updated_at: string;
   started_at: string;
   ended_at?: string | null;
+  timeout_at?: string | null;
+  max_tokens?: number;
   retryable: boolean;
 }
 
@@ -51,6 +57,8 @@ export interface EnterpriseTaskRun {
   safe_error?: string | null;
   input_tokens: number;
   output_tokens: number;
+  timeout_at?: string | null;
+  max_tokens?: number;
 }
 
 export interface EnterpriseTaskEvent {

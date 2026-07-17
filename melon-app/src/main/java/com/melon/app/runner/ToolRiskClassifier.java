@@ -74,8 +74,13 @@ public class ToolRiskClassifier {
             return classifyWorkspacePath(value(input.get("path")));
         }
         if ("agent_spawn".equals(name)) {
-            String worker = value(input.get("agent_id"));
-            if ("general-purpose".equals(worker)) {
+            String worker = value(input.get("agent_id")).toLowerCase(Locale.ROOT);
+            if (Set.of("general-purpose", "researcher", "executor", "reviewer").contains(worker)) {
+                String role = value(input.get("role")).toLowerCase(Locale.ROOT);
+                if (!role.isBlank() && !Set.of("researcher", "executor", "reviewer").contains(role)) {
+                    return Assessment.deny("unsupported_delegation_role",
+                            "Only researcher, executor, or reviewer delegation roles are supported");
+                }
                 return Assessment.allow("restricted_subagent", "Start a restricted workspace worker");
             }
             return Assessment.deny("unsupported_subagent",

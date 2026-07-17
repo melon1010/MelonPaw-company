@@ -560,7 +560,6 @@ public class HistoryStore {
     private List<Entry> entries(String agentId, String sessionId, List<?> context) {
         List<Entry> entries = new ArrayList<>();
         String now = DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneOffset.UTC).format(Instant.now());
-        int index = 0;
         for (Object item : context) {
             if (!(item instanceof Map<?, ?> rawMessage)) continue;
             Map<String, Object> message = asMap(rawMessage);
@@ -575,13 +574,13 @@ public class HistoryStore {
                     .filter(block -> "tool_result".equals(stringValue(block.get("type"))))
                     .toList();
             if (!nonResults.isEmpty() || results.isEmpty()) {
-                entries.add(entry(agentId, sessionId, role, nonResults, message, messageId + ":turn:" + index, now));
+                entries.add(entry(agentId, sessionId, role, nonResults, message, messageId + ":turn", now));
             }
             int resultIndex = 0;
             for (Map<String, Object> result : results) {
-                entries.add(toolResult(agentId, sessionId, role, result, messageId + ":tool_result:" + resultIndex++, now));
+                String resultId = valueOrDefault(stringValue(result.get("id")), String.valueOf(resultIndex++));
+                entries.add(toolResult(agentId, sessionId, role, result, messageId + ":tool_result:" + resultId, now));
             }
-            index++;
         }
         return entries;
     }

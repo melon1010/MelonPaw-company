@@ -17,6 +17,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import jakarta.annotation.PreDestroy;
 
@@ -25,6 +26,7 @@ import jakarta.annotation.PreDestroy;
  * Phase 1 同步快速初始化, Phase 2 后台异步加载.
  */
 @Configuration
+@EnableScheduling
 public class LifecycleConfig implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(LifecycleConfig.class);

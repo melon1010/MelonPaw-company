@@ -59,11 +59,27 @@ public class ChatManager {
 
     public List<ChatSpec> list(String agentId, String userId, String channel) {
         List<ChatSpec> chats = load(agentId);
-        return chats.stream()
-                .filter(chat -> userId == null || userId.isBlank() || userId.equals(chat.getUserId()))
-                .filter(chat -> channel == null || channel.isBlank() || channel.equals(chat.getChannel()))
+        Map<String, ChatSpec> unique = new LinkedHashMap<>();
+        for (ChatSpec chat : chats) {
+            if ((userId != null && !userId.isBlank() && !userId.equals(chat.getUserId()))
+                    || (channel != null && !channel.isBlank() && !channel.equals(chat.getChannel()))) {
+                continue;
+            }
+            String key = valueOrDefault(chat.getUserId(), "default") + "\u0000"
+                    + valueOrDefault(chat.getChannel(), "console") + "\u0000"
+                    + valueOrDefault(chat.getSessionId(), chat.getId());
+            ChatSpec existing = unique.get(key);
+            if (existing == null || compareUpdatedAt(chat, existing) > 0) unique.put(key, chat);
+        }
+        return unique.values().stream()
                 .sorted(Comparator.comparing(ChatSpec::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
+    }
+
+    private int compareUpdatedAt(ChatSpec left, ChatSpec right) {
+        String a = valueOrDefault(left.getUpdatedAt(), valueOrDefault(left.getCreatedAt(), ""));
+        String b = valueOrDefault(right.getUpdatedAt(), valueOrDefault(right.getCreatedAt(), ""));
+        return a.compareTo(b);
     }
 
     public ChatSpec create(String agentId, String name, String userId, String channel, String sessionId) {
@@ -634,6 +650,14 @@ public class ChatManager {
             if (block instanceof Map<?, ?> rawBlock) {
                 Map<String, Object> item = asMap(rawBlock);
                 if ("tool_result".equals(stringValue(item.get("type")))) {
+                    String resultId = stringValue(item.get("id"));
+                    boolean alreadyPresent = assistantContent.stream()
+                            .filter(Map.class::isInstance)
+                            .map(Map.class::cast)
+                            .filter(existing -> "tool_result".equals(stringValue(existing.get("type"))))
+                            .anyMatch(existing -> (!resultId.isBlank() && resultId.equals(stringValue(existing.get("id"))))
+                                    || JsonUtils.toJson(existing).equals(JsonUtils.toJson(item)));
+                    if (alreadyPresent) continue;
                     assistantContent.add(item);
                     merged = true;
                 }
