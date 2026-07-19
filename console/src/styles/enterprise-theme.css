@@ -24,6 +24,13 @@
   --mp-text: #18181b;
   --mp-text-secondary: #52525b;
   --mp-text-tertiary: #71717a;
+  --mp-text-disabled: #71717a;
+  --mp-control-bg: #ffffff;
+  --mp-control-bg-disabled: #f4f4f5;
+  --mp-switch-track: #a1a1aa;
+  --mp-switch-handle: #ffffff;
+  --mp-switch-handle-checked: #ffffff;
+  --mp-switch-track-text: #ffffff;
   --mp-sidebar: #f4f4f5;
   --mp-sidebar-hover: #e4e4e7;
   --mp-sidebar-active: #e4e4e7;
@@ -61,12 +68,19 @@ html.dark-mode {
   --mp-border-strong: #3a3a3a;
   --mp-text: #f4f4f5;
   --mp-text-secondary: #b4b4b8;
-  --mp-text-tertiary: #71717a;
+  --mp-text-tertiary: #a1a1aa;
+  --mp-text-disabled: #a1a1aa;
+  --mp-control-bg: #262626;
+  --mp-control-bg-disabled: #2f2f2f;
+  --mp-switch-track: #52525b;
+  --mp-switch-handle: #f4f4f5;
+  --mp-switch-handle-checked: #171717;
+  --mp-switch-track-text: #ffffff;
   --mp-sidebar: #0d0d0d;
   --mp-sidebar-hover: #1f1f1f;
   --mp-sidebar-active: #242424;
   --mp-sidebar-text: #f4f4f5;
-  --mp-sidebar-muted: #71717a;
+  --mp-sidebar-muted: #a1a1aa;
   --mp-sidebar-selected-text: #ffffff;
   --mp-focus-ring: rgba(255, 255, 255, 0.16);
   --mp-shadow-popover: 0 16px 36px rgba(0, 0, 0, 0.45);
@@ -1015,6 +1029,362 @@ html.dark-mode .qwenpaw-select-dropdown {
 .qwenpaw-select-item-option-selected:not(.qwenpaw-select-item-option-disabled) {
   color: var(--mp-text) !important;
   background: var(--mp-surface-muted) !important;
+}
+
+/* Complete the shared component state matrix. Page bundles are loaded lazily,
+ * so these rules carry enough specificity to remain authoritative when a
+ * page-level stylesheet still contains an older light-only declaration. */
+html.dark-mode body .ant-input,
+html.dark-mode body .qwenpaw-input,
+html.dark-mode body textarea.ant-input,
+html.dark-mode body textarea.qwenpaw-input,
+html.dark-mode body .ant-input-affix-wrapper,
+html.dark-mode body .qwenpaw-input-affix-wrapper,
+html.dark-mode body .ant-input-number,
+html.dark-mode body .qwenpaw-input-number,
+html.dark-mode body .ant-picker,
+html.dark-mode body .qwenpaw-picker,
+html.dark-mode body .ant-select-selector,
+html.dark-mode body .qwenpaw-select-selector {
+  color: var(--mp-text) !important;
+  background: var(--mp-control-bg) !important;
+  border-color: var(--mp-border-strong) !important;
+}
+
+html.dark-mode body .ant-input-affix-wrapper .ant-input,
+html.dark-mode body .qwenpaw-input-affix-wrapper .qwenpaw-input,
+html.dark-mode body .ant-input-number-input,
+html.dark-mode body .qwenpaw-input-number-input,
+html.dark-mode body .ant-picker-input > input,
+html.dark-mode body .qwenpaw-picker-input > input,
+html.dark-mode body .ant-select-selection-item,
+html.dark-mode body .qwenpaw-select-selection-item,
+html.dark-mode body .ant-select-selection-search-input,
+html.dark-mode body .qwenpaw-select-selection-search-input {
+  color: var(--mp-text) !important;
+}
+
+html.dark-mode body .ant-input-affix-wrapper .ant-input,
+html.dark-mode body .qwenpaw-input-affix-wrapper .qwenpaw-input,
+html.dark-mode body .ant-input-number-input,
+html.dark-mode body .qwenpaw-input-number-input {
+  background: transparent !important;
+}
+
+html.dark-mode body .ant-input::placeholder,
+html.dark-mode body .qwenpaw-input::placeholder,
+html.dark-mode body textarea.ant-input::placeholder,
+html.dark-mode body textarea.qwenpaw-input::placeholder,
+html.dark-mode body .ant-input-number-input::placeholder,
+html.dark-mode body .qwenpaw-input-number-input::placeholder,
+html.dark-mode body .ant-picker-input > input::placeholder,
+html.dark-mode body .qwenpaw-picker-input > input::placeholder,
+html.dark-mode body .ant-select .ant-select-selection-placeholder,
+html.dark-mode body .qwenpaw-select .qwenpaw-select-selection-placeholder {
+  color: var(--mp-text-tertiary) !important;
+  opacity: 1 !important;
+}
+
+html.dark-mode body #root .ant-input::placeholder,
+html.dark-mode body #root .qwenpaw-input::placeholder,
+html.dark-mode body #root textarea.ant-input::placeholder,
+html.dark-mode body #root textarea.qwenpaw-input::placeholder,
+html.dark-mode body #root .ant-input-number-input::placeholder,
+html.dark-mode body #root .qwenpaw-input-number-input::placeholder,
+html.dark-mode body #root .ant-picker-input > input::placeholder,
+html.dark-mode body #root .qwenpaw-picker-input > input::placeholder,
+html.dark-mode body #root .ant-select .ant-select-selection-placeholder,
+html.dark-mode
+  body
+  #root
+  .qwenpaw-select
+  .qwenpaw-select-selection-placeholder {
+  color: var(--mp-text-tertiary) !important;
+  opacity: 1 !important;
+}
+
+html.dark-mode body .ant-input-prefix,
+html.dark-mode body .ant-input-suffix,
+html.dark-mode body .qwenpaw-input-prefix,
+html.dark-mode body .qwenpaw-input-suffix,
+html.dark-mode body .ant-input-password-icon,
+html.dark-mode body .qwenpaw-input-password-icon,
+html.dark-mode body .ant-input-number-handler,
+html.dark-mode body .qwenpaw-input-number-handler,
+html.dark-mode body .ant-picker-suffix,
+html.dark-mode body .qwenpaw-picker-suffix,
+html.dark-mode body .ant-select-arrow,
+html.dark-mode body .qwenpaw-select-arrow,
+html.dark-mode body .ant-select-clear,
+html.dark-mode body .qwenpaw-select-clear {
+  color: var(--mp-text-tertiary) !important;
+}
+
+html.dark-mode body .ant-input:disabled,
+html.dark-mode body .qwenpaw-input:disabled,
+html.dark-mode body .ant-input-disabled,
+html.dark-mode body .qwenpaw-input-disabled,
+html.dark-mode body .ant-input-affix-wrapper-disabled,
+html.dark-mode body .qwenpaw-input-affix-wrapper-disabled,
+html.dark-mode body .ant-input-number-disabled,
+html.dark-mode body .qwenpaw-input-number-disabled,
+html.dark-mode body .ant-picker-disabled,
+html.dark-mode body .qwenpaw-picker-disabled,
+html.dark-mode body .ant-select-disabled .ant-select-selector,
+html.dark-mode body .qwenpaw-select-disabled .qwenpaw-select-selector {
+  color: var(--mp-text-disabled) !important;
+  background: var(--mp-control-bg-disabled) !important;
+  border-color: var(--mp-border) !important;
+  opacity: 1 !important;
+}
+
+html.dark-mode body .ant-input-number-disabled .ant-input-number-input,
+html.dark-mode body .qwenpaw-input-number-disabled .qwenpaw-input-number-input,
+html.dark-mode body .ant-picker-disabled .ant-picker-input > input,
+html.dark-mode body .qwenpaw-picker-disabled .qwenpaw-picker-input > input,
+html.dark-mode body .ant-select-disabled .ant-select-selection-item,
+html.dark-mode body .qwenpaw-select-disabled .qwenpaw-select-selection-item {
+  color: var(--mp-text-disabled) !important;
+}
+
+html.dark-mode
+  body
+  .ant-switch:not(.ant-switch-checked):not(.ant-switch-disabled),
+html.dark-mode
+  body
+  .qwenpaw-switch:not(.qwenpaw-switch-checked):not(.qwenpaw-switch-disabled) {
+  background: var(--mp-switch-track) !important;
+}
+
+html.dark-mode body .ant-switch-checked:not(.ant-switch-disabled),
+html.dark-mode body .qwenpaw-switch-checked:not(.qwenpaw-switch-disabled) {
+  background: var(--mp-primary) !important;
+}
+
+html.dark-mode body .ant-switch .ant-switch-handle::before,
+html.dark-mode body .qwenpaw-switch .qwenpaw-switch-handle::before {
+  background: var(--mp-switch-handle) !important;
+}
+
+html.dark-mode body .ant-switch-checked .ant-switch-handle::before,
+html.dark-mode body .qwenpaw-switch-checked .qwenpaw-switch-handle::before {
+  background: var(--mp-switch-handle-checked) !important;
+}
+
+html.dark-mode body .ant-switch .ant-switch-inner,
+html.dark-mode body .qwenpaw-switch .qwenpaw-switch-inner {
+  color: var(--mp-switch-track-text) !important;
+}
+
+html.dark-mode body .ant-switch-checked .ant-switch-inner,
+html.dark-mode body .qwenpaw-switch-checked .qwenpaw-switch-inner {
+  color: var(--mp-primary-contrast) !important;
+}
+
+html.dark-mode body .ant-switch-disabled,
+html.dark-mode body .qwenpaw-switch-disabled {
+  background: var(--mp-border-strong) !important;
+  opacity: 1 !important;
+}
+
+html.dark-mode body .ant-switch-disabled.ant-switch-checked,
+html.dark-mode body .qwenpaw-switch-disabled.qwenpaw-switch-checked {
+  background: var(--mp-text-tertiary) !important;
+}
+
+html.dark-mode body .ant-checkbox-inner,
+html.dark-mode body .qwenpaw-checkbox-inner,
+html.dark-mode body .ant-radio-inner,
+html.dark-mode body .qwenpaw-radio-inner {
+  background: var(--mp-control-bg) !important;
+  border-color: var(--mp-text-tertiary) !important;
+}
+
+html.dark-mode body .ant-checkbox-checked .ant-checkbox-inner,
+html.dark-mode body .qwenpaw-checkbox-checked .qwenpaw-checkbox-inner,
+html.dark-mode body .ant-checkbox-indeterminate .ant-checkbox-inner,
+html.dark-mode body .qwenpaw-checkbox-indeterminate .qwenpaw-checkbox-inner,
+html.dark-mode body .ant-radio-checked .ant-radio-inner,
+html.dark-mode body .qwenpaw-radio-checked .qwenpaw-radio-inner {
+  background: var(--mp-primary) !important;
+  border-color: var(--mp-primary) !important;
+}
+
+html.dark-mode body .ant-checkbox-checked .ant-checkbox-inner::after,
+html.dark-mode body .qwenpaw-checkbox-checked .qwenpaw-checkbox-inner::after {
+  border-color: var(--mp-primary-contrast) !important;
+}
+
+html.dark-mode body .ant-checkbox-indeterminate .ant-checkbox-inner::after,
+html.dark-mode
+  body
+  .qwenpaw-checkbox-indeterminate
+  .qwenpaw-checkbox-inner::after,
+html.dark-mode body .ant-radio-checked .ant-radio-inner::after,
+html.dark-mode body .qwenpaw-radio-checked .qwenpaw-radio-inner::after {
+  background: var(--mp-primary-contrast) !important;
+}
+
+html.dark-mode body .ant-checkbox-disabled + span,
+html.dark-mode body .qwenpaw-checkbox-disabled + span,
+html.dark-mode body .ant-radio-disabled + span,
+html.dark-mode body .qwenpaw-radio-disabled + span {
+  color: var(--mp-text-disabled) !important;
+}
+
+html.dark-mode body .ant-table-thead > tr > th,
+html.dark-mode body .ant-table-thead > tr > td,
+html.dark-mode body .qwenpaw-table-thead > tr > th,
+html.dark-mode body .qwenpaw-table-thead > tr > td,
+html.dark-mode body .ant-table-sticky-holder,
+html.dark-mode body .qwenpaw-table-sticky-holder {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface-subtle) !important;
+  border-color: var(--mp-border) !important;
+}
+
+html.dark-mode body .ant-table-column-title,
+html.dark-mode body .qwenpaw-table-column-title,
+html.dark-mode body .ant-table-thead .ant-typography,
+html.dark-mode body .qwenpaw-table-thead .qwenpaw-typography {
+  color: var(--mp-text-secondary) !important;
+}
+
+html.dark-mode body .ant-table-column-sorter,
+html.dark-mode body .qwenpaw-table-column-sorter,
+html.dark-mode body .ant-table-filter-trigger,
+html.dark-mode body .qwenpaw-table-filter-trigger,
+html.dark-mode body .ant-table-row-expand-icon,
+html.dark-mode body .qwenpaw-table-row-expand-icon {
+  color: var(--mp-text-tertiary) !important;
+}
+
+html.dark-mode body .ant-table-column-sorter-up.active,
+html.dark-mode body .ant-table-column-sorter-down.active,
+html.dark-mode body .qwenpaw-table-column-sorter-up.active,
+html.dark-mode body .qwenpaw-table-column-sorter-down.active,
+html.dark-mode body .ant-table-filter-trigger.active,
+html.dark-mode body .qwenpaw-table-filter-trigger.active {
+  color: var(--mp-primary) !important;
+}
+
+html.dark-mode body .ant-table-placeholder > td,
+html.dark-mode body .qwenpaw-table-placeholder > td,
+html.dark-mode body .ant-table-summary > tr > td,
+html.dark-mode body .qwenpaw-table-summary > tr > td {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface) !important;
+  border-color: var(--mp-border) !important;
+}
+
+html.dark-mode body .ant-descriptions-view,
+html.dark-mode body .qwenpaw-descriptions-view,
+html.dark-mode body .ant-collapse,
+html.dark-mode body .qwenpaw-collapse,
+html.dark-mode body .ant-collapse-content,
+html.dark-mode body .qwenpaw-collapse-content,
+html.dark-mode body .ant-list,
+html.dark-mode body .qwenpaw-list {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-raised) !important;
+  border-color: var(--mp-border) !important;
+}
+
+html.dark-mode body .ant-descriptions-item-label,
+html.dark-mode body .qwenpaw-descriptions-item-label,
+html.dark-mode body .ant-collapse-header,
+html.dark-mode body .qwenpaw-collapse-header,
+html.dark-mode body .ant-list-item-meta-description,
+html.dark-mode body .qwenpaw-list-item-meta-description {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface-subtle) !important;
+  border-color: var(--mp-border) !important;
+}
+
+html.dark-mode body .ant-descriptions-item-content,
+html.dark-mode body .qwenpaw-descriptions-item-content,
+html.dark-mode body .ant-list-item,
+html.dark-mode body .qwenpaw-list-item,
+html.dark-mode body .ant-list-item-meta-title,
+html.dark-mode body .qwenpaw-list-item-meta-title,
+html.dark-mode body .ant-list-item-meta-title > a,
+html.dark-mode body .qwenpaw-list-item-meta-title > a {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-raised) !important;
+  border-color: var(--mp-border) !important;
+}
+
+html.dark-mode body .ant-segmented,
+html.dark-mode body .qwenpaw-segmented {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface-muted) !important;
+}
+
+html.dark-mode body .ant-segmented-item-selected,
+html.dark-mode body .qwenpaw-segmented-item-selected {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-raised) !important;
+  box-shadow: inset 0 0 0 1px var(--mp-border-strong) !important;
+}
+
+html.dark-mode body .ant-result-subtitle,
+html.dark-mode body .qwenpaw-result-subtitle,
+html.dark-mode body .ant-form-item-extra,
+html.dark-mode body .qwenpaw-form-item-extra,
+html.dark-mode body .ant-form-item-explain,
+html.dark-mode body .qwenpaw-form-item-explain,
+html.dark-mode body .ant-empty-description,
+html.dark-mode body .qwenpaw-empty-description {
+  color: var(--mp-text-secondary) !important;
+}
+
+html.dark-mode body .ant-modal-body .ant-form-item-label > label,
+html.dark-mode body .qwenpaw-modal-body .qwenpaw-form-item-label > label,
+html.dark-mode body .ant-drawer-body .ant-form-item-label > label,
+html.dark-mode body .qwenpaw-drawer-body .qwenpaw-form-item-label > label,
+html.dark-mode body .ant-popconfirm-title,
+html.dark-mode body .qwenpaw-popconfirm-title,
+html.dark-mode body .ant-popconfirm-description,
+html.dark-mode body .qwenpaw-popconfirm-description {
+  color: var(--mp-text-secondary) !important;
+}
+
+html.dark-mode body .ant-tag-error,
+html.dark-mode body .qwenpaw-tag-error {
+  color: #fca5a5 !important;
+  background: color-mix(
+    in srgb,
+    var(--mp-danger) 14%,
+    var(--mp-surface)
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--mp-danger) 38%,
+    var(--mp-border)
+  ) !important;
+}
+
+html.dark-mode body .qwenpaw-spark-tag-mauve {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface-muted) !important;
+  border-color: var(--mp-border-strong) !important;
+}
+
+html.dark-mode body [class*="breadcrumbParent__"],
+html.dark-mode body [class*="breadcrumbSeparator__"] {
+  color: var(--mp-text-tertiary) !important;
+}
+
+html.dark-mode body [class*="breadcrumbCurrent__"] {
+  color: var(--mp-text) !important;
+}
+
+html.dark-mode body [class*="loadingText__"],
+html.dark-mode body [class*="noSearchResults__"],
+html.dark-mode body [class*="tagSelectEmpty__"],
+html.dark-mode body [class*="cardDescription__"],
+html.dark-mode body [class*="availableItemAction__"] {
+  color: var(--mp-text-secondary) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

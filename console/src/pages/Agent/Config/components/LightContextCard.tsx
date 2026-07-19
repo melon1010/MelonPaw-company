@@ -1,11 +1,4 @@
-import {
-  Form,
-  Card,
-  Switch,
-  Input,
-  Collapse,
-  Select,
-} from "@agentscope-ai/design";
+import { Form, Card, Switch, Input, Collapse, Select } from "@agentscope-ai/design";
 import { useTranslation } from "react-i18next";
 import { SliderWithValue } from "./SliderWithValue";
 import styles from "../index.module.less";
@@ -40,14 +33,6 @@ export function LightContextCard({ maxInputLength }: LightContextCardProps) {
       className={styles.formCard}
       title={t("agentConfig.lightContextTitle")}
     >
-      <Form.Item
-        label={t("agentConfig.dialogPath")}
-        name={["light_context_config", "dialog_path"]}
-        tooltip={t("agentConfig.dialogPathTooltip")}
-      >
-        <Input placeholder={t("agentConfig.dialogPathPlaceholder")} />
-      </Form.Item>
-
       <Form.Item
         label={t("agentConfig.tokenCountEstimateDivisor")}
         name={["light_context_config", "token_count_estimate_divisor"]}
@@ -192,31 +177,6 @@ export function LightContextCard({ maxInputLength }: LightContextCardProps) {
                 </Form.Item>
 
                 <Form.Item
-                  label={t("agentConfig.toolResultCompactRecentN")}
-                  name={[
-                    "light_context_config",
-                    "tool_result_pruning_config",
-                    "pruning_recent_n",
-                  ]}
-                  rules={[
-                    {
-                      required: true,
-                      message: t(
-                        "agentConfig.toolResultCompactRecentNRequired",
-                      ),
-                    },
-                  ]}
-                  tooltip={t("agentConfig.toolResultCompactRecentNTooltip")}
-                >
-                  <SliderWithValue
-                    min={1}
-                    max={10}
-                    step={1}
-                    marks={{ 1: "1", 5: "5", 10: "10" }}
-                  />
-                </Form.Item>
-
-                <Form.Item
                   label={t("agentConfig.toolResultCompactOldThreshold")}
                   name={[
                     "light_context_config",
@@ -239,78 +199,6 @@ export function LightContextCard({ maxInputLength }: LightContextCardProps) {
                     placeholder={t(
                       "agentConfig.toolResultCompactOldThresholdPlaceholder",
                     )}
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  label={t("agentConfig.toolResultCompactRecentThreshold")}
-                  name={[
-                    "light_context_config",
-                    "tool_result_pruning_config",
-                    "pruning_recent_msg_max_bytes",
-                  ]}
-                  rules={[
-                    {
-                      required: true,
-                      message: t(
-                        "agentConfig.toolResultCompactRecentThresholdRequired",
-                      ),
-                    },
-                  ]}
-                  tooltip={t(
-                    "agentConfig.toolResultCompactRecentThresholdTooltip",
-                  )}
-                >
-                  <Input
-                    placeholder={t(
-                      "agentConfig.toolResultCompactRecentThresholdPlaceholder",
-                    )}
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  label={t("agentConfig.toolResultCompactRetentionDays")}
-                  name={[
-                    "light_context_config",
-                    "tool_result_pruning_config",
-                    "offload_retention_days",
-                  ]}
-                  rules={[
-                    {
-                      required: true,
-                      message: t(
-                        "agentConfig.toolResultCompactRetentionDaysRequired",
-                      ),
-                    },
-                  ]}
-                  tooltip={t(
-                    "agentConfig.toolResultCompactRetentionDaysTooltip",
-                  )}
-                >
-                  <SliderWithValue
-                    min={1}
-                    max={10}
-                    step={1}
-                    marks={{ 1: "1", 5: "5", 10: "10" }}
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  label={t("agentConfig.exemptFileExtensions")}
-                  name={[
-                    "light_context_config",
-                    "tool_result_pruning_config",
-                    "exempt_file_extensions",
-                  ]}
-                  tooltip={t("agentConfig.exemptFileExtensionsTooltip")}
-                >
-                  <Select
-                    mode="tags"
-                    placeholder={t(
-                      "agentConfig.exemptFileExtensionsPlaceholder",
-                    )}
-                    tokenSeparators={[",", " "]}
-                    style={{ width: "100%" }}
                   />
                 </Form.Item>
 

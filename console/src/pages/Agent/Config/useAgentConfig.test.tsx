@@ -23,7 +23,6 @@ const hoisted = vi.hoisted(() => {
     updateAgentLanguage: vi.fn(),
     updateUserTimezone: vi.fn(),
   };
-  const modalConfirmMock = vi.fn();
   // A stable translation function so useCallback dependencies don't change on
   // every render and trigger an infinite fetchConfig loop via useEffect.
   const stableT = (k: string) => k;
@@ -33,7 +32,6 @@ const hoisted = vi.hoisted(() => {
     mockFormInstance,
     messageMock,
     apiMocks,
-    modalConfirmMock,
     stableT,
   };
 });
@@ -42,17 +40,11 @@ vi.mock("@agentscope-ai/design", async () => {
   const React = await import("react");
   const passThrough = ({ children, ...props }: Record<string, unknown>) =>
     React.createElement("div", props, children as React.ReactNode);
-  const Modal = Object.assign(passThrough, {
-    confirm: hoisted.modalConfirmMock,
-    info: vi.fn(),
-    warning: vi.fn(),
-    error: vi.fn(),
-  });
   const Form = Object.assign(passThrough, {
     Item: passThrough,
     useForm: () => [hoisted.mockFormInstance],
   });
-  return { __esModule: true, Modal, Form };
+  return { __esModule: true, Form };
 });
 
 vi.mock("../../../api", () => ({
@@ -79,7 +71,6 @@ const {
   mockValidateFields,
   apiMocks,
   messageMock,
-  modalConfirmMock,
 } = hoisted;
 
 type Config = AgentsRunningConfig;
@@ -111,7 +102,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     light_context_config: {
       max_input_length: 1000,
     } as unknown as Config["light_context_config"],
-    memory_manager_backend: "remelight",
+    memory_manager_backend: "file",
     adbpg_memory_config: null,
     reme_light_memory_config:
       {} as unknown as Config["reme_light_memory_config"],
@@ -138,7 +129,6 @@ describe("useAgentConfig", () => {
     apiMocks.updateUserTimezone.mockReset();
     messageMock.success.mockReset();
     messageMock.error.mockReset();
-    modalConfirmMock.mockReset();
 
     apiMocks.getAgentRunningConfig.mockResolvedValue(makeConfig());
     apiMocks.getAgentLanguage.mockResolvedValue({ language: "en" });
@@ -158,39 +148,11 @@ describe("useAgentConfig", () => {
     });
   });
 
-  it("fetchConfig sets language from api.getAgentLanguage", async () => {
-    apiMocks.getAgentLanguage.mockResolvedValue({ language: "fr" });
-    const { result } = renderConfigHook();
-    await waitFor(() => {
-      expect(result.current.language).toBe("fr");
-    });
-  });
-
   it("fetchConfig sets timezone; falls back to UTC when response is empty", async () => {
     apiMocks.getUserTimezone.mockResolvedValue({ timezone: "" });
     const { result } = renderConfigHook();
     await waitFor(() => {
       expect(result.current.timezone).toBe("UTC");
-    });
-  });
-
-  it("fetchConfig uses fixed risk-based approval when the backend value is missing", async () => {
-    apiMocks.getAgentRunningConfig.mockResolvedValue(
-      makeConfig({ approval_level: undefined }),
-    );
-    const { result } = renderConfigHook();
-    await waitFor(() => {
-      expect(result.current.approvalLevel).toBe("RISK_BASED");
-    });
-  });
-
-  it("fetchConfig normalizes a legacy backend approval mode to risk-based", async () => {
-    apiMocks.getAgentRunningConfig.mockResolvedValue(
-      makeConfig({ approval_level: "strict" }),
-    );
-    const { result } = renderConfigHook();
-    await waitFor(() => {
-      expect(result.current.approvalLevel).toBe("RISK_BASED");
     });
   });
 
@@ -217,7 +179,7 @@ describe("useAgentConfig", () => {
     expect(callArg.context_manager_backend).toBe("light");
   });
 
-  it("falls back memory_manager_backend to 'remelight' when not in MAPPINGS", async () => {
+  it("falls back memory_manager_backend to 'file' when unsupported", async () => {
     apiMocks.getAgentRunningConfig.mockResolvedValue(
       makeConfig({ memory_manager_backend: "nope" }),
     );
@@ -228,7 +190,7 @@ describe("useAgentConfig", () => {
     const callArg = mockSetFieldsValue.mock.calls[0][0] as {
       memory_manager_backend: string;
     };
-    expect(callArg.memory_manager_backend).toBe("remelight");
+    expect(callArg.memory_manager_backend).toBe("file");
   });
 
   it("handleSave calls updateAgentRunningConfig and message.success on success", async () => {
@@ -246,7 +208,7 @@ describe("useAgentConfig", () => {
     expect(messageMock.success).toHaveBeenCalledWith("agentConfig.saveSuccess");
   });
 
-  it("handleSave persists configToSave containing approval_level", async () => {
+  it("handleSave excludes legacy memory and approval fields", async () => {
     apiMocks.updateAgentRunningConfig.mockResolvedValue(makeConfig());
     const { result } = renderConfigHook();
     await waitFor(() => {
@@ -258,7 +220,9 @@ describe("useAgentConfig", () => {
     });
 
     const saved = apiMocks.updateAgentRunningConfig.mock.calls[0][0] as Config;
-    expect(saved.approval_level).toBe("RISK_BASED");
+    expect(saved.approval_level).toBeUndefined();
+    expect(saved.reme_light_memory_config).toBeUndefined();
+    expect(saved.adbpg_memory_config).toBeUndefined();
   });
 
   it("handleSave calls message.error when update fails", async () => {
@@ -311,18 +275,4 @@ describe("useAgentConfig", () => {
     expect(messageMock.success).not.toHaveBeenCalled();
   });
 
-  it("handleLanguageChange opens Modal.confirm when value differs", async () => {
-    const { result } = renderConfigHook();
-    await waitFor(() => {
-      expect(result.current.language).toBe("en");
-    });
-
-    act(() => {
-      result.current.handleLanguageChange("zh");
-    });
-
-    expect(modalConfirmMock).toHaveBeenCalledTimes(1);
-    const options = modalConfirmMock.mock.calls[0][0] as { title: string };
-    expect(options.title).toBe("agentConfig.languageConfirmTitle");
-  });
 });

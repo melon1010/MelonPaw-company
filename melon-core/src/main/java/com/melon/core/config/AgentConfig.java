@@ -43,7 +43,8 @@ public class AgentConfig {
     private LightContextConfig lightContextConfig;
 
     @JsonProperty("memory_manager_backend")
-    private String memoryManagerBackend = "remelight";
+    /** Supported Java memory modes: file-backed Harness memory or none. */
+    private String memoryManagerBackend = "file";
 
     @JsonProperty("plan_mode")
     private PlanModeConfig planMode = new PlanModeConfig();

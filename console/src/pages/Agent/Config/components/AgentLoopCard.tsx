@@ -189,7 +189,7 @@ function DoomLoopSection() {
         valuePropName="checked"
         tooltip={t(
           "agentConfig.doomLoopEnabledTooltip",
-          "Automatically intervene when the agent gets stuck repeating the same actions",
+          "Automatically intervene when the agent gets stuck repeating similar outputs",
         )}
       >
         <Switch />
@@ -277,7 +277,7 @@ function DoomLoopSection() {
                   label={t("agentConfig.doomLoopWindowSize", "Detection Range")}
                   tooltip={t(
                     "agentConfig.doomLoopWindowSizeTooltip",
-                    "How many recent actions to check for repetition",
+                    "How many recent outputs to check for repetition",
                   )}
                   className={styles.reactAgentField}
                 >
@@ -292,7 +292,7 @@ function DoomLoopSection() {
                   )}
                   tooltip={t(
                     "agentConfig.doomLoopSimilarityTooltip",
-                    "How similar actions must be to count as repetition (lower = stricter)",
+                    "How similar outputs must be to count as repetition (lower = stricter)",
                   )}
                   className={styles.reactAgentField}
                 >
@@ -499,11 +499,11 @@ function RubricSection() {
               name={["loop", "rubric", "max_interventions"]}
               label={t(
                 "agentConfig.rubricMaxInterventions",
-                "Max Interventions per Turn",
+                "Max Continuation Rounds",
               )}
               tooltip={t(
                 "agentConfig.rubricMaxInterventionsTooltip",
-                "Maximum times to re-prompt per turn. Prevents infinite re-prompting if the LLM keeps producing text-only responses.",
+                "Maximum number of non-complete rubric continuations before the loop stops.",
               )}
             >
               <InputNumber min={1} max={10} style={{ width: 200 }} />

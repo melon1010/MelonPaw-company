@@ -21,12 +21,12 @@ export function ToolExecutionLevelCard() {
       <Alert
         type="success"
         message={t(
-          "agentConfig.toolExecutionLevel.riskBasedTitle",
-          "Risk-based execution is active",
+          "agentConfig.toolExecutionLevel.runtimeTitle",
+          "Runtime risk policy is active",
         )}
         description={t(
-          "agentConfig.toolExecutionLevel.riskBasedDesc",
-          "System tools run automatically. Approval is requested only when parameters indicate a destructive action, protected data access, or an external side effect.",
+          "agentConfig.toolExecutionLevel.runtimeDesc",
+          "The runtime classifies each tool call. Safe workspace operations run automatically; destructive actions, protected data access, and external side effects can require approval.",
         )}
         style={{ marginBottom: 24 }}
         showIcon
@@ -38,7 +38,7 @@ export function ToolExecutionLevelCard() {
           <Paragraph type="secondary" style={{ margin: "4px 0 0", fontSize: 13 }}>
             {t(
               "agentConfig.toolExecutionLevel.defaultToolsDesc",
-              "Reading, searching, workspace editing, safe shell commands, skills, and subagents do not require approval.",
+              "Reading, searching, workspace editing, safe shell commands, skills, and restricted subagents are handled by the runtime policy.",
             )}
           </Paragraph>
         </div>

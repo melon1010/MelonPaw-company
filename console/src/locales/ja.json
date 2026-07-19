@@ -1763,6 +1763,8 @@
   "chat": {
     "modelSelectTooltip": "モデルを選択",
     "newChatTooltip": "新しいチャット",
+    "shareConversationTooltip": "会話を共有",
+    "conversationLinkCopied": "会話リンクをコピーしました",
     "recentConversations": "最近のチャット",
     "searchTooltip": "すべてのチャットを検索",
     "chatHistoryTooltip": "チャット履歴",
@@ -2079,6 +2081,8 @@
     "title": "MelonPaw-Company にログイン",
     "registerTitle": "アカウント作成",
     "firstUserHint": "管理者アカウントを作成して始めましょう",
+    "usernameLabel": "ユーザー名",
+    "passwordLabel": "パスワード",
     "usernamePlaceholder": "ユーザー名",
     "passwordPlaceholder": "パスワード",
     "usernameRequired": "ユーザー名を入力してください",

@@ -12,12 +12,6 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../pages/Agent/Config/components/LightContextCard", () => ({
   LightContextCard: () => null,
 }));
-vi.mock("../pages/Agent/Config/components/ReMeLightMemoryCard", () => ({
-  ReMeLightMemoryCard: () => null,
-}));
-vi.mock("../pages/Agent/Config/components/ADBPGConfigCard", () => ({
-  ADBPGConfigCard: () => null,
-}));
 
 import {
   CONTEXT_MANAGER_BACKEND_MAPPINGS,
@@ -46,9 +40,8 @@ describe("CONTEXT_MANAGER_BACKEND_MAPPINGS", () => {
 });
 
 describe("MEMORY_MANAGER_BACKEND_MAPPINGS", () => {
-  it("has expected keys", () => {
-    expect(Object.keys(MEMORY_MANAGER_BACKEND_MAPPINGS)).toContain("remelight");
-    expect(Object.keys(MEMORY_MANAGER_BACKEND_MAPPINGS)).toContain("adbpg");
+  it("does not expose unsupported memory configuration tabs", () => {
+    expect(Object.keys(MEMORY_MANAGER_BACKEND_MAPPINGS)).toEqual([]);
   });
 
   it("each mapping has configField, label, and tabKey", () => {
@@ -76,10 +69,11 @@ describe("CONTEXT_MANAGER_BACKEND_OPTIONS", () => {
 });
 
 describe("MEMORY_MANAGER_BACKEND_OPTIONS", () => {
-  it("includes all mappings plus the 'none' (disabled) option", () => {
-    expect(MEMORY_MANAGER_BACKEND_OPTIONS.length).toBe(
-      Object.keys(MEMORY_MANAGER_BACKEND_MAPPINGS).length + 1,
-    );
+  it("contains only implemented Java runtime modes", () => {
+    expect(MEMORY_MANAGER_BACKEND_OPTIONS.map((option) => option.value)).toEqual([
+      "file",
+      "none",
+    ]);
   });
 
   it("contains the 'none' disabled option", () => {

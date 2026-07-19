@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "@/test/common_setup";
 
 // Mock react-window to avoid import errors in mocked ChatSessionDrawer
@@ -51,5 +52,17 @@ describe("ChatActionGroup", () => {
     expect(
       document.querySelector('[data-icon="SparkNewChatFill"]'),
     ).toBeInTheDocument();
+  });
+
+  it("runs the share action when a conversation can be shared", () => {
+    const onShare = vi.fn();
+    renderWithProviders(<ChatActionGroup onShare={onShare} />);
+
+    const shareButton = document
+      .querySelector('[data-icon="share-alt"]')
+      ?.closest("button");
+    expect(shareButton).not.toBeNull();
+    fireEvent.click(shareButton!);
+    expect(onShare).toHaveBeenCalledTimes(1);
   });
 });

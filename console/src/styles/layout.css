@@ -264,7 +264,7 @@ html.dark-mode .ant-input-number-disabled .ant-input-number-input {
 
 html.dark-mode .qwenpaw-input::placeholder,
 html.dark-mode .ant-input::placeholder {
-  color: rgba(255, 255, 255, 0.25) !important;
+  color: var(--mp-text-tertiary) !important;
 }
 
 html.dark-mode .qwenpaw-input-affix-wrapper,
@@ -283,7 +283,7 @@ html.dark-mode .ant-select-selector {
 
 html.dark-mode .qwenpaw-select-selection-placeholder,
 html.dark-mode .ant-select-selection-placeholder {
-  color: rgba(255, 255, 255, 0.25) !important;
+  color: var(--mp-text-tertiary) !important;
 }
 
 html.dark-mode .qwenpaw-select-arrow,
@@ -749,7 +749,7 @@ html.dark-mode [class*="chat-anywhere-footer"] {
 /* Chat input placeholder text in dark mode */
 html.dark-mode .qwenpaw-sender textarea::placeholder,
 html.dark-mode .qwenpaw-sender input::placeholder {
-  color: rgba(255, 255, 255, 0.35) !important;
+  color: var(--mp-text-tertiary) !important;
 }
 
 /* Chat input text color */

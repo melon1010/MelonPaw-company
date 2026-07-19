@@ -1,10 +1,8 @@
 import {
   Form,
-  Input,
   InputNumber,
   Select,
   Card,
-  Alert,
   Switch,
 } from "@agentscope-ai/design";
 import { useTranslation } from "react-i18next";
@@ -15,26 +13,13 @@ import {
 } from "../../../../constants/backendMappings";
 import styles from "../index.module.less";
 
-const LANGUAGE_OPTIONS = [
-  { value: "zh", label: "中文" },
-  { value: "en", label: "English" },
-  { value: "id", label: "Bahasa Indonesia" },
-  { value: "ru", label: "Русский" },
-];
-
 interface ReactAgentCardProps {
-  language: string;
-  savingLang: boolean;
-  onLanguageChange: (value: string) => void;
   timezone: string;
   savingTimezone: boolean;
   onTimezoneChange: (value: string) => void;
 }
 
 export function ReactAgentCard({
-  language,
-  savingLang,
-  onLanguageChange,
   timezone,
   savingTimezone,
   onTimezoneChange,
@@ -44,21 +29,6 @@ export function ReactAgentCard({
   return (
     <Card className={styles.formCard} title={t("agentConfig.reactAgentTitle")}>
       <div className={styles.reactAgentRow}>
-        <Form.Item
-          label={t("agentConfig.language")}
-          tooltip={t("agentConfig.languageTooltip")}
-          className={styles.reactAgentField}
-        >
-          <Select
-            value={language}
-            options={LANGUAGE_OPTIONS}
-            onChange={onLanguageChange}
-            loading={savingLang}
-            disabled={savingLang}
-            style={{ width: "100%" }}
-          />
-        </Form.Item>
-
         <Form.Item
           label={t("agentConfig.timezone")}
           tooltip={t("agentConfig.timezoneTooltip")}
@@ -106,18 +76,6 @@ export function ReactAgentCard({
           />
         </Form.Item>
 
-        <Form.Item
-          label={t("agentConfig.shellCommandExecutable")}
-          name="shell_command_executable"
-          tooltip={t("agentConfig.shellCommandExecutableTooltip")}
-          className={styles.reactAgentField}
-        >
-          <Input
-            style={{ width: "100%" }}
-            placeholder={t("agentConfig.shellCommandExecutablePlaceholder")}
-            allowClear
-          />
-        </Form.Item>
       </div>
 
       <Form.Item
@@ -170,17 +128,17 @@ export function ReactAgentCard({
           className={styles.reactAgentField}
         >
           <Select
-            options={MEMORY_MANAGER_BACKEND_OPTIONS}
+            options={MEMORY_MANAGER_BACKEND_OPTIONS.map((option) => ({
+              ...option,
+              label:
+                option.value === "file"
+                  ? t("agentConfig.memoryFileBackend", "Built-in file memory")
+                  : t("agentConfig.memoryNoneBackend", "None (disabled)"),
+            }))}
             style={{ width: "100%" }}
           />
         </Form.Item>
       </div>
-      <Alert
-        type="warning"
-        showIcon
-        message={t("agentConfig.backendRestartWarning")}
-        style={{ marginBottom: 16 }}
-      />
     </Card>
   );
 }

@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 import java.util.UUID;
@@ -71,6 +72,7 @@ public class ConsoleCompatController {
     private final InboxStore inboxStore;
     private final EnterpriseAgentAccessService agentAccessService;
     private final EnterpriseTaskService taskService;
+    private final Map<String, Flux<ServerSentEvent<String>>> activeConsoleStreams = new ConcurrentHashMap<>();
 
     public ConsoleCompatController(AgentRunner agentRunner, ChatManager chatManager, ApprovalService approvalService,
                                    ConfigManager configManager, CommandDispatcher commandDispatcher,
@@ -99,10 +101,10 @@ public class ConsoleCompatController {
         String userId = principal.id();
         String sessionId = stringValue(body.get("session_id"), "default");
         String channel = stringValue(body.get("channel"), "console");
+        String streamKey = consoleStreamKey(agentId, userId, channel, sessionId);
         if (Boolean.TRUE.equals(body.get("reconnect"))) {
-            // The SDK reconnect hook only probes whether an SSE stream can be resumed.
-            // Runtime output is persisted through chat history, so it must not start a new turn.
-            return Flux.empty();
+            Flux<ServerSentEvent<String>> active = activeConsoleStreams.get(streamKey);
+            return active != null ? active : Flux.empty();
         }
         List<Map<String, Object>> frontendContext = frontendUserMessages(agentId, body.get("input"));
         String text = modelFacingText(frontendContext);
@@ -159,6 +161,7 @@ public class ConsoleCompatController {
                 : new UserMessage("__internal__", effectiveText));
         MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId, task.taskId(), task.runId());
         AtomicReference<Throwable> taskFailure = new AtomicReference<>();
+        AtomicReference<Flux<ServerSentEvent<String>>> detachedRef = new AtomicReference<>();
         Flux<io.agentscope.core.event.AgentEvent> agentEvents;
         if (loopCommand) {
             AgentRunner.LoopMode mode = command.getAction() == CommandHandler.CommandResult.Action.START_MISSION
@@ -172,7 +175,7 @@ public class ConsoleCompatController {
                     "STREAM", effectiveText, env, !effectiveText.equals(text)));
             agentEvents = agentRunner.stream(agentId, msgs, userId, sessionId, env);
         }
-        return agentEvents
+        Flux<ServerSentEvent<String>> execution = agentEvents
                 .doOnSubscribe(s -> log.info("Console chat started: agent={}, user={}, session={}, chat={}", agentId, userId, sessionId, chatId))
                 .flatMapIterable(envelope::translate)
                 .concatWith(Flux.defer(() -> Flux.fromIterable(envelope.finish())))
@@ -184,19 +187,41 @@ public class ConsoleCompatController {
                     return Flux.fromIterable(errorEvents);
                 })
                 .doFinally(signal -> {
-                    chatManager.setStatus(agentId, chatId, "idle");
-                    chatManager.saveSessionShadowFromStateStore(agentId, channel, userId, sessionId,
-                            sessionContext(frontendContext, envelope.outputStateMessagesSnapshot()), envelope.turnUsageSnapshot());
-                    if (signal == reactor.core.publisher.SignalType.CANCEL) {
-                        taskService.cancel(task, "client disconnected or cancelled");
-                    } else if (taskFailure.get() != null) {
-                        taskService.fail(task, taskFailure.get());
-                    } else {
-                        taskService.succeed(task, envelope.visibleAssistantText());
+                    try {
+                        chatManager.setStatus(agentId, chatId, "idle");
+                        chatManager.saveSessionShadowFromStateStore(agentId, channel, userId, sessionId,
+                                sessionContext(frontendContext, envelope.outputStateMessagesSnapshot()), envelope.turnUsageSnapshot());
+                        if (signal == reactor.core.publisher.SignalType.CANCEL) {
+                            // The HTTP subscriber may disappear when the user changes menu.
+                            // Only an explicit stop request cancels this detached execution.
+                            taskService.cancel(task, "execution cancelled");
+                        } else if (taskFailure.get() != null) {
+                            taskService.fail(task, taskFailure.get());
+                        } else {
+                            taskService.succeed(task, envelope.visibleAssistantText());
+                        }
+                    } finally {
+                        Flux<ServerSentEvent<String>> detached = detachedRef.get();
+                        if (detached != null) activeConsoleStreams.remove(streamKey, detached);
+                        log.info("Console chat finished: agent={}, session={}, chat={}, task={}, signal={}",
+                                agentId, sessionId, chatId, task.taskId(), signal);
                     }
-                    log.info("Console chat finished: agent={}, session={}, chat={}, task={}, signal={}",
-                            agentId, sessionId, chatId, task.taskId(), signal);
                 });
+
+        // Keep AgentScope subscribed after the browser leaves the page. The SSE
+        // response is only a view of this execution; disconnecting that view must
+        // not cancel the Agent or an in-flight shell process.
+        Flux<ServerSentEvent<String>> detached = execution.cache();
+        detachedRef.set(detached);
+        activeConsoleStreams.put(streamKey, detached);
+        detached.subscribe(ignored -> { }, error -> log.warn(
+                "Detached console chat stream ended unexpectedly: agent={}, session={}, task={}",
+                agentId, sessionId, task.taskId(), error));
+        return detached;
+    }
+
+    private String consoleStreamKey(String agentId, String userId, String channel, String sessionId) {
+        return agentId + "\u0000" + userId + "\u0000" + channel + "\u0000" + sessionId;
     }
 
     @PostMapping("/chat/stop")

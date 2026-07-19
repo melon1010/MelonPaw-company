@@ -41,6 +41,7 @@ import {
   wrapChatResponseUsageStream,
 } from "./turnUsage";
 import ChatHomeWelcome from "./components/ChatHomeWelcome";
+import ChatActionGroup from "./components/ChatActionGroup";
 import ChatHeaderTitle from "./components/ChatHeaderTitle";
 import ChatSearchPanel from "./components/ChatSearchPanel";
 import ChatSessionInitializer from "./components/ChatSessionInitializer";
@@ -1305,6 +1306,31 @@ export default function ChatPage() {
   chatLoadingRef.current = chatLoading;
   const prevChatLoadingRef = useRef<boolean | string>(false);
   const { message } = useAppMessage();
+
+  const handleShareConversation = useCallback(async () => {
+    if (!chatId) return;
+
+    const url = new URL(buildSessionPath(chatId), window.location.origin).href;
+    const shareData = { title: document.title, url };
+
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share(shareData);
+        return;
+      }
+      await copyText(url);
+      message.success(t("chat.conversationLinkCopied"));
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+
+      try {
+        await copyText(url);
+        message.success(t("chat.conversationLinkCopied"));
+      } catch {
+        message.error(t("common.copyFailed"));
+      }
+    }
+  }, [chatId, message, t]);
   const { approvals, setApprovals } = useApprovalContext();
   const [approvalRequests, setApprovalRequests] = useState<
     Map<string, ApprovalMessageData>
@@ -2747,20 +2773,29 @@ export default function ChatPage() {
         },
         leftHeader: mergedLeftHeader,
         rightHeader: (
-          <>
+          <div className={styles.chatHeaderContent}>
             <ChatSessionInitializer />
             <RuntimeLoadingBridge
               bridgeRef={runtimeLoadingBridgeRef}
               onLoadingChange={setChatLoading}
             />
-            {chatId ? (
-              <span className={styles.chatConversationTitle}>
-                <ChatHeaderTitle />
-              </span>
-            ) : null}
-            {canManageModels && <ModelSelector />}
-            {pluginRightHeader}
-          </>
+            <div className={styles.chatHeaderLeading}>
+              {chatId ? (
+                <span className={styles.chatConversationTitle}>
+                  <ChatHeaderTitle />
+                </span>
+              ) : null}
+              {canManageModels && <ModelSelector />}
+            </div>
+            <div className={styles.chatHeaderActions}>
+              {pluginRightHeader}
+              <ChatActionGroup
+                isWideMode={isWideMode}
+                onShare={chatId ? handleShareConversation : undefined}
+                onToggleWideMode={toggleWideMode}
+              />
+            </div>
+          </div>
         ),
       },
       welcome: {
@@ -3037,6 +3072,7 @@ export default function ChatPage() {
     whisperChecked,
     whisperEnabled,
     handleWhisperTranscription,
+    handleShareConversation,
     isWideMode,
     toggleWideMode,
     messageQueue,

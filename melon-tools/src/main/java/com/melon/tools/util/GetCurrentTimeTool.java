@@ -18,6 +18,13 @@ public class GetCurrentTimeTool {
 
     private ZoneId userTimezone = ZoneId.systemDefault();
 
+    public GetCurrentTimeTool() {
+    }
+
+    public GetCurrentTimeTool(String timezone) {
+        setUserTimezone(timezone);
+    }
+
     @Tool(name = "get_current_time", description = "Get the current date and time in the user's timezone", readOnly = true, concurrencySafe = true)
     public String getCurrentTime() {
         ZonedDateTime now = ZonedDateTime.now(userTimezone);
@@ -25,6 +32,11 @@ public class GetCurrentTimeTool {
     }
 
     public void setUserTimezone(String timezone) {
-        this.userTimezone = ZoneId.of(timezone);
+        if (timezone == null || timezone.isBlank()) return;
+        try {
+            this.userTimezone = ZoneId.of(timezone);
+        } catch (Exception ignored) {
+            // Keep the last valid timezone when a user-provided value is invalid.
+        }
     }
 }

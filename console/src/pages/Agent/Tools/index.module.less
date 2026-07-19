@@ -353,7 +353,7 @@
   }
 
   .panelTitle {
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--mp-text-secondary);
   }
 
   .panelDotGray {
@@ -428,7 +428,11 @@
       }
 
       &.qwenpaw-switch-disabled {
-        background-color: color-mix(in srgb, var(--mp-primary) 35%, transparent);
+        background-color: color-mix(
+          in srgb,
+          var(--mp-primary) 35%,
+          transparent
+        );
         opacity: 0.65;
 
         :global(.qwenpaw-switch-inner) {

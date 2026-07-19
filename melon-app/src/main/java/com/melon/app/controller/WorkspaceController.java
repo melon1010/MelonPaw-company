@@ -228,14 +228,11 @@ public class WorkspaceController {
             }
             Map<String, Object> result = new LinkedHashMap<>();
             if (agentConfig.getFrontendRunningConfig() != null) {
-                result.putAll(agentConfig.getFrontendRunningConfig());
+                result.putAll(sanitizeFrontendRunningConfig(agentConfig.getFrontendRunningConfig()));
             }
             result.put("max_iters", agentConfig.getRunning().getMaxIters());
             result.put("auto_continue_on_text_only", agentConfig.getRunning().isAutoContinueOnTextOnly());
             result.put("shell_command_timeout", agentConfig.getRunning().getShellCommandTimeout());
-            result.put("shell_command_executable", agentConfig.getRunning().getShellCommandExecutable() != null
-                    ? agentConfig.getRunning().getShellCommandExecutable()
-                    : "");
             result.put("llm_retry_enabled", agentConfig.getRunning().isLlmRetryEnabled());
             result.put("llm_max_retries", agentConfig.getRunning().getLlmMaxRetries());
             result.put("llm_backoff_base", agentConfig.getRunning().getLlmBackoffBase());
@@ -245,12 +242,11 @@ public class WorkspaceController {
             result.put("llm_rate_limit_pause", agentConfig.getRunning().getLlmRateLimitPause());
             result.put("llm_rate_limit_jitter", agentConfig.getRunning().getLlmRateLimitJitter());
             result.put("llm_acquire_timeout", agentConfig.getRunning().getLlmAcquireTimeout());
-            result.put("history_max_length", agentConfig.getRunning().getHistoryMaxLength());
             result.putIfAbsent("context_manager_backend", "light");
-            result.put("memory_manager_backend", agentConfig.getMemoryManagerBackend());
+            result.putIfAbsent("loop", defaultLoopConfig());
+            result.put("memory_manager_backend", normalizeMemoryBackend(agentConfig.getMemoryManagerBackend()));
             result.put("approval_level", agentConfig.getApproval().getLevel());
             result.put("light_context_config", lightContextPayload(agentConfig));
-            result.putIfAbsent("reme_light_memory_config", defaultReMeLightMemoryConfig());
             result.putIfAbsent("auto_title_config", Map.of("enabled", true, "timeout_seconds", 30));
             return ResponseEntity.ok(result);
         });
@@ -266,8 +262,8 @@ public class WorkspaceController {
                 return ResponseEntity.notFound().build();
             }
             if (body != null) {
-                agentConfig.setFrontendRunningConfig(new LinkedHashMap<>(body));
                 applyRunningConfig(agentConfig, body);
+                agentConfig.setFrontendRunningConfig(sanitizeFrontendRunningConfig(body));
             }
             String approvalLevel = body != null && body.get("approval_level") != null
                     ? String.valueOf(body.get("approval_level"))
@@ -299,10 +295,6 @@ public class WorkspaceController {
         if (body.get("shell_command_timeout") != null) {
             agentConfig.getRunning().setShellCommandTimeout(numberValue(body.get("shell_command_timeout"), agentConfig.getRunning().getShellCommandTimeout()));
         }
-        if (body.get("shell_command_executable") != null) {
-            String executable = String.valueOf(body.get("shell_command_executable")).trim();
-            agentConfig.getRunning().setShellCommandExecutable(executable.isBlank() ? null : executable);
-        }
         if (body.get("llm_retry_enabled") != null) {
             agentConfig.getRunning().setLlmRetryEnabled(booleanValue(body.get("llm_retry_enabled"), agentConfig.getRunning().isLlmRetryEnabled()));
         }
@@ -330,12 +322,9 @@ public class WorkspaceController {
         if (body.get("llm_acquire_timeout") != null) {
             agentConfig.getRunning().setLlmAcquireTimeout(numberValue(body.get("llm_acquire_timeout"), agentConfig.getRunning().getLlmAcquireTimeout()));
         }
-        if (body.get("history_max_length") != null) {
-            agentConfig.getRunning().setHistoryMaxLength((int) numberValue(body.get("history_max_length"), agentConfig.getRunning().getHistoryMaxLength()));
-        }
         if (body.get("memory_manager_backend") != null) {
-            String backend = String.valueOf(body.get("memory_manager_backend")).trim();
-            agentConfig.setMemoryManagerBackend(backend.isBlank() ? "remelight" : backend);
+            agentConfig.setMemoryManagerBackend(normalizeMemoryBackend(
+                    String.valueOf(body.get("memory_manager_backend"))));
         }
         if (body.get("light_context_config") instanceof Map<?, ?> lightRaw) {
             Map<String, Object> light = toStringMap(lightRaw);
@@ -366,7 +355,18 @@ public class WorkspaceController {
                 ? agentConfig.getLightContextConfig()
                 : new LightContextConfig();
         normalizeLightContext(agentConfig, light);
-        return JsonUtils.getMapper().convertValue(light, new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() {});
+        Map<String, Object> payload = JsonUtils.getMapper().convertValue(light,
+                new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() {});
+        payload.remove("dialog_path");
+        if (payload.get("tool_result_pruning_config") instanceof Map<?, ?> rawPruning) {
+            Map<String, Object> pruning = toStringMap(rawPruning);
+            pruning.remove("pruning_recent_n");
+            pruning.remove("pruning_recent_msg_max_bytes");
+            pruning.remove("offload_retention_days");
+            pruning.remove("exempt_file_extensions");
+            payload.put("tool_result_pruning_config", pruning);
+        }
+        return payload;
     }
 
     private void normalizeLightContext(AgentConfig agentConfig, LightContextConfig light) {
@@ -382,27 +382,86 @@ public class WorkspaceController {
         }
     }
 
-    private Map<String, Object> defaultReMeLightMemoryConfig() {
-        return Map.of(
-                "summarize_when_compact", false,
-                "auto_memory_interval", 0,
-                "dream_cron", "",
-                "auto_memory_search_config", Map.of("enabled", false, "max_results", 5, "persist_to_context", false),
-                "embedding_model_config", Map.of(
-                        "backend", "",
-                        "api_key", "",
-                        "base_url", "",
-                        "model_name", "",
-                        "dimensions", 1536,
-                        "enable_cache", true,
-                        "use_dimensions", false,
-                        "max_cache_size", 1000,
-                        "max_input_length", 8192,
-                        "max_batch_size", 32
-                ),
-                "rebuild_memory_index_on_start", false,
-                "enable_search_raw_log", false
-        );
+    private String normalizeMemoryBackend(String value) {
+        return "none".equalsIgnoreCase(value) ? "none" : "file";
+    }
+
+    private Map<String, Object> sanitizeFrontendRunningConfig(Map<String, Object> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (source == null) return result;
+        result.put("context_manager_backend", "light");
+        result.put("loop", sanitizeLoopConfig(source.get("loop")));
+        Object autoTitleRaw = source.get("auto_title_config");
+        boolean autoTitle = true;
+        if (autoTitleRaw instanceof Map<?, ?> autoTitleMap) {
+            autoTitle = booleanValue(autoTitleMap.get("enabled"), true);
+        }
+        result.put("auto_title_config", Map.of("enabled", autoTitle));
+        return result;
+    }
+
+    private Map<String, Object> defaultLoopConfig() {
+        return sanitizeLoopConfig(null);
+    }
+
+    private Map<String, Object> sanitizeLoopConfig(Object raw) {
+        Map<?, ?> loop = raw instanceof Map<?, ?> map ? map : Map.of();
+
+        Map<?, ?> iteration = loop.get("iteration") instanceof Map<?, ?> map ? map : Map.of();
+        Map<String, Object> safeIteration = new LinkedHashMap<>();
+        safeIteration.put("enabled", booleanValue(iteration.get("enabled"), true));
+        safeIteration.put("max_iterations", clampInt(iteration.get("max_iterations"), 6, 1, 500));
+
+        Map<?, ?> doom = loop.get("doom_loop") instanceof Map<?, ?> map ? map : Map.of();
+        Map<String, Object> safeDoom = new LinkedHashMap<>();
+        safeDoom.put("enabled", booleanValue(doom.get("enabled"), false));
+        safeDoom.put("window_size", clampInt(doom.get("window_size"), 6, 2, 20));
+        safeDoom.put("similarity_threshold", clampDouble(doom.get("similarity_threshold"), 0.9, 0, 1));
+        List<Map<String, Object>> stages = new ArrayList<>();
+        if (doom.get("stages") instanceof List<?> rawStages) {
+            for (Object item : rawStages.stream().limit(10).toList()) {
+                if (!(item instanceof Map<?, ?> stage)) continue;
+                String action = "stop".equals(String.valueOf(stage.get("action"))) ? "stop" : "modify_prompt";
+                Object promptValue = stage.containsKey("prompt") ? stage.get("prompt") : "";
+                stages.add(Map.of(
+                        "after", clampInt(stage.get("after"), 3, 1, 500),
+                        "action", action,
+                        "prompt", truncate(String.valueOf(promptValue), 2000)
+                ));
+            }
+        }
+        if (stages.isEmpty()) {
+            stages.add(Map.of("after", 3, "action", "modify_prompt", "prompt", "Try a different approach."));
+        }
+        safeDoom.put("stages", stages);
+
+        Map<?, ?> rubric = loop.get("rubric") instanceof Map<?, ?> map ? map : Map.of();
+        Map<String, Object> safeRubric = new LinkedHashMap<>();
+        safeRubric.put("enabled", booleanValue(rubric.get("enabled"), true));
+        Object rubricPrompt = rubric.containsKey("prompt") ? rubric.get("prompt") : "";
+        safeRubric.put("prompt", truncate(String.valueOf(rubricPrompt), 4000));
+        safeRubric.put("max_interventions", clampInt(rubric.get("max_interventions"), 3, 1, 10));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("iteration", safeIteration);
+        result.put("doom_loop", safeDoom);
+        result.put("rubric", safeRubric);
+        return result;
+    }
+
+    private int clampInt(Object value, int fallback, int min, int max) {
+        int parsed = (int) numberValue(value, fallback);
+        return Math.max(min, Math.min(max, parsed));
+    }
+
+    private double clampDouble(Object value, double fallback, double min, double max) {
+        double parsed = numberValue(value, fallback);
+        return Math.max(min, Math.min(max, parsed));
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null || "null".equals(value)) return "";
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 
     private double numberValue(Object value, double fallback) {

@@ -549,7 +549,7 @@
   }
 
   .infoText {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--mp-text-tertiary);
   }
 
   .divider {
@@ -577,15 +577,15 @@
   }
 
   .fileItemMeta {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--mp-text-tertiary);
   }
 
   .expandIcon {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--mp-text-tertiary);
   }
 
   .dragHandle {
-    color: rgba(255, 255, 255, 0.2);
+    color: var(--mp-text-tertiary);
 
     &:hover {
       color: var(--mp-primary);
@@ -595,7 +595,11 @@
   .dragging {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     border-color: var(--mp-primary) !important;
-    background-color: color-mix(in srgb, var(--mp-primary) 15%, transparent) !important;
+    background-color: color-mix(
+      in srgb,
+      var(--mp-primary) 15%,
+      transparent
+    ) !important;
   }
 
   /* Daily memory items */
@@ -623,11 +627,11 @@
   }
 
   .memoryInlineToggle {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--mp-text-tertiary);
   }
 
   .dailyMemoryMeta {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--mp-text-tertiary);
   }
 
   /* Editor area */
@@ -640,7 +644,7 @@
   }
 
   .filePath {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--mp-text-tertiary);
   }
 
   .markdownViewer {
@@ -682,11 +686,11 @@
   }
 
   .toggleLabel {
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--mp-text-secondary);
   }
 
   .emptyState {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--mp-text-tertiary);
   }
 
   .sectionTitle {
@@ -694,7 +698,7 @@
   }
 
   .attribution {
-    color: rgba(255, 255, 255, 0.2);
+    color: var(--mp-text-tertiary);
   }
 
   /* Textarea inside editor */

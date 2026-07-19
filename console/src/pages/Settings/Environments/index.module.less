@@ -124,7 +124,7 @@
 
 .toolbarCount {
   font-size: 13px;
-  color: #999;
+  color: var(--mp-text-tertiary);
   user-select: none;
 }
 
@@ -250,7 +250,7 @@
   padding-left: 12px;
 
   &::placeholder {
-    color: #bfbfbf;
+    color: var(--mp-text-tertiary);
   }
 }
 
@@ -264,7 +264,7 @@
     padding-left: 12px;
 
     &::placeholder {
-      color: #bfbfbf;
+      color: var(--mp-text-tertiary);
     }
   }
 }
@@ -361,7 +361,7 @@
   background: transparent;
   cursor: pointer;
   font-size: 14px;
-  color: #999;
+  color: var(--mp-text-tertiary);
 
   &:hover {
     color: var(--mp-primary);
@@ -384,7 +384,7 @@
   align-items: center;
   gap: 8px;
   padding: 48px 24px;
-  color: #bbb;
+  color: var(--mp-text-tertiary);
   font-size: 14px;
 }
 
@@ -442,7 +442,7 @@
   }
 
   .toolbarCount {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--mp-text-tertiary);
   }
 
   /* Env row */
@@ -470,7 +470,8 @@
 
     &:focus-within {
       border-color: var(--mp-primary);
-      box-shadow: 0 0 0 2px color-mix(in srgb, var(--mp-primary) 20%, transparent);
+      box-shadow: 0 0 0 2px
+        color-mix(in srgb, var(--mp-primary) 20%, transparent);
     }
   }
 
@@ -491,7 +492,7 @@
     color: rgba(255, 255, 255, 0.85);
 
     &::placeholder {
-      color: rgba(255, 255, 255, 0.2);
+      color: var(--mp-text-tertiary);
     }
 
     :global(.ant-input),
@@ -500,7 +501,7 @@
       background: transparent !important;
 
       &::placeholder {
-        color: rgba(255, 255, 255, 0.2) !important;
+        color: var(--mp-text-tertiary) !important;
       }
     }
   }
@@ -544,7 +545,7 @@
 
   .addBtn {
     border-color: rgba(255, 255, 255, 0.15);
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--mp-text-tertiary);
 
     &:hover {
       color: var(--mp-primary);
@@ -555,7 +556,7 @@
 
   /* Empty state */
   .emptyState {
-    color: rgba(255, 255, 255, 0.2);
+    color: var(--mp-text-tertiary);
   }
 
   /* Mobile overrides must beat the non-dark media-query rules */

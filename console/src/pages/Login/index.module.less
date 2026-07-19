@@ -1,90 +1,277 @@
 .page {
+  width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
-  place-items: center;
-  padding: 24px;
-  background: #f3f5f7;
-  color: #202326;
+  grid-template-columns: minmax(340px, 42%) minmax(0, 1fr);
+  overflow: hidden;
+  color: var(--mp-text);
+  background: var(--mp-canvas);
 }
 
-.pageDark {
-  background: #111416;
-  color: rgba(255, 255, 255, 0.88);
+.brandPanel {
+  position: relative;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(32px, 5vw, 72px);
+  overflow: hidden;
+  color: #f4f4f5;
+  background: #111315;
+  border-right: 1px solid #2a2d30;
 }
 
-.loginPanel {
-  width: min(420px, 100%);
-  padding: 32px;
-  background: #fff;
-  border: 1px solid #e2e6e9;
-  border-radius: 8px;
-  box-shadow: 0 16px 40px rgba(20, 27, 31, 0.08);
+.brandPanel::after {
+  content: "";
+  position: absolute;
+  right: clamp(32px, 5vw, 72px);
+  bottom: clamp(32px, 5vw, 72px);
+  width: min(180px, 34%);
+  height: 1px;
+  background: #3a3d40;
 }
 
-.pageDark .loginPanel {
-  background: #1b1f22;
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
-}
-
-.brand {
+.brandLockup {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 32px;
 }
 
 .brandMark {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 40px;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
   border-radius: 8px;
-  background: #1677ff;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
 }
 
-.brandName {
-  font-size: 16px;
-  line-height: 22px;
+.brandShortName {
+  font-size: 15px;
   font-weight: 650;
+  line-height: 22px;
 }
 
-.brandEdition {
+.brandStatement {
+  position: relative;
+  z-index: 1;
+  max-width: 520px;
+}
+
+.brandSignal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 24px;
+
+  span:first-child {
+    width: 54px;
+    height: 4px;
+    background: #2f6fed;
+  }
+
+  span:last-child {
+    width: 22px;
+    height: 4px;
+    background: #e76f51;
+  }
+}
+
+.brandStatement h1 {
+  max-width: 12ch;
+  margin: 0;
+  color: #f4f4f5;
+  font-size: 54px;
+  font-weight: 680;
+  line-height: 1.02;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.brandStatement p {
+  margin: 18px 0 0;
+  color: #a1a1aa;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.brandFoot {
+  position: relative;
+  z-index: 1;
+  color: #71717a;
   font-size: 12px;
   line-height: 18px;
-  color: #69737a;
+}
+
+.authPanel {
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(32px, 7vw, 96px);
+  background: var(--mp-canvas);
+}
+
+.authContent {
+  width: min(420px, 100%);
 }
 
 .heading {
-  margin-bottom: 24px;
+  margin-bottom: 34px;
 }
 
-.heading :global(.qwenpaw-typography) {
-  margin-top: 0;
-  margin-bottom: 6px;
+.heading h2 {
+  margin: 0;
+  color: var(--mp-text);
+  font-size: 32px;
+  font-weight: 680;
+  line-height: 40px;
+  letter-spacing: 0;
+}
+
+.heading p {
+  margin: 10px 0 0;
+  color: var(--mp-text-secondary);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.form :global(.ant-form-item),
+.form :global(.qwenpaw-form-item) {
+  margin-bottom: 22px;
+}
+
+.form :global(.ant-form-item-label),
+.form :global(.qwenpaw-form-item-label) {
+  padding-bottom: 7px;
+}
+
+.form :global(.ant-form-item-label > label),
+.form :global(.qwenpaw-form-item-label > label) {
+  height: auto;
+  color: var(--mp-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.form :global(.ant-input),
+.form :global(.qwenpaw-input),
+.form :global(.ant-input-affix-wrapper),
+.form :global(.qwenpaw-input-affix-wrapper) {
+  color: var(--mp-text);
+  background: var(--mp-control-bg);
+}
+
+.form :global(.ant-input-affix-wrapper),
+.form :global(.qwenpaw-input-affix-wrapper),
+.form > :global(.ant-form-item) :global(.ant-input),
+.form > :global(.qwenpaw-form-item) :global(.qwenpaw-input) {
+  min-height: 48px;
+  border-color: var(--mp-border-strong);
+  border-radius: 6px !important;
+  box-shadow: none !important;
+}
+
+.form :global(.ant-input-prefix),
+.form :global(.qwenpaw-input-prefix),
+.form :global(.ant-input-password-icon),
+.form :global(.qwenpaw-input-password-icon) {
+  color: var(--mp-text-tertiary);
+}
+
+.form :global(.ant-input-affix-wrapper-focused),
+.form :global(.qwenpaw-input-affix-wrapper-focused) {
+  border-color: var(--mp-text-secondary) !important;
+  box-shadow: 0 0 0 2px var(--mp-focus-ring) !important;
+}
+
+.submitItem {
+  margin-top: 30px;
+  margin-bottom: 0 !important;
 }
 
 .submit {
-  height: 44px;
-  border-radius: 6px;
-  font-weight: 600;
+  height: 48px;
+  border-radius: 6px !important;
+  font-weight: 650;
+  box-shadow: none !important;
+}
+
+.pageDark .authPanel {
+  background: #171717;
+}
+
+@media (max-width: 820px) {
+  .page {
+    grid-template-columns: 1fr;
+    grid-template-rows: 168px minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .brandPanel {
+    min-height: 168px;
+    padding: 24px;
+    border-right: 0;
+    border-bottom: 1px solid #2a2d30;
+  }
+
+  .brandPanel::after,
+  .brandFoot {
+    display: none;
+  }
+
+  .brandStatement {
+    align-self: flex-end;
+    text-align: right;
+  }
+
+  .brandSignal,
+  .brandStatement p {
+    display: none;
+  }
+
+  .brandStatement h1 {
+    max-width: none;
+    font-size: 26px;
+    line-height: 32px;
+  }
+
+  .authPanel {
+    place-items: start center;
+    padding: 48px 24px 56px;
+  }
 }
 
 @media (max-width: 520px) {
   .page {
-    padding: 0;
-    place-items: stretch;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
-  .loginPanel {
-    width: 100%;
-    min-height: 100vh;
-    border: 0;
-    border-radius: 0;
-    padding: 28px 20px;
+  .brandPanel {
+    min-height: auto;
+    padding: 18px 20px;
+  }
+
+  .brandStatement {
+    display: none;
+  }
+
+  .brandMark {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+
+  .authPanel {
+    padding: 38px 20px 44px;
+  }
+
+  .heading {
+    margin-bottom: 28px;
+  }
+
+  .heading h2 {
+    font-size: 28px;
+    line-height: 36px;
   }
 }

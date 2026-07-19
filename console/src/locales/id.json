@@ -103,6 +103,8 @@
     "title": "Masuk ke MelonPaw-Company",
     "registerTitle": "Buat Akun",
     "firstUserHint": "Buat akun admin untuk memulai",
+    "usernameLabel": "Nama pengguna",
+    "passwordLabel": "Kata sandi",
     "usernamePlaceholder": "Nama pengguna",
     "passwordPlaceholder": "Kata sandi",
     "usernameRequired": "Masukkan nama pengguna",
@@ -121,6 +123,8 @@
   "chat": {
     "modelSelectTooltip": "Pilih model",
     "newChatTooltip": "Chat baru",
+    "shareConversationTooltip": "Bagikan percakapan",
+    "conversationLinkCopied": "Tautan percakapan disalin",
     "recentConversations": "Percakapan terbaru",
     "searchTooltip": "Cari semua chat",
     "chatHistoryTooltip": "Riwayat chat",

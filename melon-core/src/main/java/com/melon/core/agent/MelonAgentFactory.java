@@ -2,6 +2,7 @@ package com.melon.core.agent;
 
 import io.agentscope.core.middleware.MiddlewareBase;
 import io.agentscope.core.model.ExecutionConfig;
+import io.agentscope.core.model.Model;
 import io.agentscope.core.permission.PermissionBehavior;
 import io.agentscope.core.permission.PermissionContextState;
 import io.agentscope.core.permission.PermissionMode;
@@ -30,6 +31,7 @@ import com.melon.core.config.LightContextConfig;
 import com.melon.core.config.ToolResultPruningConfig;
 import com.melon.core.middleware.*;
 import com.melon.core.provider.ProviderManager;
+import com.melon.core.provider.LlmRateLimitedModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -119,8 +121,14 @@ public class MelonAgentFactory {
         // 1. 构建中间件链 (对应 Python Mixin + hooks)
         List<MiddlewareBase> middlewares = buildMiddlewares(agentId, agentConfig);
 
+        // Create one model instance before middleware construction so compaction can use the
+        // provider-reported context window and all model calls share the Agent rate limiter.
+        Model primaryModel = providerManager != null
+                ? LlmRateLimitedModel.wrap(providerManager.createModel(activeModel), agentId, agentConfig.getRunning())
+                : null;
+
         // 2. 构建压缩配置
-        CompactionConfig compaction = buildCompactionConfig(agentConfig.getContextCompact());
+        CompactionConfig compaction = buildCompactionConfig(agentId, agentConfig, primaryModel);
         ToolResultEvictionConfig toolResultEviction = buildToolResultEvictionConfig(agentConfig);
 
         // 3. 构建记忆配置
@@ -149,7 +157,6 @@ public class MelonAgentFactory {
         builder
                 .toolsConfig(buildHarnessToolsConfig(agentConfig))
                 .middlewares(middlewares)
-                .compaction(compaction)
                 .toolResultEviction(toolResultEviction)
                 .memory(memoryConfig)
                 .stateStore(stateStore)
@@ -166,9 +173,17 @@ public class MelonAgentFactory {
                         .mainDir("skills")
                         .build())
                 .enableTaskList(agentConfig.getRunning().isTaskListEnabled());
+        if (agentConfig.getContextCompact().isEnabled()) {
+            builder.compaction(compaction);
+        } else {
+            builder.disableCompaction();
+        }
+        if ("none".equalsIgnoreCase(agentConfig.getMemoryManagerBackend())) {
+            builder.disableMemoryTools().disableMemoryHooks();
+        }
         addContextFiles(builder, agentConfig);
-        if (providerManager != null) {
-            builder.model(providerManager.createModel(activeModel));
+        if (primaryModel != null) {
+            builder.model(primaryModel);
         } else {
             builder.model(activeModel);
         }
@@ -238,7 +253,8 @@ public class MelonAgentFactory {
             throw new IllegalStateException("Unsupported execution sandbox mode '" + sandboxMode + "'");
         }
         if (providerManager != null) {
-            subagent.model(providerManager.createModel(config.getActiveModel()));
+            subagent.model(LlmRateLimitedModel.wrap(
+                    providerManager.createModel(config.getActiveModel()), parentAgentId, config.getRunning()));
         } else {
             subagent.model(config.getActiveModel());
         }
@@ -311,7 +327,8 @@ public class MelonAgentFactory {
         Toolkit toolkit = new Toolkit();
         registerIfEnabled(toolkit, config, "view_image", "com.melon.tools.media.ViewImageTool", workspaceDir);
         registerIfEnabled(toolkit, config, "view_video", "com.melon.tools.media.ViewVideoTool", workspaceDir);
-        registerIfEnabled(toolkit, config, "get_current_time", "com.melon.tools.util.GetCurrentTimeTool");
+        registerIfEnabled(toolkit, config, "get_current_time", "com.melon.tools.util.GetCurrentTimeTool",
+                config.getTimezone());
         registerIfEnabled(toolkit, config, "set_user_timezone", "com.melon.tools.util.SetUserTimezoneTool");
         registerIfEnabled(toolkit, config, "get_token_usage", "com.melon.tools.util.GetTokenUsageTool");
         registerIfEnabled(toolkit, config, "send_file_to_user", "com.melon.tools.util.SendFileToUserTool", workspaceDir.toString());
@@ -605,11 +622,11 @@ public class MelonAgentFactory {
     /**
      * 构建压缩配置. 对应 Python ContextCompactConfig.
      */
-    private CompactionConfig buildCompactionConfig(ContextCompactConfig py) {
-        if (!py.isEnabled()) {
-            return CompactionConfig.builder().triggerMessages(0).triggerTokens(0).build();
-        }
-        int maxInputTokens = 128 * 1024;
+    private CompactionConfig buildCompactionConfig(String agentId, AgentConfig config, Model model) {
+        ContextCompactConfig py = config.getContextCompact();
+        int maxInputTokens = model != null && model.getContextWindowSize() > 0
+                ? model.getContextWindowSize()
+                : 128 * 1024;
         int triggerTokens = (int) Math.max(1, Math.round(maxInputTokens * py.getCompactThresholdRatio()));
         int keepTokens = (int) Math.max(1, Math.round(maxInputTokens * py.getReserveThresholdRatio()));
         CompactionConfig.Builder builder = CompactionConfig.builder()
@@ -620,8 +637,18 @@ public class MelonAgentFactory {
                 .flushBeforeCompact(true)
                 .offloadBeforeCompact(true);
 
-        if (py.getSummaryModel() != null) {
-            builder.model(py.getSummaryModel());
+        if (py.getSummaryModel() != null && !py.getSummaryModel().isBlank()) {
+            if (providerManager != null) {
+                try {
+                    builder.model(LlmRateLimitedModel.wrap(
+                            providerManager.createModel(py.getSummaryModel()), agentId, config.getRunning()));
+                } catch (RuntimeException e) {
+                    log.warn("Unable to configure the dedicated compaction model {}; using the primary model",
+                            py.getSummaryModel(), e);
+                }
+            } else {
+                builder.model(py.getSummaryModel());
+            }
         }
 
         // 参数预截断 (Java 独有增强)
@@ -641,13 +668,12 @@ public class MelonAgentFactory {
 
         LightContextConfig light = config.getLightContextConfig();
         ToolResultPruningConfig pruning = light != null ? light.getToolResultPruningConfig() : null;
-        if (pruning != null && pruning.isEnabled()) {
-            int maxChars = firstPositive(pruning.getPruningOldMsgMaxBytes(), pruning.getPruningRecentMsgMaxBytes());
-            if (maxChars > 0) {
-                builder.maxResultChars(maxChars);
-                builder.previewChars(Math.min(ToolResultEvictionConfig.DEFAULT_PREVIEW_CHARS,
-                        Math.max(500, maxChars / 10)));
-            }
+        if (pruning == null || !pruning.isEnabled()) return null;
+        int maxChars = firstPositive(pruning.getPruningOldMsgMaxBytes(), pruning.getPruningRecentMsgMaxBytes());
+        if (maxChars > 0) {
+            builder.maxResultChars(maxChars);
+            builder.previewChars(Math.min(ToolResultEvictionConfig.DEFAULT_PREVIEW_CHARS,
+                    Math.max(500, maxChars / 10)));
         }
 
         Set<String> excluded = new LinkedHashSet<>(ToolResultEvictionConfig.DEFAULT_EXCLUDED_TOOLS);

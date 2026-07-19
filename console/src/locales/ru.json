@@ -1778,6 +1778,8 @@
   "chat": {
     "modelSelectTooltip": "Выбор модели",
     "newChatTooltip": "Новый чат",
+    "shareConversationTooltip": "Поделиться беседой",
+    "conversationLinkCopied": "Ссылка на беседу скопирована",
     "recentConversations": "Недавние чаты",
     "searchTooltip": "Поиск во всех чатах",
     "chatHistoryTooltip": "История чатов",
@@ -2094,6 +2096,8 @@
     "title": "Вход в MelonPaw-Company",
     "registerTitle": "Создание аккаунта",
     "firstUserHint": "Создайте учётную запись администратора для начала работы",
+    "usernameLabel": "Имя пользователя",
+    "passwordLabel": "Пароль",
     "usernamePlaceholder": "Имя пользователя",
     "passwordPlaceholder": "Пароль",
     "usernameRequired": "Пожалуйста, введите имя пользователя",

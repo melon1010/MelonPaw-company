@@ -189,9 +189,14 @@ function AppInner() {
         colorFillAlter: "#262626",
         colorText: "#f4f4f5",
         colorTextSecondary: "#b4b4b8",
-        colorTextTertiary: "#71717a",
+        colorTextTertiary: "#a1a1aa",
+        colorTextQuaternary: "#8b8b92",
+        colorTextDisabled: "#a1a1aa",
+        colorTextPlaceholder: "#a1a1aa",
         colorBorder: "#3a3a3a",
         colorBorderSecondary: "#2a2a2a",
+        colorBgContainerDisabled: "#2f2f2f",
+        colorFillQuaternary: "#3f3f46",
         colorTextLightSolid: "#171717",
       }
     : {
@@ -212,8 +217,13 @@ function AppInner() {
         colorText: "#18181b",
         colorTextSecondary: "#52525b",
         colorTextTertiary: "#71717a",
+        colorTextQuaternary: "#71717a",
+        colorTextDisabled: "#71717a",
+        colorTextPlaceholder: "#71717a",
         colorBorder: "#d4d4d8",
         colorBorderSecondary: "#e4e4e7",
+        colorBgContainerDisabled: "#f4f4f5",
+        colorFillQuaternary: "#d4d4d8",
         colorTextLightSolid: "#ffffff",
       };
   const lang = i18n.resolvedLanguage || i18n.language || "en";

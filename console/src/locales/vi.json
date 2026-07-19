@@ -125,6 +125,7 @@
   "login": {
     "title": "Đăng nhập",
     "description": "Nhập mật khẩu để truy cập MelonPaw-Company Console.",
+    "usernameLabel": "Tên người dùng",
     "passwordLabel": "Mật khẩu",
     "passwordPlaceholder": "Nhập mật khẩu",
     "submit": "Đăng nhập",
@@ -164,6 +165,8 @@
   "chat": {
     "modelSelectTooltip": "Chọn mô hình",
     "newChatTooltip": "Cuộc trò chuyện mới",
+    "shareConversationTooltip": "Chia sẻ cuộc trò chuyện",
+    "conversationLinkCopied": "Đã sao chép liên kết cuộc trò chuyện",
     "recentConversations": "Cuộc trò chuyện gần đây",
     "searchTooltip": "Tìm kiếm tất cả cuộc trò chuyện",
     "chatHistoryTooltip": "Lịch sử trò chuyện",

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Form, Modal } from "@agentscope-ai/design";
+import { Form } from "@agentscope-ai/design";
 import { useTranslation } from "react-i18next";
 import api from "../../../api";
 import type { AgentsRunningConfig } from "../../../api/types";
@@ -19,20 +19,16 @@ export function useAgentConfig() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [language, setLanguage] = useState<string>("zh");
-  const [savingLang, setSavingLang] = useState(false);
   const [timezone, setTimezone] = useState<string>("UTC");
   const [savingTimezone, setSavingTimezone] = useState(false);
-  const approvalLevel = "RISK_BASED" as const;
   const originalConfigRef = useRef<AgentsRunningConfig | null>(null);
 
   const fetchConfig = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [config, langResp, tzResp] = await Promise.all([
+      const [config, tzResp] = await Promise.all([
         api.getAgentRunningConfig(),
-        api.getAgentLanguage(),
         api.getUserTimezone(),
       ]);
       const contextBackend =
@@ -41,14 +37,11 @@ export function useAgentConfig() {
           : "light";
       const memoryBackend =
         config.memory_manager_backend in MEMORY_MANAGER_BACKEND_MAPPINGS ||
-        MEMORY_MANAGER_BACKEND_OPTIONS.some(
-          (o) => o.value === config.memory_manager_backend,
-        )
+        MEMORY_MANAGER_BACKEND_OPTIONS.some((o) => o.value === config.memory_manager_backend)
           ? config.memory_manager_backend
-          : "remelight";
+          : "file";
       form.setFieldsValue({
         shell_command_timeout: config.shell_command_timeout ?? 60.0,
-        shell_command_executable: config.shell_command_executable ?? "",
         loop: {
           ...config.loop,
           iteration: {
@@ -66,12 +59,9 @@ export function useAgentConfig() {
         llm_rate_limit_pause: config.llm_rate_limit_pause,
         llm_rate_limit_jitter: config.llm_rate_limit_jitter,
         llm_acquire_timeout: config.llm_acquire_timeout,
-        history_max_length: config.history_max_length,
         context_manager_backend: contextBackend,
         light_context_config: config.light_context_config,
         memory_manager_backend: memoryBackend,
-        reme_light_memory_config: config.reme_light_memory_config,
-        adbpg_memory_config: config.adbpg_memory_config,
         auto_title_config: config.auto_title_config ?? {
           enabled: true,
           timeout_seconds: 30.0,
@@ -81,7 +71,6 @@ export function useAgentConfig() {
       // Store original config for complete save
       originalConfigRef.current = config;
 
-      setLanguage(langResp.language);
       setTimezone(tzResp.timezone || "UTC");
     } catch (err) {
       const errMsg =
@@ -139,24 +128,20 @@ export function useAgentConfig() {
         ...original,
         ...formValues,
         // Deep-merge nested config sections to preserve collapsed fields
-        reme_light_memory_config: deepMergeConfig(
-          original.reme_light_memory_config,
-          formValues.reme_light_memory_config,
-        ) as typeof original.reme_light_memory_config,
         light_context_config: deepMergeConfig(
           original.light_context_config,
           formValues.light_context_config,
         ) as typeof original.light_context_config,
-        adbpg_memory_config: deepMergeConfig(
-          original.adbpg_memory_config,
-          formValues.adbpg_memory_config,
-        ) as typeof original.adbpg_memory_config,
         auto_title_config: deepMergeConfig(
           original.auto_title_config,
           formValues.auto_title_config,
         ) as typeof original.auto_title_config,
-        approval_level: approvalLevel,
       };
+
+      // These legacy/demo fields are intentionally excluded from the runtime contract.
+      delete (configToSave as Partial<AgentsRunningConfig>).reme_light_memory_config;
+      delete (configToSave as Partial<AgentsRunningConfig>).adbpg_memory_config;
+      delete (configToSave as Partial<AgentsRunningConfig>).approval_level;
 
       await api.updateAgentRunningConfig(configToSave);
 
@@ -171,48 +156,7 @@ export function useAgentConfig() {
     } finally {
       setSaving(false);
     }
-  }, [form, t, selectedAgent, approvalLevel]);
-
-  const handleLanguageChange = useCallback(
-    (value: string): void => {
-      if (value === language) return;
-      Modal.confirm({
-        title: t("agentConfig.languageConfirmTitle"),
-        content: (
-          <span style={{ whiteSpace: "pre-line" }}>
-            {t("agentConfig.languageConfirmContent")}
-          </span>
-        ),
-        okText: t("agentConfig.languageConfirmOk"),
-        cancelText: t("common.cancel"),
-        onOk: async () => {
-          setSavingLang(true);
-          try {
-            const resp = await api.updateAgentLanguage(value);
-            setLanguage(resp.language);
-            if (resp.copied_files && resp.copied_files.length > 0) {
-              message.success(
-                t("agentConfig.languageSaveSuccessWithFiles", {
-                  count: resp.copied_files.length,
-                }),
-              );
-            } else {
-              message.success(t("agentConfig.languageSaveSuccess"));
-            }
-          } catch (err) {
-            const errMsg =
-              err instanceof Error
-                ? err.message
-                : t("agentConfig.languageSaveFailed");
-            message.error(errMsg);
-          } finally {
-            setSavingLang(false);
-          }
-        },
-      });
-    },
-    [language, t],
-  );
+  }, [form, t, selectedAgent]);
 
   const handleTimezoneChange = useCallback(
     async (value: string) => {
@@ -240,14 +184,10 @@ export function useAgentConfig() {
     loading,
     saving,
     error,
-    language,
-    savingLang,
     timezone,
     savingTimezone,
-    approvalLevel,
     fetchConfig,
     handleSave,
-    handleLanguageChange,
     handleTimezoneChange,
   };
 }

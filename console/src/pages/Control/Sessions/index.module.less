@@ -261,11 +261,19 @@
 
   /* Selected row styling */
   .selectedRow > td {
-    background-color: color-mix(in srgb, var(--mp-primary) 12%, transparent) !important;
+    background-color: color-mix(
+      in srgb,
+      var(--mp-primary) 12%,
+      transparent
+    ) !important;
   }
 
   .selectedRow:hover > td {
-    background-color: color-mix(in srgb, var(--mp-primary) 20%, transparent) !important;
+    background-color: color-mix(
+      in srgb,
+      var(--mp-primary) 20%,
+      transparent
+    ) !important;
   }
   :global(.sessions-filter-input) {
     :global(.qwenpaw-input),
@@ -275,7 +283,7 @@
       color: rgba(255, 255, 255, 0.85) !important;
 
       &::placeholder {
-        color: rgba(255, 255, 255, 0.25) !important;
+        color: var(--mp-text-tertiary) !important;
       }
     }
   }
@@ -290,7 +298,7 @@
 
     :global(.qwenpaw-select-selection-placeholder),
     :global(.ant-select-selection-placeholder) {
-      color: rgba(255, 255, 255, 0.25) !important;
+      color: var(--mp-text-tertiary) !important;
     }
 
     :global(.qwenpaw-select-arrow),

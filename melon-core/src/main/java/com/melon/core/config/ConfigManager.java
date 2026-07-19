@@ -162,7 +162,9 @@ public class ConfigManager {
             }
             mergeLightContextDefaults(ac);
             if (ac.getMemoryManagerBackend() == null || ac.getMemoryManagerBackend().isBlank()) {
-                ac.setMemoryManagerBackend("remelight");
+                ac.setMemoryManagerBackend("file");
+            } else {
+                ac.setMemoryManagerBackend(normalizeMemoryBackend(ac.getMemoryManagerBackend()));
             }
             if (ac.getPlanMode() == null) ac.setPlanMode(new PlanModeConfig());
             if (ac.getApproval() == null) ac.setApproval(new AgentConfig.ApprovalConfig());
@@ -250,9 +252,16 @@ public class ConfigManager {
         }
         if (frontend.get("memory_manager_backend") != null
                 && (agent.getMemoryManagerBackend() == null || agent.getMemoryManagerBackend().isBlank()
-                || "remelight".equals(agent.getMemoryManagerBackend()))) {
-            agent.setMemoryManagerBackend(String.valueOf(frontend.get("memory_manager_backend")));
+                || "file".equals(agent.getMemoryManagerBackend()))) {
+            agent.setMemoryManagerBackend(normalizeMemoryBackend(
+                    String.valueOf(frontend.get("memory_manager_backend"))));
         }
+    }
+
+    private String normalizeMemoryBackend(String value) {
+        if ("none".equalsIgnoreCase(value)) return "none";
+        // Legacy UI values are migrated to the only Java implementation.
+        return "file";
     }
 
     private void mergeDefaultTools(ToolsConfig tools) {

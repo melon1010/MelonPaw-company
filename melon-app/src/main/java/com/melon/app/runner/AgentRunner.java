@@ -37,6 +37,7 @@ import org.reactivestreams.Subscription;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.Locale;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -118,10 +119,10 @@ public class AgentRunner {
                     AtomicReference<Subscription> tracked = new AtomicReference<>();
                     HarnessAgent agent = multiAgentManager.getOrCreate(agentId);
                     RuntimeContext ctx = buildContext(agentId, userId, sessionId, envInfo);
-                    int maxIterations = loopMaxIterations(agentId);
+                    LoopSettings settings = loopSettings(agentId);
                     return enforceRuntimeBudget(
                             streamLoopIteration(agent, mode, objective, ctx, agentId,
-                                    sessionId, 1, maxIterations, null), ctx)
+                                    sessionId, 1, settings, null, List.of(), 0), ctx)
                             .doOnNext(event -> recordTaskEvent(ctx, event))
                             .doOnSubscribe(subscription -> {
                                 tracked.set(subscription);
@@ -529,8 +530,10 @@ public class AgentRunner {
 
     private Flux<AgentEvent> streamLoopIteration(HarnessAgent agent, LoopMode mode, String objective,
                                                  RuntimeContext ctx, String agentId, String sessionId,
-                                                 int iteration, int maxIterations,
-                                                 String previousEvaluation) {
+                                                 int iteration, LoopSettings settings,
+                                                 String previousEvaluation, List<String> recentOutputs,
+                                                 int interventions) {
+        int maxIterations = settings.maxIterations();
         String prompt = iteration == 1
                 ? initialLoopPrompt(mode, objective, maxIterations)
                 : continuationLoopPrompt(mode, objective, iteration, maxIterations, previousEvaluation);
@@ -552,25 +555,42 @@ public class AgentRunner {
                 .concatWith(Flux.defer(() -> {
                     AgentEndEvent terminal = endEvent.get() != null
                             ? endEvent.get() : new AgentEndEvent("loop-" + iteration);
-                    if (iteration >= maxIterations || visibleText.toString().isBlank()) {
+                    String answer = visibleText.toString().trim();
+                    List<String> nextOutputs = appendRecentOutput(recentOutputs, answer, settings.doomWindow());
+                    DoomDecision doom = settings.detectDoom() ? detectDoom(nextOutputs, settings) : DoomDecision.none();
+                    if (iteration >= maxIterations || answer.isBlank() || doom.stop()) {
                         return Flux.<AgentEvent>just(terminal);
                     }
-                    return evaluateLoop(agent, mode, objective, visibleText.toString())
+                    if (!settings.rubricEnabled()) {
+                        return Flux.<AgentEvent>just(terminal);
+                    }
+                    String evaluationContext = doom.reminder() == null
+                            ? answer
+                            : answer + "\n\nRepetition protection reminder:\n" + doom.reminder();
+                    return evaluateLoop(agent, mode, objective, evaluationContext, settings.rubricPrompt())
                             .flatMapMany(evaluation -> {
                                 if (evaluation.complete()) return Flux.<AgentEvent>just(terminal);
+                                if (interventions >= settings.maxInterventions()) {
+                                    return Flux.<AgentEvent>just(terminal);
+                                }
                                 return streamLoopIteration(agent, mode, objective, ctx, agentId,
-                                        sessionId, iteration + 1, maxIterations, evaluation.detail());
+                                        sessionId, iteration + 1, settings, evaluation.detail(),
+                                        nextOutputs, interventions + 1);
                             });
                 }));
     }
 
     private Mono<LoopEvaluation> evaluateLoop(HarnessAgent agent, LoopMode mode,
-                                              String objective, String answer) {
-        String rubric = "You are a strict completion evaluator. Assess whether the latest agent output "
+                                              String objective, String answer, String configuredPrompt) {
+        String defaultPrompt = "You are a strict completion evaluator. Assess whether the latest agent output "
                 + "has actually completed the " + mode.name().toLowerCase() + " objective. "
                 + "For mission mode, require delegated work to be reconciled into a final result. "
-                + "Reply with exactly COMPLETE or CONTINUE on the first line, followed by one short reason.\n\n"
-                + "Objective:\n" + objective + "\n\nLatest output:\n" + answer;
+                + "Reply with exactly COMPLETE or CONTINUE on the first line, followed by one short reason.";
+        String rubric = configuredPrompt == null || configuredPrompt.isBlank()
+                ? defaultPrompt
+                : configuredPrompt.replace("{objective}", objective).replace("{answer}", answer)
+                        .replace("{mode}", mode.name().toLowerCase(Locale.ROOT));
+        rubric += "\n\nObjective:\n" + objective + "\n\nLatest output:\n" + answer;
         GenerateOptions options = GenerateOptions.builder()
                 .temperature(0.0)
                 .maxTokens(120)
@@ -600,19 +620,126 @@ public class AgentRunner {
         return new LoopEvaluation(complete, result);
     }
 
-    private int loopMaxIterations(String agentId) {
-        int fallback = 6;
-        if (configManager == null || configManager.getConfig().getAgent(agentId) == null) return fallback;
-        Map<String, Object> frontend = configManager.getConfig().getAgent(agentId).getFrontendRunningConfig();
-        if (frontend == null) return fallback;
-        Object loopRaw = frontend.get("loop");
-        if (!(loopRaw instanceof Map<?, ?> loop)) return fallback;
-        Object iterationRaw = loop.get("iteration");
-        if (!(iterationRaw instanceof Map<?, ?> iteration)) return fallback;
-        Object maxRaw = iteration.get("max_iterations");
-        if (!(maxRaw instanceof Number number)) return fallback;
-        return Math.max(2, Math.min(12, number.intValue()));
+    private LoopSettings loopSettings(String agentId) {
+        int maxIterations = 6;
+        boolean iterationEnabled = true;
+        boolean rubricEnabled = true;
+        String rubricPrompt = "";
+        int maxInterventions = 3;
+        boolean doomEnabled = false;
+        int doomWindow = 6;
+        double similarity = 0.9;
+        List<DoomStage> stages = List.of(new DoomStage(3, "modify_prompt", "Try a different approach."));
+        if (configManager != null && configManager.getConfig().getAgent(agentId) != null) {
+            Map<String, Object> frontend = configManager.getConfig().getAgent(agentId).getFrontendRunningConfig();
+            Map<?, ?> loop = mapValue(frontend != null ? frontend.get("loop") : null);
+            Map<?, ?> iteration = mapValue(loop.get("iteration"));
+            iterationEnabled = boolValue(iteration.get("enabled"), true);
+            maxIterations = clampInt(iteration.get("max_iterations"), maxIterations, 1, 500);
+            Map<?, ?> rubric = mapValue(loop.get("rubric"));
+            rubricEnabled = boolValue(rubric.get("enabled"), true);
+            rubricPrompt = stringValue(rubric.get("prompt"));
+            maxInterventions = clampInt(rubric.get("max_interventions"), maxInterventions, 1, 10);
+            Map<?, ?> doom = mapValue(loop.get("doom_loop"));
+            doomEnabled = boolValue(doom.get("enabled"), false);
+            doomWindow = clampInt(doom.get("window_size"), doomWindow, 2, 20);
+            similarity = clampDouble(doom.get("similarity_threshold"), similarity, 0, 1);
+            stages = doomStages(doom.get("stages"));
+        }
+        return new LoopSettings(iterationEnabled ? maxIterations : 1, rubricEnabled,
+                rubricPrompt, maxInterventions, doomEnabled, doomWindow, similarity, stages);
     }
+
+    private List<DoomStage> doomStages(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of(new DoomStage(3, "modify_prompt", "Try a different approach."));
+        List<DoomStage> result = new ArrayList<>();
+        for (Object item : list) {
+            Map<?, ?> stage = mapValue(item);
+            if (stage.isEmpty()) continue;
+            String action = "stop".equalsIgnoreCase(stringValue(stage.get("action"))) ? "stop" : "modify_prompt";
+            result.add(new DoomStage(clampInt(stage.get("after"), 3, 1, 500), action,
+                    stringValue(stage.get("prompt"))));
+            if (result.size() >= 10) break;
+        }
+        return result.isEmpty() ? List.of(new DoomStage(3, "modify_prompt", "Try a different approach.")) : result;
+    }
+
+    private List<String> appendRecentOutput(List<String> previous, String answer, int window) {
+        List<String> result = new ArrayList<>(previous == null ? List.of() : previous);
+        if (answer != null && !answer.isBlank()) result.add(answer);
+        int from = Math.max(0, result.size() - window);
+        return new ArrayList<>(result.subList(from, result.size()));
+    }
+
+    private DoomDecision detectDoom(List<String> outputs, LoopSettings settings) {
+        if (outputs == null || outputs.size() < 2) return DoomDecision.none();
+        String latest = outputs.get(outputs.size() - 1);
+        int repetitions = 0;
+        for (int i = 0; i < outputs.size() - 1; i++) {
+            if (textSimilarity(latest, outputs.get(i)) >= settings.similarityThreshold()) repetitions++;
+        }
+        for (DoomStage stage : settings.stages()) {
+            if (repetitions == 0) continue;
+            if (repetitions + 1 < stage.after()) continue;
+            if ("stop".equals(stage.action())) return new DoomDecision(true, stage.prompt());
+            return new DoomDecision(false, stage.prompt().isBlank() ? "Avoid repeating the same output." : stage.prompt());
+        }
+        return DoomDecision.none();
+    }
+
+    private double textSimilarity(String first, String second) {
+        if (first == null || second == null) return 0;
+        String a = first.trim().toLowerCase(Locale.ROOT);
+        String b = second.trim().toLowerCase(Locale.ROOT);
+        if (a.equals(b)) return 1;
+        if (a.isBlank() || b.isBlank()) return 0;
+        java.util.Set<String> left = new java.util.HashSet<>(List.of(a.split("\\W+")));
+        java.util.Set<String> right = new java.util.HashSet<>(List.of(b.split("\\W+")));
+        left.removeIf(String::isBlank);
+        right.removeIf(String::isBlank);
+        if (left.isEmpty() || right.isEmpty()) return 0;
+        java.util.Set<String> intersection = new java.util.HashSet<>(left);
+        intersection.retainAll(right);
+        java.util.Set<String> union = new java.util.HashSet<>(left);
+        union.addAll(right);
+        return (double) intersection.size() / union.size();
+    }
+
+    private Map<?, ?> mapValue(Object value) {
+        return value instanceof Map<?, ?> map ? map : Map.of();
+    }
+
+    private boolean boolValue(Object value, boolean fallback) {
+        return value == null ? fallback : Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private int clampInt(Object value, int fallback, int min, int max) {
+        int parsed = fallback;
+        if (value instanceof Number number) parsed = number.intValue();
+        else if (value != null) {
+            try { parsed = Integer.parseInt(String.valueOf(value)); } catch (NumberFormatException ignored) { }
+        }
+        return Math.max(min, Math.min(max, parsed));
+    }
+
+    private double clampDouble(Object value, double fallback, double min, double max) {
+        double parsed = fallback;
+        if (value instanceof Number number) parsed = number.doubleValue();
+        else if (value != null) {
+            try { parsed = Double.parseDouble(String.valueOf(value)); } catch (NumberFormatException ignored) { }
+        }
+        return Math.max(min, Math.min(max, parsed));
+    }
+
+    private record DoomStage(int after, String action, String prompt) {}
+
+    private record DoomDecision(boolean stop, String reminder) {
+        private static DoomDecision none() { return new DoomDecision(false, null); }
+    }
+
+    private record LoopSettings(int maxIterations, boolean rubricEnabled, String rubricPrompt,
+                                int maxInterventions, boolean detectDoom, int doomWindow,
+                                double similarityThreshold, List<DoomStage> stages) {}
 
     private String initialLoopPrompt(LoopMode mode, String objective, int maxIterations) {
         if (mode == LoopMode.MISSION) {

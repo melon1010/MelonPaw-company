@@ -263,7 +263,7 @@ export const SkillCard = React.memo(function SkillCard({
             ))}
           </div>
         ) : (
-          <span style={{ color: "rgba(20,20,19,0.35)" }}>-</span>
+          <span className={styles.metaInfoEmpty}>-</span>
         )}
       </div>
 

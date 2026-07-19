@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Form, Input, Typography } from "antd";
+import { Button, Form, Input } from "antd";
 import { useAppMessage } from "../../hooks/useAppMessage";
 import { KeyOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
 import { authApi } from "../../api/modules/auth";
@@ -86,104 +86,117 @@ export default function LoginPage() {
 
   return (
     <div className={`${styles.page} ${isDark ? styles.pageDark : ""}`}>
-      <section className={styles.loginPanel} aria-labelledby="login-title">
-        <div className={styles.brand}>
-          <span className={styles.brandMark}>MP</span>
-          <div>
-            <div className={styles.brandName}>MelonPaw-Company</div>
-            <div className={styles.brandEdition}>
-              {t("enterprise.auth.privateEdition")}
-            </div>
-          </div>
-        </div>
-        <div className={styles.heading}>
-          <Typography.Title id="login-title" level={2}>
-            {isBootstrap
-              ? t("enterprise.auth.bootstrapTitle")
-              : t("enterprise.auth.loginTitle")}
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            {isBootstrap
-              ? t("enterprise.auth.bootstrapHint")
-              : t("enterprise.auth.loginHint")}
-          </Typography.Text>
+      <aside className={styles.brandPanel} aria-label="MelonPaw-Company">
+        <div className={styles.brandLockup}>
+          <img className={styles.brandMark} src="/company-mark.svg" alt="" />
+          <span className={styles.brandShortName}>MelonPaw</span>
         </div>
 
-        <Form
-          layout="vertical"
-          onFinish={onFinish}
-          autoComplete="off"
-          size="large"
-        >
-          {isBootstrap && (
-            <Form.Item name="displayName">
-              <Input placeholder={t("enterprise.auth.displayName")} />
-            </Form.Item>
-          )}
-          {isBootstrap && bootstrapTokenRequired && (
+        <div className={styles.brandStatement}>
+          <div className={styles.brandSignal} aria-hidden="true">
+            <span />
+            <span />
+          </div>
+          <h1>MelonPaw-Company</h1>
+          <p>{t("enterprise.auth.privateEdition")}</p>
+        </div>
+
+        <div className={styles.brandFoot}>MelonPaw Company Console</div>
+      </aside>
+
+      <main className={styles.authPanel}>
+        <section className={styles.authContent} aria-labelledby="login-title">
+          <div className={styles.heading}>
+            <h2 id="login-title">
+              {isBootstrap
+                ? t("enterprise.auth.bootstrapTitle")
+                : t("enterprise.auth.loginTitle")}
+            </h2>
+            <p>
+              {isBootstrap
+                ? t("enterprise.auth.bootstrapHint")
+                : t("enterprise.auth.loginHint")}
+            </p>
+          </div>
+
+          <Form
+            className={styles.form}
+            layout="vertical"
+            onFinish={onFinish}
+            autoComplete="on"
+            requiredMark={false}
+            size="large"
+          >
+            {isBootstrap && (
+              <Form.Item
+                name="displayName"
+                label={t("enterprise.auth.displayName")}
+              >
+                <Input
+                  placeholder={t("enterprise.auth.displayName")}
+                  autoComplete="name"
+                />
+              </Form.Item>
+            )}
+            {isBootstrap && bootstrapTokenRequired && (
+              <Form.Item
+                name="bootstrapToken"
+                label={t("enterprise.auth.bootstrapToken")}
+                rules={[
+                  {
+                    required: true,
+                    message: t("enterprise.auth.bootstrapTokenRequired"),
+                  },
+                ]}
+              >
+                <Input.Password
+                  prefix={<KeyOutlined />}
+                  placeholder={t("enterprise.auth.bootstrapToken")}
+                  autoComplete="one-time-code"
+                />
+              </Form.Item>
+            )}
             <Form.Item
-              name="bootstrapToken"
-              rules={[
-                {
-                  required: true,
-                  message: t("enterprise.auth.bootstrapTokenRequired"),
-                },
-              ]}
+              name="username"
+              label={t("login.usernameLabel")}
+              rules={[{ required: true, message: t("login.usernameRequired") }]}
             >
-              <Input.Password
-                prefix={<KeyOutlined />}
-                placeholder={t("enterprise.auth.bootstrapToken")}
+              <Input
+                prefix={<UserOutlined />}
+                placeholder={t("login.usernamePlaceholder")}
+                autoComplete="username"
+                autoFocus
               />
             </Form.Item>
-          )}
-          <Form.Item
-            name="username"
-            rules={[{ required: true, message: t("login.usernameRequired") }]}
-          >
-            <Input
-              prefix={
-                <UserOutlined
-                  style={{
-                    color: isDark ? "rgba(255,255,255,0.45)" : undefined,
-                  }}
-                />
-              }
-              placeholder={t("login.usernamePlaceholder")}
-              autoFocus
-            />
-          </Form.Item>
 
-          <Form.Item
-            name="password"
-            rules={[{ required: true, message: t("login.passwordRequired") }]}
-          >
-            <Input.Password
-              prefix={
-                <LockOutlined
-                  style={{
-                    color: isDark ? "rgba(255,255,255,0.45)" : undefined,
-                  }}
-                />
-              }
-              placeholder={t("login.passwordPlaceholder")}
-            />
-          </Form.Item>
-
-          <Form.Item style={{ marginBottom: 0, marginTop: 8 }}>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loading}
-              block
-              className={styles.submit}
+            <Form.Item
+              name="password"
+              label={t("login.passwordLabel")}
+              rules={[{ required: true, message: t("login.passwordRequired") }]}
             >
-              {isBootstrap
-                ? t("enterprise.auth.bootstrapAction")
-                : t("enterprise.auth.loginAction")}
-            </Button>
-          </Form.Item>
-        </Form>
-      </section>
+              <Input.Password
+                prefix={<LockOutlined />}
+                placeholder={t("login.passwordPlaceholder")}
+                autoComplete={isBootstrap ? "new-password" : "current-password"}
+              />
+            </Form.Item>
+
+            <Form.Item className={styles.submitItem}>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                block
+                className={styles.submit}
+              >
+                {isBootstrap
+                  ? t("enterprise.auth.bootstrapAction")
+                  : t("enterprise.auth.loginAction")}
+              </Button>
+            </Form.Item>
+          </Form>
+        </section>
+      </main>
     </div>
   );
 }

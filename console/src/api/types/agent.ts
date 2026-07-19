@@ -109,7 +109,8 @@ export interface AgentsRunningConfig {
   max_iters: number;
   loop: LoopConfig;
   shell_command_timeout: number;
-  shell_command_executable: string;
+  /** Legacy field retained for older servers; it is not configurable in the Java runtime. */
+  shell_command_executable?: string;
   llm_retry_enabled: boolean;
   llm_max_retries: number;
   llm_backoff_base: number;
@@ -119,12 +120,13 @@ export interface AgentsRunningConfig {
   llm_rate_limit_pause: number;
   llm_rate_limit_jitter: number;
   llm_acquire_timeout: number;
-  history_max_length: number;
+  /** Legacy Python setting; Java history retention lives in light_context_config.scroll_config. */
+  history_max_length?: number;
   context_manager_backend: string;
   light_context_config: LightContextConfig;
   memory_manager_backend: string;
   adbpg_memory_config?: ADBPGMemoryConfig | null;
-  reme_light_memory_config: ReMeLightMemoryConfig;
+  reme_light_memory_config?: ReMeLightMemoryConfig;
   approval_level?: string;
   auto_title_config: AutoTitleConfig;
 }

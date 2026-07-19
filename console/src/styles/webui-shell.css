@@ -45,8 +45,8 @@
 }
 
 .webui-shell .qwenpaw-chat-anywhere-input-wrapper {
-  width: min(680px, calc(100% - 48px)) !important;
-  max-width: 680px !important;
+  width: min(850px, calc(100% - 48px)) !important;
+  max-width: 850px !important;
   min-width: 0 !important;
   margin: 0 auto;
   padding: 0 !important;
@@ -131,7 +131,7 @@ html.dark-mode .webui-shell .qwenpaw-sender {
   min-height: 38px !important;
   max-height: 38px !important;
   margin: 0 !important;
-  padding: 7px 84px 7px 44px !important;
+  padding: 7px 92px 7px 48px !important;
   color: var(--mp-text) !important;
   font-size: 15px !important;
   line-height: 24px !important;
@@ -168,7 +168,7 @@ html.dark-mode .webui-shell .qwenpaw-sender-content-bottom {
   justify-content: space-between;
   min-height: 0;
   margin-top: 0 !important;
-  padding: 0 4px !important;
+  padding: 0 8px !important;
   background: transparent !important;
   border: 0 !important;
   pointer-events: none;
@@ -193,7 +193,7 @@ html.dark-mode .webui-shell .qwenpaw-sender-content-bottom {
 .webui-shell .qwenpaw-sender-prefix .webui-sender-voice-button {
   position: absolute !important;
   top: 50%;
-  right: 44px;
+  right: 48px;
   bottom: auto;
   z-index: 2;
   transform: translateY(-50%);

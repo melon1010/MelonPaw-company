@@ -1,0 +1,34 @@
+.actionGroup {
+  flex: 0 0 auto;
+
+  button {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0;
+    color: var(--mp-text-secondary) !important;
+    border: 0 !important;
+    border-radius: 5px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--mp-text) !important;
+      background: var(--mp-surface-muted) !important;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--mp-focus-ring);
+      outline-offset: 1px;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .actionGroup button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+  }
+}
