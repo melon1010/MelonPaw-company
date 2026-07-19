@@ -58,7 +58,7 @@ describe("MobileNavigation permissions", () => {
     ];
   });
 
-  it("keeps chat in the employee primary navigation", async () => {
+  it("keeps chat, project spaces, and scheduled tasks in primary navigation", async () => {
     renderWithProviders(<MobileNavigation />, {
       initialEntries: ["/workbench"],
     });
@@ -71,11 +71,17 @@ describe("MobileNavigation permissions", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      within(navigation).queryByRole("button", {
+      within(navigation).getByRole("button", {
         name: "enterprise.nav.projects",
         hidden: true,
       }),
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
+    expect(
+      within(navigation).getByRole("button", {
+        name: "nav.cronJobs",
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
 
     fireEvent.click(
       within(navigation).getByRole("button", {
@@ -85,7 +91,7 @@ describe("MobileNavigation permissions", () => {
     );
     expect(
       await screen.findByRole("button", {
-        name: "enterprise.nav.projects",
+        name: "nav.workspace",
         hidden: true,
       }),
     ).toBeInTheDocument();

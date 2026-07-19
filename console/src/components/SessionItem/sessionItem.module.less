@@ -52,8 +52,14 @@
   &:hover {
     background-color: var(--colorBgBase, #fff);
     background-image: linear-gradient(
-      var(--color-fill-tertiary, color-mix(in srgb, var(--mp-primary) 3%, transparent)),
-      var(--color-fill-tertiary, color-mix(in srgb, var(--mp-primary) 3%, transparent))
+      var(
+        --color-fill-tertiary,
+        color-mix(in srgb, var(--mp-primary) 3%, transparent)
+      ),
+      var(
+        --color-fill-tertiary,
+        color-mix(in srgb, var(--mp-primary) 3%, transparent)
+      )
     );
 
     .actions {
@@ -73,7 +79,10 @@
   }
 
   &.active {
-    background: var(--color-fill-secondary, color-mix(in srgb, var(--mp-primary) 8%, transparent));
+    background: var(
+      --color-fill-secondary,
+      color-mix(in srgb, var(--mp-primary) 8%, transparent)
+    );
   }
 
   &.editing .content {
@@ -91,7 +100,10 @@
   margin-bottom: 2px;
 
   &:hover {
-    background: var(--color-fill-tertiary, color-mix(in srgb, var(--mp-primary) 5%, transparent));
+    background: var(
+      --color-fill-tertiary,
+      color-mix(in srgb, var(--mp-primary) 5%, transparent)
+    );
 
     .moreBtn {
       opacity: 1;
@@ -103,8 +115,16 @@
     }
   }
 
+  &:focus-within .moreBtn {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   &.active {
-    background: var(--color-fill-secondary, color-mix(in srgb, var(--mp-primary) 8%, transparent));
+    background: var(
+      --color-fill-secondary,
+      color-mix(in srgb, var(--mp-primary) 8%, transparent)
+    );
 
     .name {
       font-weight: 500;
@@ -112,7 +132,10 @@
     }
 
     &:hover {
-      background: var(--color-fill-secondary, color-mix(in srgb, var(--mp-primary) 10%, transparent));
+      background: var(
+        --color-fill-secondary,
+        color-mix(in srgb, var(--mp-primary) 10%, transparent)
+      );
     }
   }
 
@@ -288,6 +311,7 @@
   display: inline-flex;
   align-items: center;
   opacity: 0.55;
+  transition: opacity 150ms ease;
 
   .drawer & {
     max-width: 52%;
@@ -298,7 +322,10 @@
     font-weight: 500;
     line-height: 18px;
     color: var(--colorTextSecondary, rgba(26, 23, 22, 0.55));
-    background: var(--color-fill-tertiary, color-mix(in srgb, var(--mp-primary) 6%, transparent));
+    background: var(
+      --color-fill-tertiary,
+      color-mix(in srgb, var(--mp-primary) 6%, transparent)
+    );
     min-width: 0;
     opacity: 1;
   }
@@ -370,7 +397,10 @@
   transition: background 0.15s;
 
   &:hover {
-    background: var(--color-fill-secondary, color-mix(in srgb, var(--mp-primary) 8%, transparent));
+    background: var(
+      --color-fill-secondary,
+      color-mix(in srgb, var(--mp-primary) 8%, transparent)
+    );
   }
 }
 
@@ -386,8 +416,11 @@
   justify-content: center;
   width: 22px;
   height: 22px;
+  padding: 0;
+  border: 0;
   border-radius: 4px;
   font-size: 14px;
+  background: transparent;
   color: var(--colorTextTertiary, rgba(26, 23, 22, 0.45));
   cursor: pointer;
   opacity: 0;
@@ -395,7 +428,10 @@
   transition: all 0.15s;
 
   &:hover {
-    background: var(--color-fill-secondary, color-mix(in srgb, var(--mp-primary) 8%, transparent));
+    background: var(
+      --color-fill-secondary,
+      color-mix(in srgb, var(--mp-primary) 8%, transparent)
+    );
     color: var(--colorText, rgba(26, 23, 22, 0.88));
   }
 }
@@ -493,6 +529,50 @@
     &:hover {
       background: rgba(255, 255, 255, 0.1);
       color: rgba(255, 255, 255, 0.88);
+    }
+  }
+}
+
+/* Compact history rows for the Open WebUI-style sidebar. */
+.sidebar {
+  min-height: 32px;
+  gap: 6px;
+  margin: 0 0 1px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: var(--mp-sidebar-text);
+  background: transparent;
+
+  &:hover,
+  &.active,
+  &.active:hover {
+    background: var(--mp-sidebar-hover);
+  }
+
+  .name {
+    color: var(--mp-sidebar-text);
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 24px;
+  }
+
+  &.active .name {
+    color: var(--mp-sidebar-selected-text);
+    font-weight: 500;
+  }
+
+  .statusSlot {
+    width: 10px;
+    height: 10px;
+  }
+
+  .moreBtn {
+    color: var(--mp-sidebar-muted);
+    background: var(--mp-sidebar-hover);
+
+    &:hover {
+      color: var(--mp-sidebar-text);
+      background: var(--mp-sidebar-active);
     }
   }
 }

@@ -213,10 +213,14 @@ const SessionItem: React.FC<SessionItemProps> = ({
                     aria-hidden
                   />
                 </span>
-                <div className={styles.name}>{name || "New Chat"}</div>
+                <div className={styles.name}>
+                  {name || t("chat.newChatTooltip", "New chat")}
+                </div>
               </div>
             ) : (
-              <div className={styles.name}>{name || "New Chat"}</div>
+              <div className={styles.name}>
+                {name || t("chat.newChatTooltip", "New chat")}
+              </div>
             )}
           </>
         )}
@@ -240,13 +244,6 @@ const SessionItem: React.FC<SessionItemProps> = ({
           </div>
         )}
       </div>
-
-      {/* Sidebar variant: channel icon */}
-      {!editing && variant === "sidebar" && channelKey && (
-        <span className={styles.channelTag} title={channelLabel || channelKey}>
-          <ChannelIcon channelKey={channelKey} size={14} />
-        </span>
-      )}
 
       {/* Pin button - drawer variant only */}
       {!editing && variant === "drawer" && (
@@ -295,9 +292,14 @@ const SessionItem: React.FC<SessionItemProps> = ({
           placement="bottomRight"
           onOpenChange={setDropdownOpen}
         >
-          <span className={styles.moreBtn} onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className={styles.moreBtn}
+            aria-label={t("common.actions", "Actions")}
+            onClick={(e) => e.stopPropagation()}
+          >
             <SparkMoreLine size={14} />
-          </span>
+          </button>
         </Dropdown>
       )}
     </div>

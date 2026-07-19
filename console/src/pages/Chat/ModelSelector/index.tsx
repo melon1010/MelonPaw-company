@@ -763,6 +763,7 @@ export default function ModelSelector() {
                 activeModelName
               )}
             </span>
+            <DownOutlined className={styles.triggerChevron} />
             {/* Hidden span used to measure intrinsic text width. Placed
                 outside .triggerName so it does not duplicate text for
                 screen readers or testing-library queries. */}

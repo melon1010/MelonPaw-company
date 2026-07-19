@@ -1,15 +1,30 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Dropdown } from "antd";
 import { useChatAnywhereSessionsState } from "@agentscope-ai/chat";
+import { useLocation } from "react-router-dom";
+import { useSessionListStore } from "../../../../stores/sessionListStore";
+import { getSessionIdFromPath } from "../../../../utils/sessionRoute";
 import styles from "./index.module.less";
 
 const MOBILE_BREAKPOINT_PX = 480;
 
 const ChatHeaderTitle: React.FC = () => {
+  const location = useLocation();
   const { sessions, currentSessionId, setCurrentSessionId } =
     useChatAnywhereSessionsState();
+  const sidebarSessions = useSessionListStore((state) => state.sessions);
+  const routeSessionId = getSessionIdFromPath(location.pathname);
   const currentSession = sessions.find((s) => s.id === currentSessionId);
-  const chatName = currentSession?.name || "New Chat";
+  const sidebarSession = sidebarSessions.find((session) =>
+    [currentSessionId, routeSessionId].some(
+      (sessionId) =>
+        Boolean(sessionId) &&
+        (session.id === sessionId ||
+          session.realId === sessionId ||
+          session.sessionId === sessionId),
+    ),
+  );
+  const chatName = sidebarSession?.name || currentSession?.name || "New Chat";
 
   const [open, setOpen] = useState(false);
 

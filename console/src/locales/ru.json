@@ -28,7 +28,16 @@
     "actions": "Действия",
     "total": "Всего {{count}}",
     "clear": "Очистить",
-    "paste": "Вставить"
+    "paste": "Вставить",
+    "more": "Ещё"
+  },
+  "enterprise": {
+    "nav": {
+      "workbench": "Рабочая панель",
+      "projects": "Проектные пространства",
+      "operations": "Операции",
+      "administration": "Администрирование"
+    }
   },
   "chunkError": {
     "title": "Не удалось загрузить страницу",
@@ -42,6 +51,7 @@
     "control": "Управление",
     "channels": "Каналы",
     "sessions": "Сессии",
+    "inbox": "Входящие",
     "cronJobs": "Cron-задачи",
     "heartbeat": "Пульс",
     "agent": "Рабочая область",
@@ -62,7 +72,8 @@
     "debug": "Отладка",
     "plugins": "Плагины",
     "backups": "Резервные копии",
-    "pluginManager": "Менеджер плагинов"
+    "pluginManager": "Менеджер плагинов",
+    "menu": "Навигация"
   },
   "debug": {
     "title": "Отладка",
@@ -1760,12 +1771,14 @@
   "sidebar": {
     "settings": {
       "language": "Язык",
-      "theme": "Тема"
+      "theme": "Тема",
+      "returnApp": "Вернуться в приложение"
     }
   },
   "chat": {
     "modelSelectTooltip": "Выбор модели",
     "newChatTooltip": "Новый чат",
+    "recentConversations": "Недавние чаты",
     "searchTooltip": "Поиск во всех чатах",
     "chatHistoryTooltip": "История чатов",
     "wideModeTooltip": "Широкий режим",

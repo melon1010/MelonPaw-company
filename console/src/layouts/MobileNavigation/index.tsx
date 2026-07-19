@@ -6,6 +6,7 @@ import {
   Bug,
   CalendarClock,
   DatabaseBackup,
+  Folder,
   Globe2,
   HeartPulse,
   Inbox,
@@ -51,22 +52,22 @@ export default function MobileNavigation() {
   const { primary, more } = useMemo(() => {
     const primaryCandidates: NavItem[] = [
       {
-        id: "company.workbench",
-        path: "/workbench",
-        label: t("enterprise.nav.workbench"),
-        icon: LayoutDashboard,
-      },
-      {
         id: "core.chat",
         path: "/chat",
         label: t("nav.chat"),
         icon: MessageSquareText,
       },
       {
-        id: "core.inbox",
-        path: "/inbox",
-        label: t("nav.inbox"),
-        icon: Inbox,
+        id: "company.projects",
+        path: "/projects",
+        label: t("enterprise.nav.projects", "Project Spaces"),
+        icon: Folder,
+      },
+      {
+        id: "core.cron-jobs",
+        path: "/cron-jobs",
+        label: t("nav.cronJobs"),
+        icon: CalendarClock,
       },
     ];
     const accessiblePrimary = primaryCandidates.filter((item) =>
@@ -74,7 +75,18 @@ export default function MobileNavigation() {
     );
 
     const moreCandidates: NavItem[] = [
-      ...accessiblePrimary.slice(3),
+      {
+        id: "core.inbox",
+        path: "/inbox",
+        label: t("nav.inbox"),
+        icon: Inbox,
+      },
+      {
+        id: "company.workbench",
+        path: "/workbench",
+        label: t("enterprise.nav.workbench"),
+        icon: LayoutDashboard,
+      },
       {
         id: "core.workspace",
         path: "/workspace",
@@ -92,12 +104,6 @@ export default function MobileNavigation() {
         path: "/channels",
         label: t("nav.channels"),
         icon: Radio,
-      },
-      {
-        id: "core.cron-jobs",
-        path: "/cron-jobs",
-        label: t("nav.cronJobs"),
-        icon: CalendarClock,
       },
       {
         id: "core.heartbeat",

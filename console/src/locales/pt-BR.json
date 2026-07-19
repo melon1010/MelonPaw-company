@@ -29,8 +29,17 @@
     "total": "Total {{count}}",
     "clear": "Limpar",
     "paste": "Colar",
+    "more": "Mais",
     "yes": "Sim",
     "no": "Nao"
+  },
+  "enterprise": {
+    "nav": {
+      "workbench": "Área de trabalho",
+      "projects": "Espaços de projeto",
+      "operations": "Operações",
+      "administration": "Administração"
+    }
   },
   "chunkError": {
     "title": "Falha ao carregar pagina",
@@ -44,6 +53,7 @@
     "control": "Controle",
     "channels": "Canais",
     "sessions": "Sessoes",
+    "inbox": "Caixa de entrada",
     "cronJobs": "Tarefas Cron",
     "heartbeat": "Heartbeat",
     "agent": "Workspace",
@@ -64,7 +74,8 @@
     "debug": "Depuracao",
     "plugins": "Plugins",
     "backups": "Backups",
-    "pluginManager": "Gerenciador de Plugins"
+    "pluginManager": "Gerenciador de Plugins",
+    "menu": "Navegação"
   },
   "debug": {
     "title": "Depuracao",
@@ -1935,12 +1946,14 @@
   "sidebar": {
     "settings": {
       "language": "Idioma",
-      "theme": "Tema"
+      "theme": "Tema",
+      "returnApp": "Voltar ao aplicativo"
     }
   },
   "chat": {
     "modelSelectTooltip": "Selecionar Modelo",
     "newChatTooltip": "Novo Chat",
+    "recentConversations": "Conversas recentes",
     "searchTooltip": "Pesquisar Todos chats",
     "chatHistoryTooltip": "Chat history",
     "wideModeTooltip": "Modo amplo",

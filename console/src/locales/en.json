@@ -30,6 +30,7 @@
     "total": "Total {{count}}",
     "clear": "Clear",
     "paste": "Paste",
+    "more": "More",
     "yes": "Yes",
     "no": "No"
   },
@@ -38,6 +39,7 @@
       "group": "Company",
       "workbench": "Workbench",
       "projects": "Project Spaces",
+      "projectsShort": "Projects",
       "members": "Members & Roles",
       "roles": "Roles & permissions",
       "tasks": "Tasks & Results",
@@ -318,12 +320,14 @@
     "debug": "Debug",
     "plugins": "Plugins",
     "backups": "Backups",
-    "pluginManager": "Plugin Manager"
+    "pluginManager": "Plugin Manager",
+    "menu": "Navigation"
   },
   "sidebar": {
     "settings": {
       "language": "Language",
-      "theme": "Theme"
+      "theme": "Theme",
+      "returnApp": "Return to application"
     }
   },
   "debug": {
@@ -2331,7 +2335,11 @@
   },
   "chat": {
     "modelSelectTooltip": "Select model",
+    "skillsMenu": "Skills",
+    "skillsMenuEmpty": "No skills available",
     "newChatTooltip": "New chat",
+    "searchConversationsAction": "Search chats",
+    "recentConversations": "Recent chats",
     "searchTooltip": "Search all chats",
     "chatHistoryTooltip": "Chat history",
     "wideModeTooltip": "Wide mode",
@@ -2347,7 +2355,12 @@
     "description": "I am a helpful assistant that can help you with your questions.",
     "prompt1": "Let's start a new journey!",
     "prompt2": "Can you tell me what skills you have?",
-    "inputPlaceholder": "Message MelonPaw...",
+    "prompt3": "List the skills I can use",
+    "suggested": "Suggested",
+    "homeSuggestion1Description": "Organize tasks, priorities, and next actions",
+    "homeSuggestion2Description": "Locate relevant files in your workspace",
+    "homeSuggestion3Description": "See the capabilities available to this Agent",
+    "inputPlaceholder": "Ask anything",
     "emptyOutputError": "The assistant returned an empty response.",
     "commands": {
       "clear": {

@@ -1,21 +1,25 @@
-import { Tooltip } from "antd";
-import { Button } from "@agentscope-ai/design";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import type { MenuProps } from "antd";
+import { PanelLeftClose, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Slot } from "../plugins/registry/Slot";
-import { AccountControl, SettingsControl } from "./AccountControls";
+import { AccountControl } from "./AccountControls";
 import styles from "./index.module.less";
 
 interface SidebarBrandProps {
   collapsed: boolean;
   onToggle: () => void;
+  onSearch: () => void;
 }
 
-export function SidebarBrand({ collapsed, onToggle }: SidebarBrandProps) {
+export function SidebarBrand({
+  collapsed,
+  onToggle,
+  onSearch,
+}: SidebarBrandProps) {
   const { t } = useTranslation();
-  const toggleLabel = collapsed
-    ? t("sidebar.expand", "展开导航")
-    : t("sidebar.collapse", "收起导航");
+  const expandLabel = t("sidebar.expand", "展开导航");
+  const searchLabel = t("chat.searchConversationsAction", "搜索对话");
+  const collapseLabel = t("sidebar.collapse", "收起导航");
 
   return (
     <div
@@ -23,38 +27,53 @@ export function SidebarBrand({ collapsed, onToggle }: SidebarBrandProps) {
         collapsed ? styles.sidebarBrandCollapsed : ""
       }`}
     >
-      <Tooltip title={toggleLabel} placement="right">
-        <Button
-          type="text"
-          className={styles.sidebarBrandToggle}
-          aria-label={toggleLabel}
-          onClick={onToggle}
-        >
-          <Slot name="header.logo" kind="replace">
-            <span className={styles.sidebarBrandMark}>
-              <img src="/company-mark.svg" alt="" />
-            </span>
-          </Slot>
-          <span className={styles.sidebarBrandToggleIcon} aria-hidden>
-            {collapsed ? (
-              <PanelLeftOpen size={17} />
-            ) : (
-              <PanelLeftClose size={17} />
-            )}
+      <button
+        type="button"
+        className={styles.sidebarBrandLogo}
+        aria-label={collapsed ? expandLabel : "MelonPaw"}
+        onClick={collapsed ? onToggle : undefined}
+      >
+        <Slot name="header.logo" kind="replace">
+          <span className={styles.sidebarBrandMark}>
+            <img src="/company-mark.svg" alt="" />
           </span>
-        </Button>
-      </Tooltip>
+        </Slot>
+      </button>
       {!collapsed && (
-        <span className={styles.sidebarBrandCopy}>
-          <strong>MelonPaw</strong>
-          <span>Company Console</span>
-        </span>
+        <div className={styles.sidebarBrandActions}>
+          <button
+            type="button"
+            className={styles.sidebarBrandAction}
+            aria-label={searchLabel}
+            onClick={onSearch}
+          >
+            <Search size={21} strokeWidth={1.8} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className={styles.sidebarBrandAction}
+            aria-label={collapseLabel}
+            onClick={onToggle}
+          >
+            <PanelLeftClose size={21} strokeWidth={1.8} aria-hidden />
+          </button>
+        </div>
       )}
     </div>
   );
 }
 
-export function SidebarAccount({ collapsed }: { collapsed: boolean }) {
+export function SidebarAccount({
+  collapsed,
+  navigationItems,
+  onNavigationClick,
+  onOpenSettings,
+}: {
+  collapsed: boolean;
+  navigationItems?: MenuProps["items"];
+  onNavigationClick?: MenuProps["onClick"];
+  onOpenSettings?: () => void;
+}) {
   return (
     <div
       className={`${styles.sidebarAccountDock} ${
@@ -65,11 +84,9 @@ export function SidebarAccount({ collapsed }: { collapsed: boolean }) {
         variant="sidebar"
         collapsed={collapsed}
         placement="topLeft"
-      />
-      <SettingsControl
-        className={styles.sidebarAccountSettings}
-        placement="topLeft"
-        tooltipPlacement="right"
+        navigationItems={navigationItems}
+        onNavigationClick={onNavigationClick}
+        onOpenSettings={onOpenSettings}
       />
     </div>
   );

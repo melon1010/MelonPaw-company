@@ -81,31 +81,81 @@
   }
 }
 
-/* Right-side history panel */
-.historyPanel {
-  width: 330px;
-  flex-shrink: 0;
-  align-self: stretch;
-  overflow: hidden;
-  position: relative;
+.senderAttachmentButton,
+.senderToolsButton {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  color: var(--mp-text-secondary) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--mp-text) !important;
+    background: var(--mp-surface-muted) !important;
+    outline: none;
+  }
 }
 
-@media (max-width: 900px) {
-  .historyPanel {
-    position: fixed;
-    top: 90px;
-    right: 0;
-    bottom: 0;
-    width: min(330px, 85vw);
-    z-index: 1000;
-    box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
-    border-radius: 6px 0 0 6px;
+.senderToolsButton {
+  display: none;
+}
+
+.senderToolsButton {
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: -5px;
+    width: 1px;
+    background: var(--mp-border-strong);
   }
-  .historyPanelMask {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    z-index: 999;
+
+  &:disabled {
+    color: var(--mp-text-tertiary) !important;
+    cursor: default;
+  }
+}
+
+.chatConversationTitle {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  margin-right: 4px;
+}
+
+.senderSkillMenuItem {
+  width: min(260px, calc(100vw - 64px));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  strong,
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  span {
+    color: var(--mp-text-tertiary);
+    font-size: 11px;
   }
 }
 
@@ -141,7 +191,7 @@
 .suggestionDescription {
   flex: 1;
   min-width: 0;
-  color: rgba(0, 0, 0, 0.45);
+  color: var(--mp-text-secondary);
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -158,16 +208,6 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
-  }
-}
-
-:global(.dark-mode) {
-  .suggestionCommand {
-    color: var(--mp-primary);
-  }
-
-  .suggestionDescription {
-    color: rgba(255, 255, 255, 0.65);
   }
 }
 
@@ -323,6 +363,131 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 0;
+  }
+}
+
+/* ─── Empty chat composition ────────────────────────────────────────────── */
+
+.chatMessagesArea {
+  :global {
+    /* The vendor chat places the empty-state marker on the message-list child. */
+    .qwenpaw-chat-anywhere-chat:has(
+        > .qwenpaw-chat-anywhere-message-list-welcome
+      ) {
+      position: relative;
+      display: block;
+      background: var(--mp-canvas);
+    }
+
+    .qwenpaw-chat-anywhere-chat:has(
+        > .qwenpaw-chat-anywhere-message-list-welcome
+      )
+      > .qwenpaw-chat-anywhere-message-list-welcome {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      max-width: none;
+      height: auto;
+      min-height: 100%;
+      min-width: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .qwenpaw-chat-anywhere-chat:has(
+        > .qwenpaw-chat-anywhere-message-list-welcome
+      )
+      > .qwenpaw-chat-anywhere-input {
+      position: absolute;
+      top: calc(54% + 45px);
+      right: 0;
+      left: 0;
+      z-index: 3;
+      height: auto;
+      padding: 12px 0 18px;
+      transform: translateY(-100%);
+    }
+
+    .qwenpaw-chat-anywhere-chat:has(
+        > .qwenpaw-chat-anywhere-message-list-welcome
+      )
+      .qwenpaw-chat-anywhere-input {
+      padding: 12px 16px 18px;
+      background: transparent !important;
+    }
+
+    .qwenpaw-chat-anywhere-chat:has(
+        > .qwenpaw-chat-anywhere-message-list-welcome
+      )
+      .qwenpaw-chat-anywhere-input-wrapper {
+      position: static;
+      width: min(680px, calc(100% - 48px)) !important;
+      max-width: 680px !important;
+      margin: 0 auto;
+    }
+  }
+}
+
+.homeWelcome {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  color: var(--mp-text);
+}
+
+.homeWelcomePrompt {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  transform: translate(-50%, -50%);
+  color: var(--mp-text);
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 38px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chatMessagesArea:has(
+    :global(.qwenpaw-sender-header:not(.qwenpaw-sender-header-motion-hidden))
+  )
+  .homeWelcomePrompt {
+  transform: translate(-50%, calc(-50% - 68px));
+}
+
+@media (max-width: 768px) {
+  .chatMessagesArea {
+    :global {
+      .qwenpaw-chat-anywhere-chat:has(
+          > .qwenpaw-chat-anywhere-message-list-welcome
+        )
+        > .qwenpaw-chat-anywhere-input {
+        top: calc(45% + 71px);
+        bottom: auto;
+        transform: translateY(-100%);
+      }
+    }
+  }
+
+  .homeWelcomePrompt {
+    top: 27%;
+    font-size: 22px;
+  }
+
+  .chatMessagesArea {
+    :global {
+      .qwenpaw-chat-anywhere-chat:has(
+          > .qwenpaw-chat-anywhere-message-list-welcome
+        )
+        .qwenpaw-chat-anywhere-input-wrapper {
+        width: calc(100% - 20px) !important;
+      }
+    }
   }
 }
 

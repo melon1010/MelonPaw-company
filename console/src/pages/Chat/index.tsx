@@ -4,11 +4,14 @@ import {
   type IAgentScopeRuntimeWebUIRef,
 } from "@agentscope-ai/chat";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Modal, Result, Tooltip } from "antd";
+import { Alert, Button, Dropdown, Modal, Result, Tooltip } from "antd";
 import { useAppMessage } from "../../hooks/useAppMessage";
-import { useIsMobile } from "../../hooks/useIsMobile";
 import { ExclamationCircleOutlined, SettingOutlined } from "@ant-design/icons";
-import { SparkCopyLine, SparkAttachmentLine } from "@agentscope-ai/icons";
+import {
+  SparkCopyLine,
+  SparkMagicWandLine,
+  SparkPlusLine,
+} from "@agentscope-ai/icons";
 import { usePlugins } from "../../plugins/PluginContext";
 import { useTranslation } from "react-i18next";
 import i18n from "../../i18n";
@@ -32,14 +35,14 @@ import { LoopCommandChip } from "../../components/LoopInput";
 import { useChatAnywhereInput } from "@agentscope-ai/chat";
 import styles from "./index.module.less";
 import { IconButton } from "@agentscope-ai/design";
-import ChatActionGroup from "./components/ChatActionGroup";
-import ChatSessionDrawer from "./components/ChatSessionDrawer";
 import TurnUsageAction from "./components/TurnUsageAction";
 import {
   patchContextMaxInputLength,
   wrapChatResponseUsageStream,
 } from "./turnUsage";
+import ChatHomeWelcome from "./components/ChatHomeWelcome";
 import ChatHeaderTitle from "./components/ChatHeaderTitle";
+import ChatSearchPanel from "./components/ChatSearchPanel";
 import ChatSessionInitializer from "./components/ChatSessionInitializer";
 import { ApprovalCard } from "../../components/ApprovalCard/ApprovalCard";
 import { commandsApi } from "../../api/modules/commands";
@@ -56,6 +59,60 @@ import {
 import { ChatScalar, ChatList } from "../../plugins/registry/slotKeys";
 import { HostRequestCard, HostResponseCard } from "./HostBubbles";
 import { withGenericFallback } from "../../components/Chat/ToolCards/adapters/v1Adapter";
+
+interface SenderSkillsMenuProps {
+  skills: Array<{ name: string; description?: string }>;
+  label: string;
+  emptyLabel: string;
+}
+
+function SenderSkillsMenu({
+  skills,
+  label,
+  emptyLabel,
+}: SenderSkillsMenuProps) {
+  const disabled = skills.length === 0;
+  return (
+    <Dropdown
+      disabled={disabled}
+      placement="topLeft"
+      trigger={["click"]}
+      menu={{
+        items: disabled
+          ? [{ key: "empty", disabled: true, label: emptyLabel }]
+          : skills.map((skill) => ({
+              key: skill.name,
+              label: (
+                <span className={styles.senderSkillMenuItem}>
+                  <strong>{skill.name}</strong>
+                  {skill.description && <span>{skill.description}</span>}
+                </span>
+              ),
+            })),
+        onClick: ({ key }) => {
+          const selected = skills.find((skill) => skill.name === String(key));
+          if (selected) {
+            useLoopStore.getState().setSelectedSkill({
+              name: selected.name,
+              description: selected.description || selected.name,
+            });
+          }
+        },
+      }}
+    >
+      <Tooltip title={disabled ? emptyLabel : label}>
+        <button
+          type="button"
+          className={styles.senderToolsButton}
+          aria-label={label}
+          disabled={disabled}
+        >
+          <SparkMagicWandLine size={18} />
+        </button>
+      </Tooltip>
+    </Dropdown>
+  );
+}
 
 interface ApprovalMessageData {
   requestId: string;
@@ -1017,8 +1074,6 @@ const timestampStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const HISTORY_PANEL_STORAGE_KEY = "qwenpaw_history_panel_open";
-
 export default function ChatPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -1026,7 +1081,6 @@ export default function ChatPage() {
   const { isDark } = useTheme();
   const { user } = useAuth();
   const canManageModels = hasPermission(user, "system:manage");
-  const loopSelectedSkill = useLoopStore((s) => s.selectedSkill);
   const availableCommands = useLoopStore((s) => s.availableCommands);
   const availableLoopSkills = useLoopStore((s) => s.availableSkills);
 
@@ -1256,30 +1310,18 @@ export default function ChatPage() {
     Map<string, ApprovalMessageData>
   >(new Map());
   approvalPendingRef.current = approvalRequests.size > 0;
-  const isMobile = useIsMobile();
 
-  // Right-side history panel state
-  const [historyPanelOpen, setHistoryPanelOpen] = useState(() => {
-    try {
-      return localStorage.getItem(HISTORY_PANEL_STORAGE_KEY) === "true";
-    } catch {
-      return false;
+  const [searchPanelOpen, setSearchPanelOpen] = useState(false);
+
+  useEffect(() => {
+    const openSearch = () => setSearchPanelOpen(true);
+    window.addEventListener("qwenpaw:sidebar-search", openSearch);
+    if (sessionStorage.getItem("qwenpaw_pending_chat_search")) {
+      sessionStorage.removeItem("qwenpaw_pending_chat_search");
+      openSearch();
     }
-  });
-  const toggleHistoryPanel = useCallback(() => {
-    setHistoryPanelOpen((prev) => {
-      const next = !prev;
-      try {
-        if (next) {
-          localStorage.setItem(HISTORY_PANEL_STORAGE_KEY, "true");
-        } else {
-          localStorage.removeItem(HISTORY_PANEL_STORAGE_KEY);
-        }
-      } catch {
-        // storage unavailable
-      }
-      return next;
-    });
+    return () =>
+      window.removeEventListener("qwenpaw:sidebar-search", openSearch);
   }, []);
   const [chatSkills, setChatSkills] = useState<SkillSpec[]>([]);
   const consoleSkills = useMemo(
@@ -2711,15 +2753,12 @@ export default function ChatPage() {
               bridgeRef={runtimeLoadingBridgeRef}
               onLoadingChange={setChatLoading}
             />
-            <ChatHeaderTitle />
-            <span style={{ flex: 1 }} />
+            {chatId ? (
+              <span className={styles.chatConversationTitle}>
+                <ChatHeaderTitle />
+              </span>
+            ) : null}
             {canManageModels && <ModelSelector />}
-            <ChatActionGroup
-              onToggleHistory={toggleHistoryPanel}
-              historyOpen={historyPanelOpen}
-              isWideMode={isWideMode}
-              onToggleWideMode={toggleWideMode}
-            />
             {pluginRightHeader}
           </>
         ),
@@ -2734,12 +2773,15 @@ export default function ChatPage() {
           : {}),
         ...(extPrompts !== undefined ? { prompts: extPrompts } : {}),
         // SDK uses `render` if present and ignores the other fields.
-        ...(wrappedWelcomeRender ? { render: wrappedWelcomeRender } : {}),
+        render:
+          wrappedWelcomeRender ??
+          ((welcomeProps) => <ChatHomeWelcome {...welcomeProps} />),
       },
       sender: {
         ...(i18nConfig as any)?.sender,
         beforeSubmit: handleBeforeSubmit,
         allowSpeech: whisperChecked && !whisperEnabled,
+        showCharacterCount: false,
         beforeUI:
           showSenderBeforeUI || approvalTray !== null ? (
             <>
@@ -2776,20 +2818,12 @@ export default function ChatPage() {
                 onTranscription={handleWhisperTranscription}
               />
             ) : null}
+            <SenderSkillsMenu
+              skills={availableLoopSkills}
+              label={t("chat.skillsMenu", "Skills")}
+              emptyLabel={t("chat.skillsMenuEmpty", "No skills available")}
+            />
             <LoopCommandChip />
-            {loopSelectedSkill ? (
-              <Tooltip title={t("loop.gotoSettings", "Agent Loop Settings")}>
-                <SettingOutlined
-                  style={{
-                    fontSize: 14,
-                    cursor: "pointer",
-                    color: "var(--text-secondary, rgba(0,0,0,0.45))",
-                    padding: "4px 6px",
-                  }}
-                  onClick={() => navigate("/agent-config?tab=agentLoop")}
-                />
-              </Tooltip>
-            ) : null}
             {pluginSenderPrefix}
           </>
         ),
@@ -2812,8 +2846,9 @@ export default function ChatPage() {
               <Tooltip title={tooltipTitle}>
                 <IconButton
                   disabled={props?.disabled}
-                  icon={<SparkAttachmentLine />}
+                  icon={<SparkPlusLine size={18} />}
                   bordered={false}
+                  className={styles.senderAttachmentButton}
                 />
               </Tooltip>
             );
@@ -3140,32 +3175,10 @@ export default function ChatPage() {
       </div>
       {/* End of main chat area */}
 
-      {/* Right-side history panel */}
-      {historyPanelOpen && (
-        <>
-          {isMobile ? (
-            <ChatSessionDrawer
-              open={historyPanelOpen}
-              onClose={toggleHistoryPanel}
-              embedded={false}
-            />
-          ) : (
-            <>
-              <div
-                className={styles.historyPanelMask}
-                onClick={toggleHistoryPanel}
-              />
-              <div className={styles.historyPanel}>
-                <ChatSessionDrawer
-                  open={historyPanelOpen}
-                  onClose={toggleHistoryPanel}
-                  embedded
-                />
-              </div>
-            </>
-          )}
-        </>
-      )}
+      <ChatSearchPanel
+        open={searchPanelOpen}
+        onClose={() => setSearchPanelOpen(false)}
+      />
     </div>
   );
 }

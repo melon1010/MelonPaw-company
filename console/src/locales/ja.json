@@ -28,7 +28,16 @@
     "actions": "操作",
     "total": "合計 {{count}} 件",
     "clear": "クリア",
-    "paste": "貼り付け"
+    "paste": "貼り付け",
+    "more": "その他"
+  },
+  "enterprise": {
+    "nav": {
+      "workbench": "ワークベンチ",
+      "projects": "プロジェクトスペース",
+      "operations": "運用",
+      "administration": "管理"
+    }
   },
   "chunkError": {
     "title": "ページの読み込みに失敗しました",
@@ -42,6 +51,7 @@
     "control": "コントロール",
     "channels": "チャンネル",
     "sessions": "セッション",
+    "inbox": "受信トレイ",
     "cronJobs": "定期実行",
     "heartbeat": "ハートビート",
     "agent": "ワークスペース",
@@ -62,7 +72,8 @@
     "debug": "デバッグ",
     "plugins": "プラグイン",
     "backups": "バックアップ",
-    "pluginManager": "プラグインマネージャー"
+    "pluginManager": "プラグインマネージャー",
+    "menu": "ナビゲーション"
   },
   "debug": {
     "title": "デバッグ",
@@ -1745,12 +1756,14 @@
   "sidebar": {
     "settings": {
       "language": "言語",
-      "theme": "テーマ"
+      "theme": "テーマ",
+      "returnApp": "アプリに戻る"
     }
   },
   "chat": {
     "modelSelectTooltip": "モデルを選択",
     "newChatTooltip": "新しいチャット",
+    "recentConversations": "最近のチャット",
     "searchTooltip": "すべてのチャットを検索",
     "chatHistoryTooltip": "チャット履歴",
     "wideModeTooltip": "ワイドモード",

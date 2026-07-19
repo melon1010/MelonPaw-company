@@ -193,3 +193,27 @@
   transition: transform 0.2s ease;
   flex-shrink: 0;
 }
+
+/* Embedded history list inside the Open WebUI-style application sidebar. */
+.scroll {
+  padding: 0;
+}
+
+.groupLabel {
+  min-height: 26px;
+  padding: 5px 8px 2px;
+  color: var(--mp-sidebar-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+
+  &:hover {
+    color: var(--mp-sidebar-text);
+  }
+}
+
+.loadingState,
+.emptyState {
+  color: var(--mp-sidebar-muted);
+}

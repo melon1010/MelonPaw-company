@@ -1,6 +1,12 @@
 import { Suspense, useMemo, useState } from "react";
 import { Layout, Result, Spin } from "antd";
-import { Routes, Route, useLocation, matchPath } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  useLocation,
+  useNavigate,
+  matchPath,
+} from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import Sidebar from "../Sidebar";
 import ConsolePollService from "../../components/ConsolePollService";
@@ -34,10 +40,12 @@ function pickSelectedKey(
 export default function MainLayout() {
   const { t } = useTranslation();
   const location = useLocation();
+  const navigate = useNavigate();
   const currentPath = location.pathname;
   const routes = useRoutes();
   const { user } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [settingsMode, setSettingsMode] = useState(false);
 
   const selectedKey = useMemo(
     () => pickSelectedKey(currentPath, routes),
@@ -46,11 +54,20 @@ export default function MainLayout() {
   const canPollConsole = canAccessRoute("core.inbox", user);
 
   return (
-    <Layout className={styles.mainLayout}>
+    <Layout className={`${styles.mainLayout} webui-shell`}>
       <Sidebar
         selectedKey={selectedKey}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
+        settingsMode={settingsMode}
+        onEnterSettings={() => {
+          setSidebarCollapsed(false);
+          setSettingsMode(true);
+        }}
+        onExitSettings={() => {
+          setSettingsMode(false);
+          navigate("/chat");
+        }}
       />
       <Content className="page-container">
         {canPollConsole && <ConsolePollService />}

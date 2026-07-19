@@ -233,6 +233,7 @@ const WhisperSpeechButton = forwardRef<
     >
       <IconButton
         bordered={false}
+        className="webui-sender-voice-button"
         icon={
           loading ? (
             <LoadingOutlined style={{ fontSize: "1.2em" }} />

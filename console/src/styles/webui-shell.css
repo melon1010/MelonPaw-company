@@ -1,0 +1,394 @@
+/* Focused visual layer for the authenticated workbench. It follows the
+ * supplied Open WebUI reference while keeping MelonPaw's React components and
+ * menu contracts intact. */
+
+.webui-shell,
+.webui-shell .page-container,
+.webui-shell .page-content {
+  background: var(--mp-canvas) !important;
+}
+
+.webui-shell .page-content {
+  border: 0 !important;
+  overflow: hidden;
+}
+
+.webui-shell .qwenpaw-chat-anywhere,
+.webui-shell .qwenpaw-chat-anywhere-chat,
+.webui-shell .qwenpaw-chat-anywhere-message-list,
+.webui-shell .qwenpaw-bubble-list-wrapper,
+.webui-shell .qwenpaw-chat-anywhere-message-list-welcome {
+  color: var(--mp-text) !important;
+  background: var(--mp-canvas) !important;
+}
+
+.webui-shell .qwenpaw-chat-anywhere-layout-right-header,
+.webui-shell .qwenpaw-chat-anywhere-default-header,
+.webui-shell .qwenpaw-chat-anywhere-default-header-right {
+  height: 48px;
+  min-height: 48px;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.webui-shell .qwenpaw-chat-anywhere-default-header-right {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px 0;
+}
+
+.webui-shell .qwenpaw-chat-anywhere-default-header-right > * {
+  color: var(--mp-text-secondary);
+  margin: 0 !important;
+}
+
+.webui-shell .qwenpaw-chat-anywhere-input-wrapper {
+  width: min(680px, calc(100% - 48px)) !important;
+  max-width: 680px !important;
+  min-width: 0 !important;
+  margin: 0 auto;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.webui-shell .qwenpaw-sender {
+  height: auto;
+  min-height: 60px;
+  padding: 0;
+  color: var(--mp-text) !important;
+  background: var(--mp-surface) !important;
+  border: 1px solid var(--mp-border-strong) !important;
+  border-radius: 999px !important;
+  box-shadow: var(--mp-shadow-popover) !important;
+  overflow: hidden;
+}
+
+.webui-shell .qwenpaw-sender:focus-within {
+  border-color: var(--mp-text-tertiary) !important;
+  box-shadow:
+    0 0 0 1px var(--mp-text-tertiary),
+    var(--mp-shadow-popover) !important;
+}
+
+.webui-shell .qwenpaw-sender-content {
+  position: relative;
+  height: 60px;
+  display: block !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.webui-shell .qwenpaw-sender-header {
+  position: relative;
+  z-index: 3;
+  min-height: 0;
+  padding: 6px 6px 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.webui-shell .qwenpaw-sender-header .qwenpaw-attachment-list {
+  padding: 6px 6px 0 !important;
+}
+
+.webui-shell
+  .qwenpaw-sender:has(
+    > .qwenpaw-sender-header:not(.qwenpaw-sender-header-motion-hidden)
+  ) {
+  height: auto;
+  min-height: 60px;
+  border-radius: 24px !important;
+}
+
+html.dark-mode .webui-shell .qwenpaw-chat-anywhere-input,
+html.dark-mode .webui-shell .qwenpaw-sender,
+html.dark-mode .webui-shell .qwenpaw-sender-content {
+  background: var(--mp-surface) !important;
+}
+
+html.dark-mode .webui-shell .qwenpaw-chat-anywhere-input {
+  background: var(--mp-canvas) !important;
+}
+
+html.dark-mode .webui-shell .qwenpaw-sender {
+  border-color: var(--mp-border-strong) !important;
+  border-radius: 999px !important;
+}
+
+.webui-shell .qwenpaw-sender-input {
+  position: absolute !important;
+  top: 50%;
+  left: 0;
+  right: 0;
+  display: block;
+  width: 100%;
+  height: 38px !important;
+  box-sizing: border-box;
+  min-height: 38px !important;
+  max-height: 38px !important;
+  margin: 0 !important;
+  padding: 7px 84px 7px 44px !important;
+  color: var(--mp-text) !important;
+  font-size: 15px !important;
+  line-height: 24px !important;
+  background: transparent !important;
+  transform: translateY(-50%);
+}
+
+.webui-shell .qwenpaw-sender:has([data-loop-command]) .qwenpaw-sender-input {
+  padding-inline-start: 160px !important;
+}
+
+.webui-shell .qwenpaw-sender-prefix [data-loop-command] .qwenpaw-btn,
+.webui-shell .qwenpaw-sender-prefix [data-loop-command] button {
+  width: 20px !important;
+  min-width: 20px !important;
+  height: 20px !important;
+  border-radius: 5px !important;
+}
+
+html.dark-mode .webui-shell .qwenpaw-sender-input,
+html.dark-mode .webui-shell .qwenpaw-sender-content-bottom {
+  background: transparent !important;
+}
+
+.webui-shell .qwenpaw-sender-input::placeholder {
+  color: var(--mp-text-secondary) !important;
+}
+
+.webui-shell .qwenpaw-sender-content-bottom {
+  position: absolute !important;
+  inset: 0;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 0;
+  margin-top: 0 !important;
+  padding: 0 4px !important;
+  background: transparent !important;
+  border: 0 !important;
+  pointer-events: none;
+}
+
+.webui-shell .qwenpaw-sender-actions-list button,
+.webui-shell .qwenpaw-sender-prefix button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  color: var(--mp-text-secondary) !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+}
+
+.webui-shell .qwenpaw-sender-prefix {
+  overflow: visible !important;
+}
+
+.webui-shell .qwenpaw-sender-prefix .qwenpaw-sender-actions-btn,
+.webui-shell .qwenpaw-sender-prefix .webui-sender-voice-button {
+  position: absolute !important;
+  top: 50%;
+  right: 44px;
+  bottom: auto;
+  z-index: 2;
+  transform: translateY(-50%);
+}
+
+.webui-shell .qwenpaw-sender-prefix > .qwenpaw-flex {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.webui-shell .qwenpaw-sender-actions-list button:hover,
+.webui-shell .qwenpaw-sender-prefix button:hover {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-muted) !important;
+}
+
+.webui-shell .qwenpaw-sender-actions-list button[class*="primary"],
+.webui-shell .qwenpaw-sender-actions-list .qwenpaw-btn-primary {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  color: var(--mp-primary-contrast) !important;
+  background: var(--mp-primary) !important;
+}
+
+.webui-shell .qwenpaw-sender-prefix {
+  width: auto !important;
+  flex: 0 0 auto !important;
+  overflow: visible !important;
+  pointer-events: auto;
+}
+
+.webui-shell .qwenpaw-sender-actions-list {
+  flex: 0 0 auto !important;
+  align-items: center;
+  margin: 0 0 0 auto !important;
+  pointer-events: auto;
+}
+
+.webui-shell .qwenpaw-sender-actions-list button[class*="primary"]:hover,
+.webui-shell .qwenpaw-sender-actions-list .qwenpaw-btn-primary:hover {
+  color: var(--mp-primary-contrast) !important;
+  background: var(--mp-primary-hover) !important;
+}
+
+.webui-shell .qwenpaw-sender-actions-list button[class*="primary"]:disabled,
+.webui-shell .qwenpaw-sender-actions-list .qwenpaw-btn-primary:disabled,
+.webui-shell .qwenpaw-sender-actions-list .qwenpaw-sender-actions-btn-disabled {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface-muted) !important;
+  border: 1px solid var(--mp-border-strong) !important;
+  opacity: 1 !important;
+  cursor: not-allowed;
+}
+
+.webui-shell .qwenpaw-bubble-list {
+  width: min(850px, 48vw, calc(100% - 32px));
+  max-width: 850px !important;
+}
+
+.webui-shell .qwenpaw-bubble-content-filled {
+  border-radius: 16px !important;
+}
+
+.webui-shell .qwenpaw-bubble-start .qwenpaw-bubble-content-filled,
+.webui-shell .qwenpaw-bubble-assistant .qwenpaw-bubble-content-filled {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.webui-shell .qwenpaw-bubble-end .qwenpaw-bubble-content-filled,
+.webui-shell .qwenpaw-bubble-user .qwenpaw-bubble-content-filled {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-subtle) !important;
+  border: 1px solid var(--mp-border-strong) !important;
+}
+
+.webui-shell .qwenpaw-dropdown-menu,
+.webui-shell .ant-dropdown-menu,
+.webui-shell .qwenpaw-popover-inner,
+.webui-shell .ant-popover-inner {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-raised) !important;
+  border: 1px solid var(--mp-border-strong) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45) !important;
+}
+
+.webui-shell .qwenpaw-dropdown-menu-item,
+.webui-shell .ant-dropdown-menu-item,
+.webui-shell .qwenpaw-menu-item {
+  color: var(--mp-text-secondary) !important;
+  border-radius: 8px !important;
+}
+
+.webui-shell .qwenpaw-dropdown-menu-item:hover,
+.webui-shell .ant-dropdown-menu-item:hover,
+.webui-shell .qwenpaw-menu-item:hover {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-muted) !important;
+}
+
+html.dark-mode
+  .webui-shell
+  .qwenpaw-btn-primary:not(.qwenpaw-btn-dangerous):not(:disabled),
+html.dark-mode
+  .webui-shell
+  .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled) {
+  color: #171717 !important;
+  background: #f4f4f5 !important;
+  border-color: #f4f4f5 !important;
+  box-shadow: none !important;
+}
+
+html.dark-mode
+  .webui-shell
+  .qwenpaw-btn-primary:not(.qwenpaw-btn-dangerous):not(:disabled)
+  svg,
+html.dark-mode
+  .webui-shell
+  .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled)
+  svg {
+  color: inherit !important;
+}
+
+html.dark-mode
+  .webui-shell
+  .qwenpaw-btn-primary:not(.qwenpaw-btn-dangerous):not(:disabled):hover,
+html.dark-mode
+  .webui-shell
+  .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled):hover {
+  color: #09090b !important;
+  background: #fff !important;
+  border-color: #fff !important;
+}
+
+@media (max-width: 768px) {
+  .webui-shell .qwenpaw-chat-anywhere-default-header-right {
+    min-height: 48px;
+    height: 48px;
+    padding: 4px 10px 0;
+  }
+
+  .webui-shell .qwenpaw-chat-anywhere-input-wrapper {
+    width: calc(100% - 20px) !important;
+  }
+
+  .webui-shell .qwenpaw-sender {
+    min-height: 112px;
+    border-radius: 25px !important;
+  }
+
+  .webui-shell .qwenpaw-sender-content {
+    padding: 12px 8px 8px !important;
+  }
+
+  .webui-shell .qwenpaw-sender-input {
+    min-height: 50px !important;
+  }
+
+  .webui-shell .qwenpaw-sender:has([data-loop-command]) .qwenpaw-sender-input {
+    padding-inline-start: 132px !important;
+  }
+
+  .webui-shell [data-loop-command] {
+    max-width: 92px;
+  }
+
+  .webui-shell .qwenpaw-sender-prefix .qwenpaw-sender-actions-btn,
+  .webui-shell .qwenpaw-sender-prefix .webui-sender-voice-button {
+    right: 58px;
+    bottom: 11px;
+  }
+}
+
+html.dark-mode,
+html.dark-mode body,
+html.dark-mode #root,
+html.dark-mode .webui-shell,
+html.dark-mode .webui-shell .qwenpaw-layout,
+html.dark-mode .webui-shell .qwenpaw-layout-sider,
+html.dark-mode .webui-shell .qwenpaw-layout-sider-children {
+  background: #0d0d0d !important;
+  border-radius: 0 !important;
+}
+
+.webui-shell {
+  overflow: hidden !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .webui-shell .qwenpaw-sender-actions-list button,
+  .webui-shell .qwenpaw-sender-prefix button {
+    transition: none !important;
+  }
+}

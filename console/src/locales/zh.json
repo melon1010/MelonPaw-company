@@ -30,6 +30,7 @@
     "total": "共 {{count}} 条",
     "clear": "清除",
     "paste": "粘贴",
+    "more": "更多",
     "yes": "是",
     "no": "否"
   },
@@ -38,6 +39,7 @@
       "group": "\u4f01\u4e1a\u5de5\u4f5c\u53f0",
       "workbench": "\u5de5\u4f5c\u53f0",
       "projects": "\u9879\u76ee\u7a7a\u95f4",
+      "projectsShort": "\u9879\u76ee\u7a7a\u95f4",
       "members": "\u6210\u5458\u4e0e\u89d2\u8272",
       "roles": "\u89d2\u8272\u4e0e\u6743\u9650",
       "tasks": "\u4efb\u52a1\u4e0e\u7ed3\u679c",
@@ -318,12 +320,14 @@
     "debug": "调试",
     "plugins": "插件",
     "backups": "备份",
-    "pluginManager": "插件管理"
+    "pluginManager": "插件管理",
+    "menu": "导航"
   },
   "sidebar": {
     "settings": {
       "language": "语言",
-      "theme": "主题"
+      "theme": "主题",
+      "returnApp": "返回应用"
     }
   },
   "debug": {
@@ -2190,7 +2194,11 @@
   },
   "chat": {
     "modelSelectTooltip": "模型选择",
+    "skillsMenu": "技能",
+    "skillsMenuEmpty": "暂无可用技能",
     "newChatTooltip": "新建聊天",
+    "searchConversationsAction": "搜索对话",
+    "recentConversations": "最近对话",
     "searchTooltip": "搜索所有聊天",
     "chatHistoryTooltip": "聊天历史",
     "wideModeTooltip": "宽屏模式",
@@ -2202,11 +2210,16 @@
     "statusIdle": "空闲",
     "statusInProgress": "进行中",
     "disclaimer": "懂你所需，伴你左右",
-    "greeting": "你好，我今天能帮你做什么？",
+    "greeting": "有什么可以帮忙的？",
     "description": "我是一个智能助手，可以帮助你解答问题。",
     "prompt1": "让我们开启一段新的旅程吧！",
     "prompt2": "能告诉我你有哪些技能吗？",
-    "inputPlaceholder": "输入消息...",
+    "prompt3": "列出我可以使用的技能",
+    "suggested": "推荐",
+    "homeSuggestion1Description": "梳理任务、优先级和下一步行动",
+    "homeSuggestion2Description": "从个人工作区中定位相关文件",
+    "homeSuggestion3Description": "查看当前 Agent 可调用的能力",
+    "inputPlaceholder": "有问题，尽管问",
     "emptyOutputError": "助手返回了空响应。",
     "commands": {
       "clear": {

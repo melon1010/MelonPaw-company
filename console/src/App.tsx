@@ -13,6 +13,8 @@ import enUS from "antd/locale/en_US";
 import jaJP from "antd/locale/ja_JP";
 import ruRU from "antd/locale/ru_RU";
 import idID from "antd/locale/id_ID";
+import ptBR from "antd/locale/pt_BR";
+import viVN from "antd/locale/vi_VN";
 import type { Locale } from "antd/es/locale";
 import { theme as antdTheme } from "antd";
 import dayjs from "dayjs";
@@ -21,6 +23,8 @@ import "dayjs/locale/zh-cn";
 import "dayjs/locale/ja";
 import "dayjs/locale/ru";
 import "dayjs/locale/id";
+import "dayjs/locale/pt-br";
+import "dayjs/locale/vi";
 dayjs.extend(relativeTime);
 import MainLayout from "./layouts/MainLayout";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -38,6 +42,7 @@ import { getApiToken, clearAuthToken } from "./api/config";
 import "./styles/layout.css";
 import "./styles/form-override.css";
 import "./styles/enterprise-theme.css";
+import "./styles/webui-shell.css";
 
 const antdLocaleMap: Record<string, Locale> = {
   zh: zhCN,
@@ -45,6 +50,9 @@ const antdLocaleMap: Record<string, Locale> = {
   ja: jaJP,
   ru: ruRU,
   id: idID,
+  pt: ptBR,
+  "pt-BR": ptBR,
+  vi: viVN,
 };
 
 const dayjsLocaleMap: Record<string, string> = {
@@ -53,6 +61,9 @@ const dayjsLocaleMap: Record<string, string> = {
   ja: "ja",
   ru: "ru",
   id: "id",
+  pt: "pt-br",
+  "pt-BR": "pt-br",
+  vi: "vi",
 };
 
 const GlobalStyle = createGlobalStyle`
@@ -63,6 +74,7 @@ const GlobalStyle = createGlobalStyle`
 `;
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<
     "loading" | "auth-required" | "setup-required" | "error" | "ok"
   >("loading");
@@ -118,18 +130,22 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setSession]);
 
   if (status === "loading") {
-    return <Spin fullscreen tip="Loading MelonPaw-Company" />;
+    return <Spin fullscreen tip={t("common.loading")} />;
   }
   if (status === "error") {
     return (
       <Result
         status="error"
-        title="Unable to connect to the authentication service"
-        subTitle="Check that the server is running, then retry. Access remains locked while identity cannot be verified."
-        extra={<Button onClick={() => window.location.reload()}>Retry</Button>}
+        title={t("chunkError.title")}
+        subTitle={t("chunkError.subTitle")}
+        extra={
+          <Button onClick={() => window.location.reload()}>
+            {t("chunkError.reload")}
+          </Button>
+        }
       />
     );
   }
@@ -157,46 +173,48 @@ function AppInner() {
   const selectedTheme = isDark ? bailianDarkTheme : bailianTheme;
   const companyTokens = isDark
     ? {
-        colorPrimary: "#64c2a8",
-        colorPrimaryHover: "#79ceb7",
-        colorPrimaryActive: "#48aa90",
-        colorPrimaryBg: "#203c35",
-        colorInfo: "#6da9c7",
-        colorSuccess: "#63b88a",
-        colorWarning: "#dda35f",
-        colorError: "#dc7770",
-        colorLink: "#79ceb7",
-        colorBgBase: "#111614",
-        colorBgLayout: "#111614",
-        colorBgContainer: "#18201e",
-        colorBgElevated: "#1d2825",
-        colorFillAlter: "#202b28",
-        colorText: "#eef5f2",
-        colorTextSecondary: "#b1c1bb",
-        colorTextTertiary: "#84968f",
-        colorBorder: "#3a4b46",
-        colorBorderSecondary: "#2d3b37",
+        colorPrimary: "#f4f4f5",
+        colorPrimaryHover: "#ffffff",
+        colorPrimaryActive: "#e4e4e7",
+        colorPrimaryBg: "#2a2a2a",
+        colorInfo: "#a1a1aa",
+        colorSuccess: "#86efac",
+        colorWarning: "#fbbf24",
+        colorError: "#f87171",
+        colorLink: "#e4e4e7",
+        colorBgBase: "#171717",
+        colorBgLayout: "#171717",
+        colorBgContainer: "#1f1f1f",
+        colorBgElevated: "#242424",
+        colorFillAlter: "#262626",
+        colorText: "#f4f4f5",
+        colorTextSecondary: "#b4b4b8",
+        colorTextTertiary: "#71717a",
+        colorBorder: "#3a3a3a",
+        colorBorderSecondary: "#2a2a2a",
+        colorTextLightSolid: "#171717",
       }
     : {
-        colorPrimary: "#176b5d",
-        colorPrimaryHover: "#10584d",
-        colorPrimaryActive: "#0b493f",
-        colorPrimaryBg: "#e4f1ed",
-        colorInfo: "#2f6f91",
-        colorSuccess: "#2f855a",
-        colorWarning: "#a56312",
-        colorError: "#b34842",
-        colorLink: "#176b5d",
-        colorBgBase: "#edf1f0",
-        colorBgLayout: "#edf1f0",
+        colorPrimary: "#18181b",
+        colorPrimaryHover: "#27272a",
+        colorPrimaryActive: "#09090b",
+        colorPrimaryBg: "#f4f4f5",
+        colorInfo: "#52525b",
+        colorSuccess: "#15803d",
+        colorWarning: "#a16207",
+        colorError: "#b91c1c",
+        colorLink: "#27272a",
+        colorBgBase: "#ffffff",
+        colorBgLayout: "#fafafa",
         colorBgContainer: "#ffffff",
         colorBgElevated: "#ffffff",
-        colorFillAlter: "#f3f6f4",
-        colorText: "#1c2926",
-        colorTextSecondary: "#53645f",
-        colorTextTertiary: "#7b8985",
-        colorBorder: "#bdc9c4",
-        colorBorderSecondary: "#d4dcd8",
+        colorFillAlter: "#f4f4f5",
+        colorText: "#18181b",
+        colorTextSecondary: "#52525b",
+        colorTextTertiary: "#71717a",
+        colorBorder: "#d4d4d8",
+        colorBorderSecondary: "#e4e4e7",
+        colorTextLightSolid: "#ffffff",
       };
   const lang = i18n.resolvedLanguage || i18n.language || "en";
   const [antdLocale, setAntdLocale] = useState<Locale>(
@@ -218,23 +236,25 @@ function AppInner() {
         );
     }
     useUploadLimitStore.getState().fetch();
-  }, []);
+  }, [i18n]);
 
   useEffect(() => {
     const handleLanguageChanged = (lng: string) => {
       const shortLng = lng.split("-")[0];
       setAntdLocale(antdLocaleMap[shortLng] ?? enUS);
       dayjs.locale(dayjsLocaleMap[shortLng] ?? "en");
+      document.documentElement.lang = lng;
     };
 
     // Set initial dayjs locale
     dayjs.locale(dayjsLocaleMap[lang.split("-")[0]] ?? "en");
+    document.documentElement.lang = lang;
 
     i18n.on("languageChanged", handleLanguageChanged);
     return () => {
       i18n.off("languageChanged", handleLanguageChanged);
     };
-  }, [i18n]);
+  }, [i18n, lang]);
 
   return (
     <BrowserRouter basename={basename}>
@@ -247,12 +267,12 @@ function AppInner() {
         prefixCls="qwenpaw"
         locale={antdLocale}
         theme={{
-          ...(selectedTheme as any)?.theme,
+          ...selectedTheme.theme,
           algorithm: isDark
             ? antdTheme.darkAlgorithm
             : antdTheme.defaultAlgorithm,
           token: {
-            ...(selectedTheme as any)?.theme?.token,
+            ...selectedTheme.theme?.token,
             ...companyTokens,
             borderRadius: 4,
             borderRadiusLG: 6,
@@ -265,7 +285,7 @@ function AppInner() {
               "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
           },
           components: {
-            ...(selectedTheme as any)?.theme?.components,
+            ...selectedTheme.theme?.components,
             Button: {
               borderRadius: 4,
               controlHeight: 34,
@@ -276,7 +296,9 @@ function AppInner() {
             Input: {
               activeBorderColor: companyTokens.colorPrimary,
               hoverBorderColor: companyTokens.colorPrimary,
-              activeShadow: `0 0 0 2px ${isDark ? "rgba(100, 194, 168, 0.18)" : "rgba(23, 107, 93, 0.12)"}`,
+              activeShadow: `0 0 0 2px ${
+                isDark ? "rgba(255, 255, 255, 0.14)" : "rgba(24, 24, 27, 0.12)"
+              }`,
             },
             Select: {
               activeBorderColor: companyTokens.colorPrimary,
@@ -284,10 +306,10 @@ function AppInner() {
               optionSelectedBg: companyTokens.colorPrimaryBg,
             },
             Table: {
-              headerBg: isDark ? "#202b28" : "#f3f6f4",
-              headerColor: isDark ? "#b1c1bb" : "#53645f",
-              rowHoverBg: isDark ? "#202b28" : "#f6f9f7",
-              borderColor: isDark ? "#2d3b37" : "#dbe2df",
+              headerBg: isDark ? "#262626" : "#f4f4f5",
+              headerColor: isDark ? "#b4b4b8" : "#52525b",
+              rowHoverBg: isDark ? "#262626" : "#fafafa",
+              borderColor: isDark ? "#2a2a2a" : "#e4e4e7",
               cellPaddingBlock: 10,
               cellPaddingInline: 14,
             },

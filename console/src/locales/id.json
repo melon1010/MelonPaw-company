@@ -29,8 +29,17 @@
     "total": "Total {{count}}",
     "clear": "Bersihkan",
     "paste": "Tempel",
+    "more": "Lainnya",
     "yes": "Ya",
     "no": "Tidak"
+  },
+  "enterprise": {
+    "nav": {
+      "workbench": "Meja kerja",
+      "projects": "Ruang proyek",
+      "operations": "Operasional",
+      "administration": "Administrasi"
+    }
   },
   "chunkError": {
     "title": "Gagal memuat halaman",
@@ -44,6 +53,7 @@
     "control": "Kontrol",
     "channels": "Saluran",
     "sessions": "Sesi",
+    "inbox": "Kotak masuk",
     "cronJobs": "Tugas Cron",
     "heartbeat": "Heartbeat",
     "agent": "Workspace",
@@ -64,7 +74,8 @@
     "debug": "Debug",
     "plugins": "Plugin",
     "pluginManager": "Manajer Plugin",
-    "backups": "Cadangan"
+    "backups": "Cadangan",
+    "menu": "Navigasi"
   },
   "header": {
     "changelog": "Catatan Perubahan",
@@ -84,7 +95,8 @@
   "sidebar": {
     "settings": {
       "language": "Bahasa",
-      "theme": "Tema"
+      "theme": "Tema",
+      "returnApp": "Kembali ke aplikasi"
     }
   },
   "login": {
@@ -109,6 +121,7 @@
   "chat": {
     "modelSelectTooltip": "Pilih model",
     "newChatTooltip": "Chat baru",
+    "recentConversations": "Percakapan terbaru",
     "searchTooltip": "Cari semua chat",
     "chatHistoryTooltip": "Riwayat chat",
     "wideModeTooltip": "Mode lebar",

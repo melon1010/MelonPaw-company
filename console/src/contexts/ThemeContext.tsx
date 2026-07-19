@@ -38,7 +38,10 @@ function getInitialMode(): ThemeMode {
   } catch {
     // ignore storage errors
   }
-  return "system";
+  // The authenticated workbench opens in the same focused dark mode as the
+  // product's primary chat surface. Users can still choose system/light mode
+  // from the avatar menu.
+  return "dark";
 }
 
 function resolveIsDark(mode: ThemeMode): boolean {
@@ -57,11 +60,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Apply dark/light class to <html> element for global CSS variable overrides
   useEffect(() => {
     const html = document.documentElement;
+    const resolvedTheme: ResolvedTheme = isDark ? "dark" : "light";
     if (isDark) {
       html.classList.add("dark-mode");
     } else {
       html.classList.remove("dark-mode");
     }
+    html.dataset.theme = resolvedTheme;
+    html.style.colorScheme = resolvedTheme;
   }, [isDark]);
 
   // Listen to system theme changes when mode is "system"

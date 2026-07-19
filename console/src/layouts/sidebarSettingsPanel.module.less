@@ -4,8 +4,8 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-width: 248px;
-  padding: 4px;
+  min-width: 0;
+  padding: 0;
 }
 
 /* ── Section row ────────────────────────────────────────────────────────── */
@@ -20,7 +20,7 @@
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
-  color: var(--mp-text-tertiary);
+  color: rgba(255, 255, 255, 0.48);
   user-select: none;
 }
 
@@ -42,26 +42,29 @@
   padding: 5px 9px;
   border: 1px solid var(--mp-border);
   border-radius: 5px;
-  background: var(--mp-surface);
-  color: var(--mp-text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.68);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease;
   white-space: nowrap;
 
   &:hover {
-    background: var(--mp-surface-subtle);
-    border-color: var(--mp-border-strong);
-    color: var(--mp-text);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: #fff;
   }
 
-    &Active {
-      background: var(--mp-primary-soft);
-      border-color: var(--mp-primary);
-      color: var(--mp-primary);
+  &Active {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.82);
+    color: #fff;
 
     &:hover {
-      background: var(--mp-primary-soft);
+      background: rgba(255, 255, 255, 0.12);
     }
   }
 
@@ -81,7 +84,7 @@
 
 :global(.dark-mode) {
   .label {
-    color: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.48);
   }
 
   .optBtn {
@@ -95,12 +98,12 @@
     }
 
     &Active {
-      background: var(--mp-primary-soft);
-      border-color: var(--mp-primary);
-      color: var(--mp-primary);
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.82);
+      color: #fff;
 
       &:hover {
-        background: var(--mp-primary-soft);
+        background: rgba(255, 255, 255, 0.12);
       }
     }
   }

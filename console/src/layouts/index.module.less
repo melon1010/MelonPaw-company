@@ -1467,6 +1467,473 @@
   }
 }
 
+/* ─── Open WebUI-style authenticated shell ──────────────────────────────── */
+
+.webuiSider {
+  padding: 0 !important;
+  background: var(--mp-sidebar) !important;
+  border-right: 1px solid
+    color-mix(in srgb, var(--mp-sidebar-text) 8%, transparent);
+
+  :global(.qwenpaw-layout-sider-children) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    background: var(--mp-sidebar);
+  }
+}
+
+.webuiSider.siderCollapsed {
+  width: 52px !important;
+  min-width: 52px !important;
+  max-width: 52px !important;
+}
+
+.webuiSider .sidebarBrand {
+  flex: 0 0 60px;
+  height: 60px;
+  justify-content: space-between;
+  padding: 10px 11px;
+  gap: 9px;
+  border-bottom: 0;
+}
+
+.sidebarBrandLogo,
+.sidebarBrandAction {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--mp-sidebar-muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+}
+
+.webuiSider .sidebarBrandLogo {
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  flex-basis: 34px;
+  border-radius: 10px;
+}
+
+.sidebarBrandActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebarBrandAction {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.sidebarBrandLogo:hover,
+.sidebarBrandLogo:focus-visible,
+.sidebarBrandAction:hover,
+.sidebarBrandAction:focus-visible {
+  color: var(--mp-sidebar-text);
+  background: var(--mp-sidebar-hover);
+  outline: none;
+}
+
+.webuiSider .sidebarBrandMark {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+
+  img {
+    border-radius: 50%;
+  }
+}
+
+.webuiSider .sidebarBrandCopy {
+  display: none;
+}
+
+.webuiSidebarBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.webuiSettingsHeader {
+  flex: 0 0 60px;
+  display: flex;
+  align-items: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--mp-sidebar-text) 10%, transparent);
+}
+
+.webuiSettingsBack {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 11px;
+  color: var(--mp-sidebar-text);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background 160ms ease;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--mp-sidebar-selected-text);
+    background: var(--mp-sidebar-hover);
+    outline: none;
+  }
+}
+
+.webuiSettingsNav {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-color: var(--mp-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.webuiSettingsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  & + & {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid
+      color-mix(in srgb, var(--mp-sidebar-text) 10%, transparent);
+  }
+}
+
+.webuiPrimaryNav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px 10px;
+}
+
+.webuiNavSpacer {
+  height: 4px;
+}
+
+.webuiNavButton {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--mp-sidebar-text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--mp-sidebar-selected-text);
+    background: var(--mp-sidebar-hover);
+    outline: none;
+  }
+}
+
+.webuiNavButtonActive {
+  color: var(--mp-sidebar-selected-text);
+  background: var(--mp-sidebar-active);
+}
+
+.webuiNavIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: currentColor;
+}
+
+.webuiNavLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webuiInboxIcon {
+  position: relative;
+  display: inline-flex;
+}
+
+.webuiUnreadDot {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px var(--mp-sidebar);
+}
+
+.webuiChatsSection {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px 8px;
+}
+
+.webuiSectionLabel {
+  flex: 0 0 auto;
+  padding: 8px 11px 6px;
+  color: var(--mp-sidebar-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.webuiChatsSection :global(.qwenpaw-input-affix-wrapper),
+.webuiChatsSection :global(.ant-input-affix-wrapper) {
+  border: 0 !important;
+  border-radius: 9px !important;
+  background: var(--mp-sidebar-hover) !important;
+  box-shadow: none !important;
+}
+
+.webuiChatsSection :global(.qwenpaw-input),
+.webuiChatsSection :global(.ant-input) {
+  color: var(--mp-sidebar-text) !important;
+  background: transparent !important;
+}
+
+.webuiChatsSection :global(.qwenpaw-input)::placeholder,
+.webuiChatsSection :global(.ant-input)::placeholder {
+  color: var(--mp-sidebar-muted) !important;
+}
+
+.webuiCollapsedChatMark {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0;
+  color: var(--mp-sidebar-muted);
+}
+
+.webuiSider .sidebarAccountDock {
+  flex: 0 0 58px;
+  padding: 9px 10px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--mp-sidebar-text) 10%, transparent);
+  background: var(--mp-sidebar);
+}
+
+.webuiSider .sidebarAccount {
+  min-height: 40px;
+  border-radius: 10px;
+  color: var(--mp-sidebar-text) !important;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--mp-sidebar-selected-text) !important;
+    background: var(--mp-sidebar-hover) !important;
+    outline: none;
+  }
+}
+
+.webuiSider .sidebarAccountAvatar {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: #f59e0b;
+  color: #171717;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.webuiSider .sidebarAccountText {
+  strong {
+    color: var(--mp-sidebar-text);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  span {
+    color: var(--mp-sidebar-muted);
+    font-size: 11px;
+  }
+}
+
+.accountDropdown {
+  width: 272px;
+  max-width: calc(100vw - 24px);
+  overflow: hidden;
+  color: var(--mp-text);
+  background: var(--mp-surface-raised);
+  border: 1px solid var(--mp-border-strong);
+  border-radius: 10px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+}
+
+.accountQuickSettings {
+  padding: 10px 12px 12px;
+  background: var(--mp-surface-raised);
+  border-top: 1px solid var(--mp-border);
+}
+
+.accountDropdown :global(.qwenpaw-dropdown-menu),
+.accountDropdown :global(.ant-dropdown-menu) {
+  max-height: min(56vh, 520px);
+  padding: 6px !important;
+  overflow-y: auto;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.accountMenuPopup {
+  min-width: 244px !important;
+
+  :global(.qwenpaw-dropdown-menu),
+  :global(.ant-dropdown-menu) {
+    padding: 6px !important;
+  }
+
+  :global(.qwenpaw-dropdown-menu-item),
+  :global(.qwenpaw-dropdown-menu-submenu-title),
+  :global(.ant-dropdown-menu-item),
+  :global(.ant-dropdown-menu-submenu-title) {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    border-radius: 8px !important;
+  }
+}
+
+.accountSubmenuLabel {
+  min-width: 142px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.accountSubmenuTrigger {
+  width: 100%;
+  min-width: 174px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: inherit;
+}
+
+.accountSubmenuPopup {
+  min-width: 168px !important;
+
+  :global(.qwenpaw-dropdown-menu),
+  :global(.ant-dropdown-menu) {
+    padding: 6px !important;
+    background: var(--mp-surface-raised, #202020) !important;
+    border: 1px solid var(--mp-border, rgba(255, 255, 255, 0.1)) !important;
+    border-radius: 9px !important;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35) !important;
+  }
+
+  :global(.qwenpaw-dropdown-menu-item),
+  :global(.ant-dropdown-menu-item) {
+    min-height: 34px;
+    border-radius: 7px !important;
+  }
+}
+
+.webuiSider.siderCollapsed .sidebarBrand {
+  justify-content: center;
+  padding-inline: 9px;
+}
+
+.webuiSider.siderCollapsed .sidebarBrandActions {
+  display: none;
+}
+
+.webuiSider.siderCollapsed .sidebarBrandLogo {
+  color: var(--mp-sidebar-text);
+}
+
+.webuiSider.siderCollapsed .webuiPrimaryNav {
+  align-items: center;
+  padding-inline: 8px;
+}
+
+.webuiSider.siderCollapsed .webuiNavButton {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 11px;
+}
+
+.webuiSider .sidebarAccountDockCollapsed {
+  padding-inline: 8px;
+}
+
+.webuiSider .sidebarAccountDockCollapsed .sidebarAccount {
+  width: 36px;
+  min-width: 36px;
+  flex: 0 0 36px;
+  grid-template-columns: 28px;
+  justify-content: center;
+  padding: 0;
+}
+
+@media (max-width: 768px) {
+  .webuiSider {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .webuiNavButton {
+    transition: none;
+  }
+
+  .webuiSettingsBack {
+    transition: none;
+  }
+}
+
 /* ─── Dark mode overrides ─────────────────────────────────────────────────── */
 :global(.dark-mode) {
   .header {
@@ -2236,5 +2703,19 @@
     height: 36px;
     grid-template-columns: 28px;
     padding: 3px;
+  }
+}
+
+// Keep the sidebar flush with the viewport after all legacy sider rules.
+.sider.webuiSider,
+.siderDark.webuiSider {
+  padding: 0 !important;
+  background: var(--mp-sidebar) !important;
+  border-radius: 0 !important;
+
+  :global(.qwenpaw-layout-sider-children) {
+    width: 100%;
+    margin: 0;
+    border-radius: 0;
   }
 }

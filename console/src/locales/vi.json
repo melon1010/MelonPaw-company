@@ -29,8 +29,17 @@
     "total": "Tổng: {{count}}",
     "clear": "Xóa trắng",
     "paste": "Dán",
+    "more": "Thêm",
     "yes": "Có",
     "no": "Không"
+  },
+  "enterprise": {
+    "nav": {
+      "workbench": "Bàn làm việc",
+      "projects": "Không gian dự án",
+      "operations": "Vận hành",
+      "administration": "Quản trị"
+    }
   },
   "desktop": {
     "closeWindow": {
@@ -60,7 +69,7 @@
     "cronJobs": "Tác vụ định kỳ",
     "heartbeat": "Heartbeat",
     "agent": "Quản lý Agent",
-    "workspace": "Không gian làm việc",
+    "workspace": "Tệp",
     "skills": "Kỹ năng",
     "skillPool": "Kho kỹ năng",
     "market": "Chợ kỹ năng",
@@ -78,7 +87,8 @@
     "debug": "Gỡ lỗi",
     "plugins": "Plugin",
     "backups": "Sao lưu",
-    "pluginManager": "Quản lý Plugin"
+    "pluginManager": "Quản lý Plugin",
+    "menu": "Điều hướng"
   },
   "header": {
     "changelog": "Nhật ký thay đổi",
@@ -93,7 +103,8 @@
   "sidebar": {
     "settings": {
       "language": "Ngôn ngữ",
-      "theme": "Giao diện"
+      "theme": "Giao diện",
+      "returnApp": "Quay lại ứng dụng"
     }
   },
   "theme": {
@@ -153,6 +164,7 @@
   "chat": {
     "modelSelectTooltip": "Chọn mô hình",
     "newChatTooltip": "Cuộc trò chuyện mới",
+    "recentConversations": "Cuộc trò chuyện gần đây",
     "searchTooltip": "Tìm kiếm tất cả cuộc trò chuyện",
     "chatHistoryTooltip": "Lịch sử trò chuyện",
     "allChats": "Tất cả cuộc trò chuyện",

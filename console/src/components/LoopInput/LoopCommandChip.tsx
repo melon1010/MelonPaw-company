@@ -1,5 +1,6 @@
 import React from "react";
 import { Terminal, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useLoopStore } from "../../stores/loopStore";
 import styles from "./index.module.less";
 
@@ -8,6 +9,7 @@ import styles from "./index.module.less";
  * is selected. Supports single-backspace highlight → double-backspace delete.
  */
 export const LoopCommandChip: React.FC = () => {
+  const { t } = useTranslation();
   const { selectedSkill, chipHighlighted, setSelectedSkill } = useLoopStore();
 
   if (!selectedSkill) return null;
@@ -20,17 +22,22 @@ export const LoopCommandChip: React.FC = () => {
     .join(" ");
 
   return (
-    <div className={cls}>
-      <Terminal size={14} style={{ opacity: 0.8, flexShrink: 0 }} />
-      <span>/{selectedSkill.name}</span>
-      <X
+    <div className={cls} data-loop-command>
+      <Terminal className={styles.chipIcon} size={13} aria-hidden />
+      <span className={styles.chipLabel} title={`/${selectedSkill.name}`}>
+        /{selectedSkill.name}
+      </span>
+      <button
+        type="button"
         className={styles.chipClose}
-        size={12}
+        aria-label={t("common.close", "Close")}
         onClick={(e) => {
           e.stopPropagation();
           setSelectedSkill(null);
         }}
-      />
+      >
+        <X size={11} aria-hidden />
+      </button>
     </div>
   );
 };

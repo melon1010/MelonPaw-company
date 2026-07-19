@@ -29,6 +29,7 @@ import {
   Cpu,
   DatabaseBackup,
   Files,
+  Folder,
   Gauge,
   Globe2,
   HeartPulse,
@@ -71,6 +72,15 @@ export const BUILTIN_MENU: MenuItem[] = [
     icon: LayoutDashboard,
     route: "company.workbench",
     order: 10,
+  },
+  {
+    id: "company.projects",
+    location: "primary.agentScoped",
+    parentId: "company.enterprise-group",
+    label: navLabel("enterprise.nav.projects", "Project Spaces"),
+    icon: Folder,
+    route: "company.projects",
+    order: 15,
   },
   // ── Agent-scoped (Sidebar Menu #1) ───────────────────────────────────────
   {

@@ -1,35 +1,149 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Dropdown, Popover, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import { Button } from "@agentscope-ai/design";
-import { ChevronDown, LogOut, Settings } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Languages,
+  LogOut,
+  Monitor,
+  Moon,
+  Palette,
+  Settings,
+  Sun,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { primaryRole } from "../auth/authorization";
 import { authApi } from "../api/modules/auth";
+import { languageApi } from "../api/modules/language";
 import { clearAuthToken } from "../api/config";
 import { useAuth } from "../contexts/AuthContext";
+import { useTheme, type ThemeMode } from "../contexts/ThemeContext";
 import SidebarSettingsPanel from "./SidebarSettingsPanel";
 import styles from "./index.module.less";
+
+const LANGUAGES = [
+  { key: "en", label: "English" },
+  { key: "zh", label: "简体中文" },
+  { key: "ja", label: "日本語" },
+  { key: "ru", label: "Русский" },
+  { key: "pt-BR", label: "Português" },
+  { key: "id", label: "Bahasa Indonesia" },
+  { key: "vi", label: "Tiếng Việt" },
+] as const;
+
+const KNOWN_LANGUAGE_KEYS = new Set<string>(
+  LANGUAGES.map((language) => language.key),
+);
 
 interface AccountControlProps {
   variant: "header" | "sidebar";
   collapsed?: boolean;
   placement?: "bottomRight" | "topLeft";
+  navigationItems?: MenuProps["items"];
+  onNavigationClick?: MenuProps["onClick"];
+  onOpenSettings?: () => void;
 }
 
 export function AccountControl({
   variant,
   collapsed = false,
   placement = "bottomRight",
+  navigationItems = [],
+  onNavigationClick,
+  onOpenSettings,
 }: AccountControlProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user, status: authStatus, clearSession } = useAuth();
+  const { themeMode, setThemeMode } = useTheme();
   const role = user ? primaryRole(user) : "";
   const displayName = user?.display_name || user?.username || "";
+  const rawLanguage = i18n.resolvedLanguage || i18n.language;
+  const shortLanguage = rawLanguage.split("-")[0];
+  const currentLanguage = KNOWN_LANGUAGE_KEYS.has(rawLanguage)
+    ? rawLanguage
+    : shortLanguage;
 
-  const accountItems = useMemo<MenuProps["items"]>(() => {
-    if (!user) return [];
-    const items: MenuProps["items"] = [
+  const themeOptions: Array<{
+    key: ThemeMode;
+    label: string;
+    icon: ReactNode;
+  }> = [
+    { key: "light", label: t("theme.light", "Light"), icon: <Sun size={15} /> },
+    { key: "dark", label: t("theme.dark", "Dark"), icon: <Moon size={15} /> },
+    {
+      key: "system",
+      label: t("theme.system", "System"),
+      icon: <Monitor size={15} />,
+    },
+  ];
+
+  const optionLabel = (label: string, selected: boolean) => (
+    <span className={styles.accountSubmenuLabel}>
+      <span>{label}</span>
+      {selected && <Check size={14} aria-hidden />}
+    </span>
+  );
+
+  const themeSubmenu = (
+    <Dropdown
+      trigger={["hover", "click"]}
+      placement="bottomRight"
+      align={{ offset: [210, -30] }}
+      overlayClassName={styles.accountSubmenuPopup}
+      menu={{
+        items: themeOptions.map((option) => ({
+          key: option.key,
+          icon: option.icon,
+          label: optionLabel(option.label, themeMode === option.key),
+        })),
+        onClick: ({ key }) => setThemeMode(String(key) as ThemeMode),
+      }}
+    >
+      <span
+        className={styles.accountSubmenuTrigger}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <span>{t("sidebar.settings.theme", "Theme")}</span>
+        <ChevronRight size={14} aria-hidden />
+      </span>
+    </Dropdown>
+  );
+
+  const languageSubmenu = (
+    <Dropdown
+      trigger={["hover", "click"]}
+      placement="bottomRight"
+      align={{ offset: [210, -30] }}
+      overlayClassName={styles.accountSubmenuPopup}
+      menu={{
+        items: LANGUAGES.map((language) => ({
+          key: language.key,
+          label: optionLabel(language.label, currentLanguage === language.key),
+        })),
+        onClick: ({ key }) => {
+          const language = String(key);
+          void i18n.changeLanguage(language);
+          localStorage.setItem("language", language);
+          void languageApi.updateLanguage(language).catch(() => undefined);
+        },
+      }}
+    >
+      <span
+        className={styles.accountSubmenuTrigger}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <span>{t("sidebar.settings.language", "Language")}</span>
+        <ChevronRight size={14} aria-hidden />
+      </span>
+    </Dropdown>
+  );
+
+  const accountItems: MenuProps["items"] = [];
+  if (user) {
+    accountItems.push(
       {
         key: "identity",
         disabled: true,
@@ -40,9 +154,28 @@ export function AccountControl({
           </div>
         ),
       },
-    ];
+      { type: "divider" },
+      {
+        key: "open-settings",
+        icon: <Settings size={15} />,
+        label: t("nav.settings", "Settings"),
+      },
+      {
+        key: "theme",
+        icon: <Palette size={15} />,
+        label: themeSubmenu,
+      },
+      {
+        key: "language",
+        icon: <Languages size={15} />,
+        label: languageSubmenu,
+      },
+    );
+    if (navigationItems.length > 0) {
+      accountItems.push({ type: "divider" }, ...navigationItems);
+    }
     if (authStatus?.enabled) {
-      items.push(
+      accountItems.push(
         { type: "divider" },
         {
           key: "logout",
@@ -51,13 +184,33 @@ export function AccountControl({
         },
       );
     }
-    return items;
-  }, [authStatus?.enabled, displayName, role, t, user]);
+  }
 
   if (!user) return null;
 
   const handleAccountAction: MenuProps["onClick"] = ({ key }) => {
-    if (key !== "logout") return;
+    const actionKey = String(key);
+    if (actionKey === "open-settings") {
+      onOpenSettings?.();
+      return;
+    }
+    if (actionKey.startsWith("theme:")) {
+      setThemeMode(actionKey.slice("theme:".length) as ThemeMode);
+      return;
+    }
+    if (actionKey.startsWith("language:")) {
+      const language = actionKey.slice("language:".length);
+      void i18n.changeLanguage(language);
+      localStorage.setItem("language", language);
+      void languageApi.updateLanguage(language).catch(() => undefined);
+      return;
+    }
+    if (actionKey !== "logout") {
+      onNavigationClick?.({ key: actionKey } as Parameters<
+        NonNullable<MenuProps["onClick"]>
+      >[0]);
+      return;
+    }
     void authApi.logout().finally(() => {
       clearAuthToken();
       clearSession();
@@ -68,9 +221,13 @@ export function AccountControl({
   const isHeader = variant === "header";
   return (
     <Dropdown
-      menu={{ items: accountItems, onClick: handleAccountAction }}
+      menu={{
+        items: accountItems,
+        onClick: handleAccountAction,
+      }}
       placement={placement}
-      trigger={["click"]}
+      trigger={["hover", "click"]}
+      overlayClassName={styles.accountMenuPopup}
     >
       <button
         className={isHeader ? styles.headerAccount : styles.sidebarAccount}

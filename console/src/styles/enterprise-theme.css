@@ -6,30 +6,32 @@
  * company theme owns its appearance here instead of forking vendor packages.
  */
 :root {
-  --mp-primary: #2f6fed;
-  --mp-primary-hover: #2359c4;
-  --mp-primary-soft: #eaf1ff;
-  --mp-accent: #e76f51;
-  --mp-info: #2779bd;
-  --mp-warning: #b76a16;
-  --mp-danger: #c44747;
-  --mp-canvas: #f3f5f7;
+  --mp-primary: #18181b;
+  --mp-primary-hover: #27272a;
+  --mp-primary-soft: #f4f4f5;
+  --mp-primary-contrast: #ffffff;
+  --mp-accent: #f59e0b;
+  --mp-info: #52525b;
+  --mp-warning: #a16207;
+  --mp-danger: #b91c1c;
+  --mp-canvas: #fafafa;
   --mp-surface: #ffffff;
-  --mp-surface-subtle: #f7f8fa;
-  --mp-surface-muted: #e9edf2;
-  --mp-border: #e0e5eb;
-  --mp-border-strong: #c5cdd7;
-  --mp-text: #17212b;
-  --mp-text-secondary: #536170;
-  --mp-text-tertiary: #7d8996;
-  --mp-sidebar: #f7f8fa;
-  --mp-sidebar-hover: #e9edf2;
-  --mp-sidebar-active: #e1eaff;
-  --mp-sidebar-text: #273441;
-  --mp-sidebar-muted: #657382;
-  --mp-sidebar-selected-text: #2459b8;
-  --mp-focus-ring: rgba(47, 111, 237, 0.18);
-  --mp-shadow-popover: 0 12px 30px rgba(23, 33, 43, 0.14);
+  --mp-surface-raised: #ffffff;
+  --mp-surface-subtle: #f4f4f5;
+  --mp-surface-muted: #e4e4e7;
+  --mp-border: #e4e4e7;
+  --mp-border-strong: #d4d4d8;
+  --mp-text: #18181b;
+  --mp-text-secondary: #52525b;
+  --mp-text-tertiary: #71717a;
+  --mp-sidebar: #f4f4f5;
+  --mp-sidebar-hover: #e4e4e7;
+  --mp-sidebar-active: #e4e4e7;
+  --mp-sidebar-text: #27272a;
+  --mp-sidebar-muted: #71717a;
+  --mp-sidebar-selected-text: #18181b;
+  --mp-focus-ring: rgba(24, 24, 27, 0.18);
+  --mp-shadow-popover: 0 16px 36px rgba(24, 24, 27, 0.16);
   --colorPrimary: var(--mp-primary);
   --colorPrimaryBg: var(--mp-primary-soft);
   --colorText: var(--mp-text);
@@ -42,30 +44,32 @@
 }
 
 html.dark-mode {
-  --mp-primary: #78a6ff;
-  --mp-primary-hover: #91b6ff;
-  --mp-primary-soft: #1b2e50;
-  --mp-accent: #f08a70;
-  --mp-info: #70b3e5;
-  --mp-warning: #dda35f;
-  --mp-danger: #dc7770;
-  --mp-canvas: #11151a;
-  --mp-surface: #191e24;
-  --mp-surface-subtle: #20262d;
-  --mp-surface-muted: #29313a;
-  --mp-border: #303842;
-  --mp-border-strong: #46515e;
-  --mp-text: #f0f3f6;
-  --mp-text-secondary: #b6c0ca;
-  --mp-text-tertiary: #87939f;
-  --mp-sidebar: #15191e;
-  --mp-sidebar-hover: #242b33;
-  --mp-sidebar-active: #315fae;
-  --mp-sidebar-text: #e1e6eb;
-  --mp-sidebar-muted: #8f9aa5;
+  --mp-primary: #f4f4f5;
+  --mp-primary-hover: #ffffff;
+  --mp-primary-soft: #2a2a2a;
+  --mp-primary-contrast: #171717;
+  --mp-accent: #f59e0b;
+  --mp-info: #a1a1aa;
+  --mp-warning: #fbbf24;
+  --mp-danger: #f87171;
+  --mp-canvas: #171717;
+  --mp-surface: #1f1f1f;
+  --mp-surface-raised: #242424;
+  --mp-surface-subtle: #262626;
+  --mp-surface-muted: #2f2f2f;
+  --mp-border: #2a2a2a;
+  --mp-border-strong: #3a3a3a;
+  --mp-text: #f4f4f5;
+  --mp-text-secondary: #b4b4b8;
+  --mp-text-tertiary: #71717a;
+  --mp-sidebar: #0d0d0d;
+  --mp-sidebar-hover: #1f1f1f;
+  --mp-sidebar-active: #242424;
+  --mp-sidebar-text: #f4f4f5;
+  --mp-sidebar-muted: #71717a;
   --mp-sidebar-selected-text: #ffffff;
-  --mp-focus-ring: rgba(120, 166, 255, 0.22);
-  --mp-shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.34);
+  --mp-focus-ring: rgba(255, 255, 255, 0.16);
+  --mp-shadow-popover: 0 16px 36px rgba(0, 0, 0, 0.45);
 }
 
 html,
@@ -77,8 +81,13 @@ body,
 
 body {
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   letter-spacing: 0;
 }
 
@@ -224,7 +233,7 @@ body {
 
 .ant-btn-primary,
 .qwenpaw-btn-primary {
-  color: #fff !important;
+  color: var(--mp-primary-contrast) !important;
   background: var(--mp-primary) !important;
   border-color: var(--mp-primary) !important;
   box-shadow: none !important;
@@ -232,6 +241,7 @@ body {
 
 .ant-btn-primary:hover,
 .qwenpaw-btn-primary:hover {
+  color: var(--mp-primary-contrast) !important;
   background: var(--mp-primary-hover) !important;
   border-color: var(--mp-primary-hover) !important;
 }
@@ -578,14 +588,14 @@ body {
 
 .qwenpaw-sender-actions-list .qwenpaw-btn-primary,
 .qwenpaw-sender-actions-list button[class*="primary"] {
-  color: #fff !important;
+  color: var(--mp-primary-contrast) !important;
   background: var(--mp-primary) !important;
   border-color: var(--mp-primary) !important;
 }
 
 .qwenpaw-sender-actions-list .qwenpaw-btn-primary:hover,
 .qwenpaw-sender-actions-list button[class*="primary"]:hover {
-  color: #fff !important;
+  color: var(--mp-primary-contrast) !important;
   background: var(--mp-primary-hover) !important;
   border-color: var(--mp-primary-hover) !important;
 }
@@ -669,7 +679,11 @@ body {
 .qwenpaw-welcome-prompts-prompt:hover {
   color: var(--mp-primary) !important;
   background: var(--mp-surface) !important;
-  border-color: color-mix(in srgb, var(--mp-primary) 50%, var(--mp-border)) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--mp-primary) 50%,
+    var(--mp-border)
+  ) !important;
   box-shadow: 0 7px 18px rgba(23, 33, 43, 0.08);
   transform: translateY(-1px);
 }
@@ -712,6 +726,295 @@ body {
   .qwenpaw-modal {
     max-width: calc(100vw - 20px);
   }
+}
+
+/* Theme hardening for shared controls. These selectors intentionally match
+ * the legacy dark-mode specificity so page-local defaults cannot create
+ * unreadable foreground/background combinations after a theme switch. */
+.ant-btn-primary:not(:disabled),
+.qwenpaw-btn-primary:not(:disabled),
+html.dark-mode .ant-btn-primary:not(:disabled),
+html.dark-mode .qwenpaw-btn-primary:not(:disabled) {
+  color: var(--mp-primary-contrast) !important;
+  background: var(--mp-primary) !important;
+  border-color: var(--mp-primary) !important;
+}
+
+.ant-btn-primary:not(:disabled):hover,
+.qwenpaw-btn-primary:not(:disabled):hover,
+html.dark-mode .ant-btn-primary:not(:disabled):hover,
+html.dark-mode .qwenpaw-btn-primary:not(:disabled):hover {
+  color: var(--mp-primary-contrast) !important;
+  background: var(--mp-primary-hover) !important;
+  border-color: var(--mp-primary-hover) !important;
+}
+
+.ant-btn-default,
+.qwenpaw-btn-default,
+html.dark-mode .ant-btn-default,
+html.dark-mode .qwenpaw-btn-default {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface) !important;
+  border-color: var(--mp-border-strong) !important;
+}
+
+.ant-btn-default:not(:disabled):hover,
+.qwenpaw-btn-default:not(:disabled):hover,
+html.dark-mode .ant-btn-default:not(:disabled):hover,
+html.dark-mode .qwenpaw-btn-default:not(:disabled):hover {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-muted) !important;
+  border-color: var(--mp-text-tertiary) !important;
+}
+
+.ant-btn:disabled,
+.ant-btn[disabled],
+.qwenpaw-btn:disabled,
+.qwenpaw-btn[disabled],
+html.dark-mode .ant-btn:disabled,
+html.dark-mode .ant-btn[disabled],
+html.dark-mode .qwenpaw-btn:disabled,
+html.dark-mode .qwenpaw-btn[disabled] {
+  color: var(--mp-text-tertiary) !important;
+  background: var(--mp-surface-muted) !important;
+  border-color: var(--mp-border) !important;
+  box-shadow: none !important;
+  opacity: 1;
+}
+
+.ant-btn-dangerous:not(:disabled),
+.qwenpaw-btn-dangerous:not(:disabled),
+.ant-btn-color-dangerous.ant-btn-variant-solid:not(:disabled),
+.qwenpaw-btn-color-dangerous.qwenpaw-btn-variant-solid:not(:disabled),
+html.dark-mode .ant-btn-dangerous:not(:disabled),
+html.dark-mode .qwenpaw-btn-dangerous:not(:disabled) {
+  color: var(--mp-primary-contrast) !important;
+  background: var(--mp-danger) !important;
+  border-color: var(--mp-danger) !important;
+}
+
+.ant-btn-link,
+.qwenpaw-btn-link {
+  color: var(--mp-text-secondary) !important;
+  background: transparent !important;
+}
+
+.ant-pagination,
+.qwenpaw-pagination,
+.ant-pagination a,
+.qwenpaw-pagination a,
+.ant-pagination button,
+.qwenpaw-pagination button {
+  color: var(--mp-text-secondary) !important;
+}
+
+.ant-pagination .ant-pagination-item,
+.qwenpaw-pagination .qwenpaw-pagination-item,
+.ant-pagination .ant-pagination-prev button,
+.ant-pagination .ant-pagination-next button,
+.qwenpaw-pagination .qwenpaw-pagination-prev button,
+.qwenpaw-pagination .qwenpaw-pagination-next button,
+html.dark-mode .ant-pagination .ant-pagination-item,
+html.dark-mode .qwenpaw-pagination .qwenpaw-pagination-item,
+html.dark-mode .ant-pagination .ant-pagination-prev button,
+html.dark-mode .ant-pagination .ant-pagination-next button,
+html.dark-mode .qwenpaw-pagination .qwenpaw-pagination-prev button,
+html.dark-mode .qwenpaw-pagination .qwenpaw-pagination-next button {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface) !important;
+  border-color: var(--mp-border) !important;
+}
+
+.ant-pagination .ant-pagination-item:not(.ant-pagination-item-active):hover,
+.qwenpaw-pagination
+  .qwenpaw-pagination-item:not(.qwenpaw-pagination-item-active):hover,
+.ant-pagination .ant-pagination-prev:not(.ant-pagination-disabled) button:hover,
+.ant-pagination .ant-pagination-next:not(.ant-pagination-disabled) button:hover,
+.qwenpaw-pagination
+  .qwenpaw-pagination-prev:not(.qwenpaw-pagination-disabled)
+  button:hover,
+.qwenpaw-pagination
+  .qwenpaw-pagination-next:not(.qwenpaw-pagination-disabled)
+  button:hover {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-muted) !important;
+  border-color: var(--mp-text-tertiary) !important;
+}
+
+.ant-pagination .ant-pagination-item-active,
+.qwenpaw-pagination .qwenpaw-pagination-item-active,
+html.dark-mode .ant-pagination .ant-pagination-item-active,
+html.dark-mode .qwenpaw-pagination .qwenpaw-pagination-item-active {
+  background: var(--mp-primary) !important;
+  border-color: var(--mp-primary) !important;
+}
+
+.ant-pagination .ant-pagination-item-active a,
+.qwenpaw-pagination .qwenpaw-pagination-item-active a,
+html.dark-mode .ant-pagination .ant-pagination-item-active a,
+html.dark-mode .qwenpaw-pagination .qwenpaw-pagination-item-active a {
+  color: var(--mp-primary-contrast) !important;
+}
+
+.ant-pagination .ant-pagination-disabled button,
+.qwenpaw-pagination .qwenpaw-pagination-disabled button,
+.ant-pagination .ant-pagination-disabled .anticon,
+.qwenpaw-pagination .qwenpaw-pagination-disabled .anticon {
+  color: var(--mp-text-tertiary) !important;
+  background: var(--mp-surface-subtle) !important;
+  border-color: var(--mp-border) !important;
+}
+
+.ant-pagination-options .ant-select-selector,
+.qwenpaw-pagination-options .qwenpaw-select-selector,
+.ant-pagination-options-quick-jumper input,
+.qwenpaw-pagination-options-quick-jumper input {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface) !important;
+  border-color: var(--mp-border-strong) !important;
+}
+
+.ant-pagination-options,
+.qwenpaw-pagination-options,
+.ant-pagination-total-text,
+.qwenpaw-pagination-total-text,
+.ant-pagination-jump-prev,
+.ant-pagination-jump-next,
+.qwenpaw-pagination-jump-prev,
+.qwenpaw-pagination-jump-next,
+.ant-pagination .ant-select-arrow,
+.qwenpaw-pagination .qwenpaw-select-arrow {
+  color: var(--mp-text-secondary) !important;
+}
+
+.ant-modal-content,
+.qwenpaw-modal-content,
+.ant-modal-header,
+.qwenpaw-modal-header,
+.ant-modal-body,
+.qwenpaw-modal-body,
+.ant-modal-footer,
+.qwenpaw-modal-footer,
+html.dark-mode .ant-modal-content,
+html.dark-mode .qwenpaw-modal-content,
+html.dark-mode .ant-modal-header,
+html.dark-mode .qwenpaw-modal-header,
+html.dark-mode .ant-modal-body,
+html.dark-mode .qwenpaw-modal-body,
+html.dark-mode .ant-modal-footer,
+html.dark-mode .qwenpaw-modal-footer {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-raised) !important;
+  border-color: var(--mp-border) !important;
+}
+
+.ant-modal-title,
+.qwenpaw-modal-title,
+.ant-modal-confirm-title,
+.qwenpaw-modal-confirm-title,
+.ant-modal-confirm-content,
+.qwenpaw-modal-confirm-content,
+html.dark-mode .ant-modal-title,
+html.dark-mode .qwenpaw-modal-title,
+html.dark-mode .ant-modal-confirm-title,
+html.dark-mode .qwenpaw-modal-confirm-title,
+html.dark-mode .ant-modal-confirm-content,
+html.dark-mode .qwenpaw-modal-confirm-content {
+  color: var(--mp-text) !important;
+}
+
+.ant-modal-close,
+.qwenpaw-modal-close,
+.ant-drawer-close,
+.qwenpaw-drawer-close {
+  color: var(--mp-text-secondary) !important;
+}
+
+.ant-modal-close:hover,
+.qwenpaw-modal-close:hover,
+.ant-drawer-close:hover,
+.qwenpaw-drawer-close:hover {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-muted) !important;
+}
+
+.ant-modal-body .ant-typography,
+.qwenpaw-modal-body .qwenpaw-typography,
+.ant-drawer-body .ant-typography,
+.qwenpaw-drawer-body .qwenpaw-typography,
+.ant-popover-inner-content,
+.qwenpaw-popover-inner-content,
+.ant-popover-title,
+.qwenpaw-popover-title {
+  color: var(--mp-text) !important;
+}
+
+.ant-typography-secondary,
+.qwenpaw-typography-secondary,
+.ant-modal-body .ant-form-item-extra,
+.qwenpaw-modal-body .qwenpaw-form-item-extra,
+.ant-empty-description,
+.qwenpaw-empty-description {
+  color: var(--mp-text-secondary) !important;
+}
+
+.ant-drawer-content,
+.qwenpaw-drawer-content,
+.ant-drawer-header,
+.qwenpaw-drawer-header,
+.ant-drawer-body,
+.qwenpaw-drawer-body,
+.ant-drawer-footer,
+.qwenpaw-drawer-footer,
+html.dark-mode .ant-drawer-content,
+html.dark-mode .qwenpaw-drawer-content,
+html.dark-mode .ant-drawer-header,
+html.dark-mode .qwenpaw-drawer-header,
+html.dark-mode .ant-drawer-body,
+html.dark-mode .qwenpaw-drawer-body,
+html.dark-mode .ant-drawer-footer,
+html.dark-mode .qwenpaw-drawer-footer {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-raised) !important;
+  border-color: var(--mp-border) !important;
+}
+
+.ant-popover-inner,
+.qwenpaw-popover-inner,
+.ant-dropdown-menu,
+.qwenpaw-dropdown-menu,
+.ant-select-dropdown,
+.qwenpaw-select-dropdown,
+html.dark-mode .ant-popover-inner,
+html.dark-mode .qwenpaw-popover-inner,
+html.dark-mode .ant-dropdown-menu,
+html.dark-mode .qwenpaw-dropdown-menu,
+html.dark-mode .ant-select-dropdown,
+html.dark-mode .qwenpaw-select-dropdown {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-raised) !important;
+  border-color: var(--mp-border) !important;
+}
+
+.ant-dropdown-menu-item,
+.qwenpaw-dropdown-menu-item,
+.ant-dropdown-menu-submenu-title,
+.qwenpaw-dropdown-menu-submenu-title,
+.ant-select-item,
+.qwenpaw-select-item {
+  color: var(--mp-text-secondary) !important;
+}
+
+.ant-dropdown-menu-item:not(.ant-dropdown-menu-item-disabled):hover,
+.qwenpaw-dropdown-menu-item:not(.qwenpaw-dropdown-menu-item-disabled):hover,
+.ant-dropdown-menu-submenu-title:hover,
+.qwenpaw-dropdown-menu-submenu-title:hover,
+.ant-select-item-option-active:not(.ant-select-item-option-disabled),
+.qwenpaw-select-item-option-active:not(.qwenpaw-select-item-option-disabled),
+.ant-select-item-option-selected:not(.ant-select-item-option-disabled),
+.qwenpaw-select-item-option-selected:not(.qwenpaw-select-item-option-disabled) {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-muted) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

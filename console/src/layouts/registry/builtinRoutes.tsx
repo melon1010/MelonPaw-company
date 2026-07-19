@@ -18,39 +18,79 @@ import type { Route } from "../../plugins/registry/types";
 
 // Lazy pages
 const Chat = lazyWithRetry(() => import("../../pages/Chat"));
-const ChannelsPage = lazyWithRetry(() => import("../../pages/Control/Channels"));
-const SessionsPage = lazyWithRetry(() => import("../../pages/Control/Sessions"));
+const ChannelsPage = lazyWithRetry(
+  () => import("../../pages/Control/Channels"),
+);
+const SessionsPage = lazyWithRetry(
+  () => import("../../pages/Control/Sessions"),
+);
 const InboxPage = lazyWithRetry(() => import("../../pages/Inbox"));
-const CronJobsPage = lazyWithRetry(() => import("../../pages/Control/CronJobs"));
-const HeartbeatPage = lazyWithRetry(() => import("../../pages/Control/Heartbeat"));
+const CronJobsPage = lazyWithRetry(
+  () => import("../../pages/Control/CronJobs"),
+);
+const HeartbeatPage = lazyWithRetry(
+  () => import("../../pages/Control/Heartbeat"),
+);
 const AgentConfigPage = lazyWithRetry(() => import("../../pages/Agent/Config"));
 const SkillsPage = lazyWithRetry(() => import("../../pages/Agent/Skills"));
-const SkillPoolPage = lazyWithRetry(() => import("../../pages/Settings/SkillPool"));
+const SkillPoolPage = lazyWithRetry(
+  () => import("../../pages/Settings/SkillPool"),
+);
 const ToolsPage = lazyWithRetry(() => import("../../pages/Agent/Tools"));
-const WorkspacePage = lazyWithRetry(() => import("../../pages/Agent/Workspace"));
+const WorkspacePage = lazyWithRetry(
+  () => import("../../pages/Agent/Workspace"),
+);
 const MCPPage = lazyWithRetry(() => import("../../pages/Agent/MCP"));
 const ModelsPage = lazyWithRetry(() => import("../../pages/Settings/Models"));
-const EnvironmentsPage = lazyWithRetry(() => import("../../pages/Settings/Environments"));
-const SecurityPage = lazyWithRetry(() => import("../../pages/Settings/Security"));
-const TokenUsagePage = lazyWithRetry(() => import("../../pages/Settings/TokenUsage"));
-const AgentStatsPage = lazyWithRetry(() => import("../../pages/Settings/AgentStats"));
-const VoiceTranscriptionPage = lazyWithRetry(() => import("../../pages/Settings/VoiceTranscription"));
+const EnvironmentsPage = lazyWithRetry(
+  () => import("../../pages/Settings/Environments"),
+);
+const SecurityPage = lazyWithRetry(
+  () => import("../../pages/Settings/Security"),
+);
+const TokenUsagePage = lazyWithRetry(
+  () => import("../../pages/Settings/TokenUsage"),
+);
+const AgentStatsPage = lazyWithRetry(
+  () => import("../../pages/Settings/AgentStats"),
+);
+const VoiceTranscriptionPage = lazyWithRetry(
+  () => import("../../pages/Settings/VoiceTranscription"),
+);
 const DebugPage = lazyWithRetry(() => import("../../pages/Settings/Debug"));
 const BackupsPage = lazyWithRetry(() => import("../../pages/Settings/Backups"));
 const QuotasPage = lazyWithRetry(() => import("../../pages/Settings/Quotas"));
-const ManagementAuditPage = lazyWithRetry(() => import("../../pages/Settings/ManagementAudit"));
-const PluginManagerPage = lazyWithRetry(() => import("../../pages/Settings/PluginManager"));
-const CompanyWorkbenchPage = lazyWithRetry(() => import("../../pages/Company/Workbench"));
-const ProjectSpacesPage = lazyWithRetry(() => import("../../pages/Company/Projects"));
-const ProjectWorkspacePage = lazyWithRetry(() => import("../../pages/Company/ProjectWorkspace"));
-const EnterpriseMembersPage = lazyWithRetry(() => import("../../pages/Company/Members"));
-const EnterpriseRolesPage = lazyWithRetry(() => import("../../pages/Company/Roles"));
-const TaskCenterPage = lazyWithRetry(() => import("../../pages/Company/TaskCenter"));
-const TaskResultPage = lazyWithRetry(() => import("../../pages/Company/TaskResult"));
+const ManagementAuditPage = lazyWithRetry(
+  () => import("../../pages/Settings/ManagementAudit"),
+);
+const PluginManagerPage = lazyWithRetry(
+  () => import("../../pages/Settings/PluginManager"),
+);
+const CompanyWorkbenchPage = lazyWithRetry(
+  () => import("../../pages/Company/Workbench"),
+);
+const ProjectSpacesPage = lazyWithRetry(
+  () => import("../../pages/Company/Projects"),
+);
+const ProjectWorkspacePage = lazyWithRetry(
+  () => import("../../pages/Company/ProjectWorkspace"),
+);
+const EnterpriseMembersPage = lazyWithRetry(
+  () => import("../../pages/Company/Members"),
+);
+const EnterpriseRolesPage = lazyWithRetry(
+  () => import("../../pages/Company/Roles"),
+);
+const TaskCenterPage = lazyWithRetry(
+  () => import("../../pages/Company/TaskCenter"),
+);
+const TaskResultPage = lazyWithRetry(
+  () => import("../../pages/Company/TaskResult"),
+);
 
 /** The company workbench is the default authenticated landing page. */
 function DefaultRedirect() {
-  return <Navigate to="/workbench" replace />;
+  return <Navigate to="/chat" replace />;
 }
 
 export const BUILTIN_ROUTES: Route[] = [
@@ -115,7 +155,11 @@ export const BUILTIN_ROUTES: Route[] = [
   { id: "core.debug", path: "/debug", component: DebugPage },
   { id: "core.backups", path: "/backups", component: BackupsPage },
   { id: "core.quotas", path: "/quotas", component: QuotasPage },
-  { id: "core.management-audit", path: "/management-audit", component: ManagementAuditPage },
+  {
+    id: "core.management-audit",
+    path: "/management-audit",
+    component: ManagementAuditPage,
+  },
   {
     id: "core.plugin-manager",
     path: "/plugin-manager",

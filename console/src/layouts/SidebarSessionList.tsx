@@ -102,7 +102,7 @@ const VirtualRow = React.memo(function VirtualRow({
       <SessionItem
         variant="sidebar"
         sessionId={session.id!}
-        name={session.name || "New Chat"}
+        name={session.name || data.t("chat.newChatTooltip", "New chat")}
         channelKey={channelKey || undefined}
         channelLabel={channelLabel}
         chatStatus={session.status}
@@ -132,11 +132,14 @@ export interface SidebarSessionListProps {
   onNewChat?: () => void;
   /** Called when user clicks a session. Provided by parent for direct navigation. */
   onSessionClick?: (sessionId: string) => void;
+  /** Render only the history list when the parent owns the sidebar actions. */
+  historyOnly?: boolean;
 }
 
 export default function SidebarSessionList({
   onNewChat,
   onSessionClick: onSessionClickProp,
+  historyOnly = false,
 }: SidebarSessionListProps = {}) {
   const { t } = useTranslation();
   const location = useLocation();
@@ -329,52 +332,54 @@ export default function SidebarSessionList({
 
   return (
     <div className={styles.sessionList}>
-      {/* Sticky header: new chat + history title + search */}
-      <div className={styles.sessionListHeader}>
-        {/* New Chat button */}
-        <button className={styles.newChatBtn} onClick={handleNewChat}>
-          <SparkPlusLine size={14} />
-          <span>{t("chat.newChatTooltip")}</span>
-        </button>
+      {/* Optional standalone history chrome for older consumers. */}
+      {!historyOnly && (
+        <div className={styles.sessionListHeader}>
+          {/* New Chat button */}
+          <button className={styles.newChatBtn} onClick={handleNewChat}>
+            <SparkPlusLine size={14} />
+            <span>{t("chat.newChatTooltip")}</span>
+          </button>
 
-        {/* Conversation history header (collapsible) */}
-        <button
-          className={styles.historyHeader}
-          onClick={() => setHistoryCollapsed((c) => !c)}
-        >
-          <span className={styles.historyLabel}>
-            {t("chat.conversationHistory", "Conversation History")}
-          </span>
-          <span
-            className={styles.historyChevron}
-            style={{
-              transform: historyCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
-            }}
+          {/* Conversation history header (collapsible) */}
+          <button
+            className={styles.historyHeader}
+            onClick={() => setHistoryCollapsed((c) => !c)}
           >
-            <SparkDownArrowLine size={12} />
-          </span>
-        </button>
+            <span className={styles.historyLabel}>
+              {t("chat.conversationHistory", "Conversation History")}
+            </span>
+            <span
+              className={styles.historyChevron}
+              style={{
+                transform: historyCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+              }}
+            >
+              <SparkDownArrowLine size={12} />
+            </span>
+          </button>
 
-        {/* Search bar */}
-        {!historyCollapsed && (
-          <div className={styles.searchContainer}>
-            <Input
-              size="small"
-              allowClear
-              placeholder={t(
-                "chat.sessionPanel.searchConversations",
-                "Search…",
-              )}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={styles.searchInput}
-            />
-          </div>
-        )}
-      </div>
+          {/* Search bar */}
+          {!historyCollapsed && (
+            <div className={styles.searchContainer}>
+              <Input
+                size="small"
+                allowClear
+                placeholder={t(
+                  "chat.sessionPanel.searchConversations",
+                  "Search…",
+                )}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={styles.searchInput}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Session list */}
-      {!historyCollapsed && (
+      {(historyOnly || !historyCollapsed) && (
         <div className={styles.scroll} ref={listWrapperRef}>
           {loading && sortedSessions.length === 0 && (
             <div className={styles.loadingState}>

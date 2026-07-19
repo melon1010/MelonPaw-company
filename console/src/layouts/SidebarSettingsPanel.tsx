@@ -1,7 +1,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 
-import { SunMoon } from "lucide-react";
+import { Languages, SunMoon } from "lucide-react";
 import {
   SparkSunLine,
   SparkMoonLine,
@@ -23,6 +23,12 @@ const LANGS = [
   { key: "ja", label: "日本語", icon: <SparkJapanLine size={14} /> },
   { key: "ru", label: "Русский", icon: <SparkRusLine size={14} /> },
   { key: "pt-BR", label: "Português", icon: <SparkPtLine size={14} /> },
+  {
+    key: "id",
+    label: "Bahasa Indonesia",
+    icon: <Languages size={14} />,
+  },
+  { key: "vi", label: "Tiếng Việt", icon: <Languages size={14} /> },
 ];
 const KNOWN_KEYS = new Set(LANGS.map((l) => l.key));
 

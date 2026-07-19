@@ -28,14 +28,14 @@ export default function LoginPage() {
       .getStatus()
       .then((res) => {
         if (!res.enabled) {
-          navigate("/workbench", { replace: true });
+          navigate("/chat", { replace: true });
           return;
         }
         setIsBootstrap(Boolean(res.bootstrap_required || !res.has_users));
         setBootstrapTokenRequired(Boolean(res.bootstrap_token_required));
         if (res.authenticated && res.user) {
           setSession(res.user, res);
-          navigate("/workbench", { replace: true });
+          navigate("/chat", { replace: true });
         }
       })
       .catch(() => {});
@@ -49,9 +49,9 @@ export default function LoginPage() {
   }) => {
     setLoading(true);
     try {
-      const raw = searchParams.get("redirect") || "/workbench";
+      const raw = searchParams.get("redirect") || "/chat";
       const redirect =
-        raw.startsWith("/") && !raw.startsWith("//") ? raw : "/workbench";
+        raw.startsWith("/") && !raw.startsWith("//") ? raw : "/chat";
 
       const res = isBootstrap
         ? await authApi.bootstrap(
@@ -123,7 +123,12 @@ export default function LoginPage() {
           {isBootstrap && bootstrapTokenRequired && (
             <Form.Item
               name="bootstrapToken"
-              rules={[{ required: true, message: t("enterprise.auth.bootstrapTokenRequired") }]}
+              rules={[
+                {
+                  required: true,
+                  message: t("enterprise.auth.bootstrapTokenRequired"),
+                },
+              ]}
             >
               <Input.Password
                 prefix={<KeyOutlined />}

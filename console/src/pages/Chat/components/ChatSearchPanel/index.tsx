@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { Drawer, Input, List, Typography, Empty, Spin } from "antd";
+import { Modal, Input, List, Typography, Empty, Spin } from "antd";
 import type { InputRef } from "antd";
-import { IconButton } from "@agentscope-ai/design";
-import { SparkOperateRightLine, SparkSearchLine } from "@agentscope-ai/icons";
+import { SparkSearchLine } from "@agentscope-ai/icons";
 import { useChatAnywhereSessionsState } from "@agentscope-ai/chat";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { MessageCircle, X } from "lucide-react";
 import { chatApi } from "../../../../api/modules/chat";
 import sessionApi from "../../sessionApi";
 import styles from "./index.module.less";
@@ -80,7 +80,7 @@ const ChatSearchPanel: React.FC<ChatSearchPanelProps> = ({ open, onClose }) => {
     };
   }, []);
 
-  // Focus input when drawer opens
+  // Focus input when the search modal opens.
   useEffect(() => {
     if (open) {
       setTimeout(() => {
@@ -256,52 +256,55 @@ const ChatSearchPanel: React.FC<ChatSearchPanelProps> = ({ open, onClose }) => {
   );
 
   return (
-    <Drawer
+    <Modal
       open={open}
-      onClose={onClose}
-      destroyOnHidden
-      placement="right"
-      width="calc(100vw - 56px)"
+      onCancel={onClose}
+      centered
+      width={680}
       closable={false}
       title={null}
+      footer={null}
+      destroyOnClose
       styles={{
-        header: { display: "none" },
+        content: {
+          padding: 0,
+          overflow: "hidden",
+          borderRadius: 12,
+        },
         body: {
           padding: 0,
           display: "flex",
           flexDirection: "column",
-          height: "100%",
+          height: "min(70vh, 620px)",
+          maxHeight: "calc(100vh - 48px)",
           overflow: "hidden",
         },
-        mask: { background: "transparent" },
+        mask: { background: "rgba(0, 0, 0, 0.54)" },
       }}
-      className={styles.drawer}
+      className={styles.searchModal}
     >
       {/* Header bar */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
-          <span className={styles.headerTitle}>{t("chat.search.title")}</span>
-        </div>
-        <div className={styles.headerRight}>
-          <IconButton
-            bordered={false}
-            icon={<SparkOperateRightLine />}
-            onClick={onClose}
+          <Input
+            ref={inputRef}
+            placeholder={t("chat.search.placeholder")}
+            prefix={<SparkSearchLine />}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className={styles.searchInput}
           />
         </div>
-      </div>
-
-      {/* Search input */}
-      <div className={styles.searchSection}>
-        <Input
-          ref={inputRef}
-          placeholder={t("chat.search.placeholder")}
-          prefix={<SparkSearchLine style={{ color: "rgba(0,0,0,0.25)" }} />}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          allowClear
-          className={styles.searchInput}
-        />
+        <div className={styles.headerRight}>
+          <button
+            type="button"
+            className={styles.closeButton}
+            aria-label={t("common.close", "关闭")}
+            onClick={onClose}
+          >
+            <X size={20} strokeWidth={1.8} aria-hidden />
+          </button>
+        </div>
       </div>
 
       {/* Results count / search progress */}
@@ -325,7 +328,43 @@ const ChatSearchPanel: React.FC<ChatSearchPanelProps> = ({ open, onClose }) => {
       <div className={styles.listWrapper}>
         <div className={styles.topGradient} />
         <div className={styles.list}>
-          {loading && searchResults.length === 0 ? (
+          {!searchQuery.trim() ? (
+            <div className={styles.recentChats}>
+              <div className={styles.recentChatsTitle}>
+                {t("chat.recentConversations", "最近聊天")}
+              </div>
+              {sessions.length === 0 ? (
+                <Empty
+                  description={t("chat.search.noRecentChats", "暂无最近聊天")}
+                  style={{ marginTop: 40 }}
+                />
+              ) : (
+                sessions.slice(0, 12).map((session) => {
+                  const chatName = session.name || t("chat.newChatTooltip");
+                  return (
+                    <button
+                      type="button"
+                      className={styles.recentChatItem}
+                      key={session.id}
+                      onClick={() =>
+                        handleResultClick({
+                          chatId: session.id,
+                          chatName,
+                          role: "chat_title",
+                          roleLabel: "",
+                          text: chatName,
+                          matchedText: chatName,
+                        })
+                      }
+                    >
+                      <MessageCircle size={18} strokeWidth={1.8} />
+                      <span>{chatName}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          ) : loading && searchResults.length === 0 ? (
             <div
               style={{ display: "flex", justifyContent: "center", padding: 40 }}
             >
@@ -367,7 +406,7 @@ const ChatSearchPanel: React.FC<ChatSearchPanelProps> = ({ open, onClose }) => {
         </div>
         <div className={styles.bottomGradient} />
       </div>
-    </Drawer>
+    </Modal>
   );
 };
 
