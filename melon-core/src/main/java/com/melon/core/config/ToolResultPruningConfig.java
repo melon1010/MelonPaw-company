@@ -6,16 +6,16 @@ import java.util.List;
 public class ToolResultPruningConfig {
 
     @JsonProperty("enabled")
-    private boolean enabled = false;
+    private boolean enabled = true;
 
     @JsonProperty("pruning_recent_n")
     private int pruningRecentN = 0;
 
     @JsonProperty("pruning_old_msg_max_bytes")
-    private int pruningOldMsgMaxBytes = 0;
+    private int pruningOldMsgMaxBytes = 20_000;
 
     @JsonProperty("pruning_recent_msg_max_bytes")
-    private int pruningRecentMsgMaxBytes = 0;
+    private int pruningRecentMsgMaxBytes = 24_000;
 
     @JsonProperty("offload_retention_days")
     private int offloadRetentionDays = 0;

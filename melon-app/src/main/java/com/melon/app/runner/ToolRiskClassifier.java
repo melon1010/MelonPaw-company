@@ -75,6 +75,7 @@ public class ToolRiskClassifier {
         }
         if ("agent_spawn".equals(name)) {
             String worker = value(input.get("agent_id")).toLowerCase(Locale.ROOT);
+            if (worker.isBlank()) worker = value(input.get("role")).toLowerCase(Locale.ROOT);
             if (Set.of("general-purpose", "researcher", "executor", "reviewer").contains(worker)) {
                 String role = value(input.get("role")).toLowerCase(Locale.ROOT);
                 if (!role.isBlank() && !Set.of("researcher", "executor", "reviewer").contains(role)) {
@@ -87,7 +88,8 @@ public class ToolRiskClassifier {
                     "Only the restricted general-purpose worker may be started");
         }
         if ("create_cron_job".equals(name)) {
-            return Assessment.ask("persistent_automation", "Create a persistent scheduled task");
+            return Assessment.allow("workspace_automation",
+                    "Create a workspace-local scheduled task; risky actions remain governed when it runs");
         }
         if ("skill_manage".equals(name)) {
             String action = value(input.get("action")).toLowerCase(Locale.ROOT);

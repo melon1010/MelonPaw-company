@@ -7,7 +7,8 @@ import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,7 @@ public class CronManager {
 
     private static final Logger log = LoggerFactory.getLogger(CronManager.class);
     private static final int POOL_SIZE = 4;
+    public static final String DEFAULT_TIMEZONE = "Asia/Shanghai";
 
     private final ScheduledExecutorService executor;
     private final CronExecutor cronExecutor;
@@ -60,20 +62,30 @@ public class CronManager {
      * @return 注册后的任务 (含生成的 id)
      */
     public CronJob schedule(CronJob job) {
+        if (job == null) {
+            throw new IllegalArgumentException("Cron job is required");
+        }
         if (job.getId() == null || job.getId().isBlank()) {
             job.setId(UUID.randomUUID().toString().substring(0, 8));
         }
         if (job.getName() == null || job.getName().isBlank()) {
             job.setName("cron-" + job.getId());
         }
+        cancel(job.getId());
+        jobs.put(job.getId(), job);
         if (!job.isEnabled()) {
             log.info("Cron job {} registered but disabled, skip scheduling", job.getId());
-            jobs.put(job.getId(), job);
             return job;
         }
 
-        doSchedule(job);
-        jobs.put(job.getId(), job);
+        try {
+            doSchedule(job);
+        } catch (RuntimeException e) {
+            jobs.remove(job.getId(), job);
+            ScheduledFuture<?> future = scheduledTasks.remove(job.getId());
+            if (future != null) future.cancel(false);
+            throw e;
+        }
         log.info("Cron job scheduled: id={}, name={}, type={}", job.getId(), job.getName(), job.getTriggerType());
         return job;
     }
@@ -123,7 +135,12 @@ public class CronManager {
             future.cancel(false);
         }
         if (enabled) {
-            doSchedule(job);
+            try {
+                doSchedule(job);
+            } catch (RuntimeException e) {
+                job.setEnabled(false);
+                throw e;
+            }
         }
         log.info("Cron job {} {}", id, enabled ? "enabled" : "disabled");
         return job;
@@ -156,6 +173,9 @@ public class CronManager {
     // ======================== Scheduling Logic ========================
 
     private void doSchedule(CronJob job) {
+        if (job.getTriggerType() == null) {
+            throw new IllegalArgumentException("Cron trigger type is required");
+        }
         switch (job.getTriggerType()) {
             case CRON -> scheduleCron(job);
             case INTERVAL -> scheduleInterval(job);
@@ -167,23 +187,20 @@ public class CronManager {
      * Cron 表达式调度: 计算下一次执行时间, 延迟调度, 执行后重新调度.
      */
     private void scheduleCron(CronJob job) {
-        try {
-            CronExpression cron = CronExpression.parse(job.getCronExpression());
-            scheduleNextCron(job, cron);
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid cron expression '{}' for job {}", job.getCronExpression(), job.getId(), e);
-        }
+        CronExpression cron = CronExpression.parse(job.getCronExpression());
+        ZoneId timezone = ZoneId.of(job.getTimezone());
+        scheduleNextCron(job, cron, timezone);
     }
 
-    private void scheduleNextCron(CronJob job, CronExpression cron) {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime next = cron.next(now);
+    private void scheduleNextCron(CronJob job, CronExpression cron, ZoneId timezone) {
+        ZonedDateTime now = ZonedDateTime.now(timezone);
+        ZonedDateTime next = cron.next(now);
         if (next == null) {
-            log.warn("No future execution for cron job {}, expression exhausted", job.getId());
-            return;
+            throw new IllegalArgumentException(
+                    "Cron expression has no future execution time: " + job.getCronExpression());
         }
-        long delayMs = Duration.between(now, next).toMillis();
-        job.setNextRun(next.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli());
+        long delayMs = Math.max(0, Duration.between(now.toInstant(), next.toInstant()).toMillis());
+        job.setNextRun(next.toInstant().toEpochMilli());
 
         ScheduledFuture<?> future = executor.schedule(() -> {
             try {
@@ -191,8 +208,8 @@ public class CronManager {
             } catch (Exception e) {
                 log.error("Cron job {} execution failed", job.getId(), e);
             } finally {
-                if (job.isEnabled()) {
-                    scheduleNextCron(job, cron);
+                if (job.isEnabled() && jobs.get(job.getId()) == job) {
+                    scheduleNextCron(job, cron, timezone);
                 }
             }
         }, delayMs, TimeUnit.MILLISECONDS);
@@ -205,13 +222,13 @@ public class CronManager {
     private void scheduleInterval(CronJob job) {
         long interval = job.getIntervalMs();
         if (interval <= 0) {
-            log.error("Invalid interval {} for job {}", interval, job.getId());
-            return;
+            throw new IllegalArgumentException("Cron interval must be greater than zero");
         }
         job.setNextRun(System.currentTimeMillis() + interval);
         ScheduledFuture<?> future = executor.scheduleAtFixedRate(() -> {
             try {
                 executeJob(job);
+                job.setNextRun(System.currentTimeMillis() + interval);
             } catch (Exception e) {
                 log.error("Interval job {} execution failed", job.getId(), e);
             }
@@ -225,8 +242,7 @@ public class CronManager {
     private void scheduleOneShot(CronJob job) {
         long delay = job.getDelayMs();
         if (delay < 0) {
-            log.error("Invalid delay {} for job {}", delay, job.getId());
-            return;
+            throw new IllegalArgumentException("One-shot delay cannot be negative");
         }
         job.setNextRun(System.currentTimeMillis() + delay);
         ScheduledFuture<?> future = executor.schedule(() -> {
@@ -235,7 +251,7 @@ public class CronManager {
             } catch (Exception e) {
                 log.error("One-shot job {} execution failed", job.getId(), e);
             } finally {
-                // 执行完成后移除
+                runCompletionCallback(job);
                 scheduledTasks.remove(job.getId());
                 jobs.remove(job.getId());
                 log.info("One-shot job {} completed and removed", job.getId());
@@ -250,6 +266,15 @@ public class CronManager {
     private void executeJob(CronJob job) {
         job.setLastRun(System.currentTimeMillis());
         cronExecutor.execute(job);
+    }
+
+    private void runCompletionCallback(CronJob job) {
+        if (job.getCompletionCallback() == null) return;
+        try {
+            job.getCompletionCallback().run();
+        } catch (RuntimeException e) {
+            log.error("Cron job {} completion callback failed", job.getId(), e);
+        }
     }
 
     // ======================== Data Model ========================
@@ -271,6 +296,7 @@ public class CronManager {
         private String name;
         private TriggerType triggerType = TriggerType.INTERVAL;
         private String cronExpression;   // CRON 类型使用
+        private String timezone = DEFAULT_TIMEZONE;
         private long intervalMs;          // INTERVAL 类型使用
         private long delayMs;             // ONE_SHOT 类型使用
         private String agentId = "default";
@@ -282,6 +308,7 @@ public class CronManager {
         private boolean enabled = true;
         private long lastRun;
         private long nextRun;
+        private Runnable completionCallback;
 
         // --- factory ---
 
@@ -290,6 +317,7 @@ public class CronManager {
             if (body.get("id") != null) job.setId((String) body.get("id"));
             if (body.get("name") != null) job.setName((String) body.get("name"));
             if (body.get("cron_expression") != null) job.setCronExpression((String) body.get("cron_expression"));
+            if (body.get("timezone") != null) job.setTimezone(String.valueOf(body.get("timezone")));
             if (body.get("agent_id") != null) job.setAgentId((String) body.get("agent_id"));
             if (body.get("message") != null) job.setMessage((String) body.get("message"));
             if (body.get("source_id") != null) job.setSourceId(String.valueOf(body.get("source_id")));
@@ -312,7 +340,7 @@ public class CronManager {
                 job.setDelayMs(((Number) body.get("delay_ms")).longValue());
             }
             if (body.get("enabled") != null) {
-                job.setEnabled((Boolean) body.get("enabled"));
+                job.setEnabled(Boolean.parseBoolean(String.valueOf(body.get("enabled"))));
             }
             return job;
         }
@@ -323,6 +351,7 @@ public class CronManager {
             m.put("name", name);
             m.put("trigger_type", triggerType);
             m.put("cron_expression", cronExpression);
+            m.put("timezone", timezone);
             m.put("interval_ms", intervalMs);
             m.put("delay_ms", delayMs);
             m.put("agent_id", agentId);
@@ -350,6 +379,11 @@ public class CronManager {
 
         public String getCronExpression() { return cronExpression; }
         public void setCronExpression(String cronExpression) { this.cronExpression = cronExpression; }
+
+        public String getTimezone() { return timezone; }
+        public void setTimezone(String timezone) {
+            this.timezone = timezone == null || timezone.isBlank() ? DEFAULT_TIMEZONE : timezone;
+        }
 
         public long getIntervalMs() { return intervalMs; }
         public void setIntervalMs(long intervalMs) { this.intervalMs = intervalMs; }
@@ -383,5 +417,10 @@ public class CronManager {
 
         public long getNextRun() { return nextRun; }
         public void setNextRun(long nextRun) { this.nextRun = nextRun; }
+
+        public Runnable getCompletionCallback() { return completionCallback; }
+        public void setCompletionCallback(Runnable completionCallback) {
+            this.completionCallback = completionCallback;
+        }
     }
 }

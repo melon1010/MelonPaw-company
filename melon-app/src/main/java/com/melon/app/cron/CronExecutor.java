@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
@@ -59,7 +60,7 @@ public class CronExecutor {
             return;
         }
         log.info("Executing cron job: id={}, agent={}, messageLen={}", job.getId(), agentId, message.length());
-        String runId = "cron-" + job.getId() + "-" + System.currentTimeMillis();
+        String runId = UUID.randomUUID().toString();
         if (job.isSaveResultToInbox()) {
             inboxStore.createTrace(runId, Map.of("job_id", sourceId(job), "job_name", name(job)));
         }
@@ -113,9 +114,14 @@ public class CronExecutor {
                             onSuccess.accept(out);
                         }
                     });
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.error("Cron task {} channel dispatch failed before enqueue", taskId, e);
-            onError.accept(e);
+            try {
+                onError.accept(e);
+            } catch (RuntimeException callbackError) {
+                e.addSuppressed(callbackError);
+            }
+            throw e;
         }
     }
 

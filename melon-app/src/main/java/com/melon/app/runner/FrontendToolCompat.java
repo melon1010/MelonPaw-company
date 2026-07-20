@@ -24,6 +24,11 @@ public final class FrontendToolCompat {
         return name;
     }
 
+    /** Tools used only to assemble model context must not appear in end-user history. */
+    public static boolean isInternalTool(String name) {
+        return "load_skill_through_path".equals(name);
+    }
+
     public static Map<String, Object> parseArguments(String toolName, String raw) {
         String args = unwrapToolCall(toolName, raw);
         if (args.isBlank()) return Map.of();

@@ -78,7 +78,7 @@ class AgentConfigPersistenceSecurityTest {
 
         ConfigManager migrated = manager(configPath, home);
         assertFalse(migrated.getConfig().getAgent("default").getChannels().containsKey("dingtalk"));
-        assertEquals("AUTO", migrated.getConfig().getAgent("default").getApproval().getLevel());
+        assertEquals("RISK_BASED", migrated.getConfig().getAgent("default").getApproval().getLevel());
         migrated.save();
         String metadata = Files.readString(workspace.resolve("agent.json"));
         assertFalse(metadata.contains("legacy-secret"));
@@ -86,7 +86,7 @@ class AgentConfigPersistenceSecurityTest {
 
         ConfigManager reloaded = manager(configPath, home);
         assertFalse(reloaded.getConfig().getAgent("default").getChannels().containsKey("dingtalk"));
-        assertEquals("AUTO", reloaded.getConfig().getAgent("default").getApproval().getLevel());
+        assertEquals("RISK_BASED", reloaded.getConfig().getAgent("default").getApproval().getLevel());
     }
 
     private ConfigManager manager(Path configPath, Path home) {

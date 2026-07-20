@@ -7,8 +7,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 public class RunningConfig {
 
+    public static final int DEFAULT_MAX_ITERS = 12;
+    public static final int MAX_MAX_ITERS = 32;
+
     @JsonProperty("max_iters")
-    private int maxIters = 100;
+    private int maxIters = DEFAULT_MAX_ITERS;
 
     @JsonProperty("auto_continue_on_text_only")
     private boolean autoContinueOnTextOnly = false;
@@ -55,8 +58,13 @@ public class RunningConfig {
     @JsonProperty("fallback_model")
     private String fallbackModel;
 
-    public int getMaxIters() { return maxIters; }
-    public void setMaxIters(int maxIters) { this.maxIters = maxIters; }
+    public int getMaxIters() { return normalizeMaxIters(maxIters); }
+    public void setMaxIters(int maxIters) { this.maxIters = normalizeMaxIters(maxIters); }
+
+    private static int normalizeMaxIters(int value) {
+        if (value == 100) return DEFAULT_MAX_ITERS; // Migrate the legacy unbounded default.
+        return Math.max(1, Math.min(MAX_MAX_ITERS, value));
+    }
 
     public boolean isAutoContinueOnTextOnly() { return autoContinueOnTextOnly; }
     public void setAutoContinueOnTextOnly(boolean autoContinueOnTextOnly) { this.autoContinueOnTextOnly = autoContinueOnTextOnly; }

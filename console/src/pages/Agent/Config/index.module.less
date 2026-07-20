@@ -4,14 +4,214 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  color: var(--mp-text);
+  background: var(--mp-canvas);
+
+  // AgentLoopCard still consumes these legacy custom properties inline.
+  --border-color: var(--mp-border);
+  --text-secondary: var(--mp-text-secondary);
+  --text-quaternary: var(--mp-text-tertiary);
 
   :global {
-    .qwenpaw-slider-track {
-      background-color: var(--mp-primary);
+    .ant-card,
+    .qwenpaw-card,
+    .ant-card-head,
+    .qwenpaw-card-head,
+    .ant-card-body,
+    .qwenpaw-card-body {
+      color: var(--mp-text) !important;
+      background: var(--mp-surface) !important;
+      border-color: var(--mp-border) !important;
     }
 
+    .ant-card-head-title,
+    .qwenpaw-card-head-title,
+    .ant-card-meta-title,
+    .qwenpaw-card-meta-title,
+    .ant-tabs-content,
+    .qwenpaw-tabs-content,
+    .ant-tabs-tabpane,
+    .qwenpaw-tabs-tabpane {
+      color: var(--mp-text) !important;
+    }
+
+    .ant-form-item-label > label,
+    .qwenpaw-form-item-label > label {
+      color: var(--mp-text-secondary) !important;
+    }
+
+    .ant-form-item-label > label.ant-form-item-required::before,
+    .qwenpaw-form-item-label > label.qwenpaw-form-item-required::before {
+      color: var(--mp-danger) !important;
+    }
+
+    .ant-form-item-extra,
+    .qwenpaw-form-item-extra,
+    .ant-form-item-explain,
+    .qwenpaw-form-item-explain,
+    .ant-typography-secondary,
+    .qwenpaw-typography-secondary {
+      color: var(--mp-text-secondary) !important;
+    }
+
+    .ant-input,
+    .qwenpaw-input,
+    .ant-input-affix-wrapper,
+    .qwenpaw-input-affix-wrapper,
+    .ant-input-number,
+    .qwenpaw-input-number,
+    .ant-select-selector,
+    .qwenpaw-select-selector {
+      color: var(--mp-text) !important;
+      background: var(--mp-control-bg) !important;
+      border-color: var(--mp-border-strong) !important;
+    }
+
+    .ant-input-affix-wrapper .ant-input,
+    .qwenpaw-input-affix-wrapper .qwenpaw-input,
+    .ant-input-number-input,
+    .qwenpaw-input-number-input {
+      color: var(--mp-text) !important;
+      background: transparent !important;
+    }
+
+    .ant-select-selection-item,
+    .qwenpaw-select-selection-item,
+    .ant-select-selection-search-input,
+    .qwenpaw-select-selection-search-input {
+      color: var(--mp-text) !important;
+    }
+
+    .ant-input::placeholder,
+    .qwenpaw-input::placeholder,
+    .ant-input-number-input::placeholder,
+    .qwenpaw-input-number-input::placeholder,
+    .ant-select-selection-placeholder,
+    .qwenpaw-select-selection-placeholder {
+      color: var(--mp-text-tertiary) !important;
+      opacity: 1;
+    }
+
+    .ant-input-suffix,
+    .qwenpaw-input-suffix,
+    .ant-input-password-icon,
+    .qwenpaw-input-password-icon,
+    .ant-input-number-handler,
+    .qwenpaw-input-number-handler,
+    .ant-select-arrow,
+    .qwenpaw-select-arrow {
+      color: var(--mp-text-tertiary) !important;
+    }
+
+    .ant-input:disabled,
+    .qwenpaw-input:disabled,
+    .ant-input-affix-wrapper-disabled,
+    .qwenpaw-input-affix-wrapper-disabled,
+    .ant-input-number-disabled,
+    .qwenpaw-input-number-disabled,
+    .ant-select-disabled .ant-select-selector,
+    .qwenpaw-select-disabled .qwenpaw-select-selector {
+      color: var(--mp-text-disabled) !important;
+      background: var(--mp-control-bg-disabled) !important;
+      border-color: var(--mp-border) !important;
+      opacity: 1;
+    }
+
+    .ant-collapse,
+    .qwenpaw-collapse,
+    .ant-collapse-content,
+    .qwenpaw-collapse-content,
+    .ant-collapse-content-box,
+    .qwenpaw-collapse-content-box {
+      color: var(--mp-text) !important;
+      background: var(--mp-surface) !important;
+      border-color: var(--mp-border) !important;
+    }
+
+    .ant-collapse-item,
+    .qwenpaw-collapse-item {
+      border-color: var(--mp-border) !important;
+    }
+
+    .ant-collapse-header,
+    .qwenpaw-collapse-header {
+      color: var(--mp-text-secondary) !important;
+      background: var(--mp-surface-subtle) !important;
+    }
+
+    .ant-collapse-expand-icon,
+    .qwenpaw-collapse-expand-icon {
+      color: var(--mp-text-tertiary) !important;
+    }
+
+    .ant-alert,
+    .qwenpaw-alert {
+      color: var(--mp-text) !important;
+      background: var(--mp-surface-subtle) !important;
+      border-color: var(--mp-border-strong) !important;
+    }
+
+    .ant-alert-message,
+    .qwenpaw-alert-message {
+      color: var(--mp-text) !important;
+    }
+
+    .ant-alert-description,
+    .qwenpaw-alert-description {
+      color: var(--mp-text-secondary) !important;
+    }
+
+    .ant-alert-icon,
+    .qwenpaw-alert-icon {
+      color: var(--mp-info) !important;
+    }
+
+    .ant-tag,
+    .qwenpaw-tag {
+      color: var(--mp-text-secondary) !important;
+      background: var(--mp-surface-subtle) !important;
+      border-color: var(--mp-border-strong) !important;
+    }
+
+    .ant-switch:not(.ant-switch-checked):not(.ant-switch-disabled),
+    .qwenpaw-switch:not(.qwenpaw-switch-checked):not(.qwenpaw-switch-disabled) {
+      background: var(--mp-switch-track) !important;
+    }
+
+    .ant-switch-checked:not(.ant-switch-disabled),
+    .qwenpaw-switch-checked:not(.qwenpaw-switch-disabled) {
+      background: var(--mp-primary) !important;
+    }
+
+    .ant-switch .ant-switch-handle::before,
+    .qwenpaw-switch .qwenpaw-switch-handle::before {
+      background: var(--mp-switch-handle) !important;
+    }
+
+    .ant-switch-checked .ant-switch-handle::before,
+    .qwenpaw-switch-checked .qwenpaw-switch-handle::before {
+      background: var(--mp-switch-handle-checked) !important;
+    }
+
+    .ant-slider-rail,
+    .qwenpaw-slider-rail {
+      background-color: var(--mp-surface-muted) !important;
+    }
+
+    .ant-slider-track,
+    .qwenpaw-slider-track {
+      background-color: var(--mp-text-tertiary) !important;
+    }
+
+    .ant-slider-handle::after,
     .qwenpaw-slider .qwenpaw-slider-handle::after {
-      box-shadow: 0 0 0 2px var(--mp-primary);
+      background: var(--mp-control-bg) !important;
+      box-shadow: 0 0 0 2px var(--mp-text-tertiary) !important;
+    }
+
+    .ant-slider-mark-text,
+    .qwenpaw-slider-mark-text {
+      color: var(--mp-text-tertiary) !important;
     }
 
     .qwenpaw-tabs-nav {
@@ -25,6 +225,8 @@
   min-height: 0;
   overflow-y: auto;
   width: 100%;
+  color: var(--mp-text);
+  background: var(--mp-canvas);
 }
 
 /* ---- Main Tabs ---- */
@@ -33,7 +235,7 @@
     margin-bottom: 20px;
 
     &::before {
-      border-bottom: 1px solid #f0f0f0;
+      border-bottom: 1px solid var(--mp-border);
     }
   }
 
@@ -41,11 +243,15 @@
     padding: 10px 4px;
     font-size: 14px;
     font-weight: 500;
-    color: #666 !important;
+    color: var(--mp-text-secondary) !important;
 
     &:hover {
       color: var(--mp-primary) !important;
     }
+  }
+
+  :global(.qwenpaw-tabs-tab .qwenpaw-tabs-tab-btn) {
+    color: inherit !important;
   }
 
   :global(.qwenpaw-tabs-tab-active .qwenpaw-tabs-tab-btn) {
@@ -77,7 +283,7 @@
   align-items: center;
   position: relative;
   padding: 20px;
-  border-bottom: 1px solid #eae9e7;
+  border-bottom: 1px solid var(--mp-border);
   margin-bottom: 0;
 }
 
@@ -90,23 +296,26 @@
 }
 
 .breadcrumbParent {
-  color: #999;
+  color: var(--mp-text-tertiary);
   font-weight: 400;
 }
 
 .breadcrumbSeparator {
-  color: #ccc;
+  color: var(--mp-border-strong);
   margin: 0 4px;
 }
 
 .breadcrumbCurrent {
-  color: #333;
+  color: var(--mp-text);
   font-weight: 600;
   font-size: 20px;
 }
 
 .formCard {
   width: 100%;
+  color: var(--mp-text) !important;
+  background: var(--mp-surface) !important;
+  border-color: var(--mp-border) !important;
 }
 
 .form {
@@ -114,7 +323,8 @@
   min-height: 0;
 
   :global {
-    .ant-form-item-label > label {
+    .ant-form-item-label > label,
+    .qwenpaw-form-item-label > label {
       font-weight: 500;
     }
   }
@@ -142,42 +352,11 @@
   margin-bottom: 0 !important;
 }
 
-/* Slider overrides - remove theme color */
-:global {
-  .ant-slider-rail {
-    background-color: rgba(20, 20, 19, 0.15) !important;
-  }
-
-  .ant-slider-track {
-    background-color: rgba(20, 20, 19, 0.25) !important;
-  }
-
-  .ant-slider-handle::after {
-    box-shadow: 0 0 0 2px rgba(20, 20, 19, 0.25) !important;
-    background-color: #fff !important;
-  }
-}
-
-:global(.dark-mode) {
-  .ant-slider-rail {
-    background-color: rgba(255, 255, 255, 0.15) !important;
-  }
-
-  .ant-slider-track {
-    background-color: rgba(255, 255, 255, 0.25) !important;
-  }
-
-  .ant-slider-handle::after {
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25) !important;
-    background-color: #fff !important;
-  }
-}
-
 /* formContainer kept for legacy reference */
 
 .sliderValue {
   font-weight: 500;
-  color: #1890ff;
+  color: var(--mp-text);
 }
 
 .buttonGroup {
@@ -199,12 +378,12 @@
 
 .stateText {
   font-size: 14px;
-  color: #666;
+  color: var(--mp-text-secondary);
 }
 
 .stateTextError {
   font-size: 14px;
-  color: #ff4d4f;
+  color: var(--mp-danger);
 }
 
 .footerActions {
@@ -212,52 +391,9 @@
   justify-content: flex-end;
   align-items: center;
   padding: 16px 24px;
-  border-top: 1px solid #eae9e7;
-  background: #fff;
+  border-top: 1px solid var(--mp-border);
+  background: var(--mp-surface);
   flex-shrink: 0;
-}
-
-/* ─── Dark mode ─────────────────────────────────────────────────────────────── */
-:global(.dark-mode) {
-  .pageHeader {
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-  }
-
-  .breadcrumbParent {
-    color: rgba(255, 255, 255, 0.35);
-  }
-
-  .breadcrumbSeparator {
-    color: rgba(255, 255, 255, 0.2);
-  }
-
-  .breadcrumbCurrent {
-    color: rgba(255, 255, 255, 0.85);
-  }
-
-  .footerActions {
-    background: #1f1f1f;
-    border-top-color: rgba(255, 255, 255, 0.08);
-  }
-
-  .sliderValue {
-    color: var(--mp-primary);
-  }
-
-  .mainTabs {
-    :global(.qwenpaw-tabs-tab .qwenpaw-tabs-tab-btn) {
-      color: #ffffff !important;
-    }
-
-    :global(.qwenpaw-tabs-tab-active .qwenpaw-tabs-tab-btn) {
-      color: var(--mp-primary) !important;
-      font-weight: 600;
-    }
-
-    :global(.qwenpaw-tabs-ink-bar) {
-      background: var(--mp-primary) !important;
-    }
-  }
 }
 
 /* ─── Mobile responsive ─────────────────────────────────────────────────────── */

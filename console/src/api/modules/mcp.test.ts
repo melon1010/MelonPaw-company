@@ -18,7 +18,9 @@ describe("mcpApi policy endpoints", () => {
 
     await mcpApi.getMCPPolicy("local_stdio_echo");
 
-    expect(request).toHaveBeenCalledWith("/mcp/policy/local_stdio_echo");
+    expect(request).toHaveBeenCalledWith(
+      "/mcp/client/policy?client_key=local_stdio_echo",
+    );
   });
 
   it("updates MCP policy through the policy endpoint", async () => {
@@ -55,32 +57,45 @@ describe("mcpApi policy endpoints", () => {
       unmanaged_rules_count: 0,
     });
 
-    expect(request).toHaveBeenCalledWith("/mcp/policy/local_stdio_echo", {
-      method: "PUT",
-      body: JSON.stringify({
-        default_effect: "ask",
-        client_overrides: [
-          {
-            source_type: "channel",
-            source_value: "console",
-            subject_type: "all",
-            subject_value: "",
-            effect: "allow",
-          },
-        ],
-        tool_defaults: [{ tool_name: "echo", effect: "ask" }],
-        tool_overrides: [
-          {
-            tool_name: "echo",
-            source_type: "channel",
-            source_value: "dingtalk",
-            subject_type: "user",
-            subject_value: "alice",
-            effect: "allow",
-          },
-        ],
-        unmanaged_rules_count: 0,
-      }),
-    });
+    expect(request).toHaveBeenCalledWith(
+      "/mcp/client/policy?client_key=local_stdio_echo",
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          default_effect: "ask",
+          client_overrides: [
+            {
+              source_type: "channel",
+              source_value: "console",
+              subject_type: "all",
+              subject_value: "",
+              effect: "allow",
+            },
+          ],
+          tool_defaults: [{ tool_name: "echo", effect: "ask" }],
+          tool_overrides: [
+            {
+              tool_name: "echo",
+              source_type: "channel",
+              source_value: "dingtalk",
+              subject_type: "user",
+              subject_value: "alice",
+              effect: "allow",
+            },
+          ],
+          unmanaged_rules_count: 0,
+        }),
+      },
+    );
+  });
+
+  it("keeps package-style MCP ids out of URL path segments", async () => {
+    vi.mocked(request).mockResolvedValue([]);
+
+    await mcpApi.listMCPTools("@amap/amap-maps-mcp-server");
+
+    expect(request).toHaveBeenCalledWith(
+      "/mcp/client/tools?client_key=%40amap%2Famap-maps-mcp-server",
+    );
   });
 });

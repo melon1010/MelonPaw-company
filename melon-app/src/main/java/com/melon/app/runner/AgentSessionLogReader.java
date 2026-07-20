@@ -33,9 +33,6 @@ public class AgentSessionLogReader {
 
     private static final Logger log = LoggerFactory.getLogger(AgentSessionLogReader.class);
     private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {};
-    private static final String COMPACTION_SUMMARY_PREFIX =
-            "You are in the middle of a conversation that has been summarized.";
-
     private final ConfigManager configManager;
     private final ChatManager chatManager;
     private final AgentStateLookup stateLookup;
@@ -90,6 +87,7 @@ public class AgentSessionLogReader {
         List<String> currentTurn = new ArrayList<>();
         java.util.Set<String> seenMessageIds = new java.util.HashSet<>();
         for (Map<String, Object> message : messages) {
+            if (isInternalFrontendMessage(message)) continue;
             String messageId = stringValue(message.get("id"));
             if (!messageId.isBlank() && !seenMessageIds.add(messageId)) continue;
             if ("user".equals(lower(message.get("role")))) {
@@ -187,6 +185,14 @@ public class AgentSessionLogReader {
             if (!(item instanceof Map<?, ?> blockRaw)) continue;
             Map<String, Object> block = asMap(blockRaw);
             String blockType = normalizedBlockType(block);
+            String toolName = stringValue(block.get("name"));
+            if (("tool_use".equals(blockType) || "tool_call".equals(blockType)
+                    || "tool_result".equals(blockType))
+                    && FrontendToolCompat.isInternalTool(toolName)) {
+                current = null;
+                currentType = null;
+                continue;
+            }
             if ("tool_use".equals(blockType) || "tool_call".equals(blockType)
                     || "tool_result".equals(blockType)) {
                 String blockId = stringValue(block.get("id"));
@@ -268,6 +274,9 @@ public class AgentSessionLogReader {
         if ("assistant".equals(role) && content.contains("[tool_call:")) {
             ToolCall call = parseToolCall(content, toolCallId);
             if (call == null) return optional(textMessage(raw, role, stripToolCall(content)));
+            if (FrontendToolCompat.isInternalTool(call.name)) {
+                return optional(textMessage(raw, role, stripToolCall(content)));
+            }
             List<Map<String, Object>> messages = new ArrayList<>();
             Map<String, Object> prefix = textMessage(raw, role, stripToolCall(content));
             if (prefix != null) messages.add(prefix);
@@ -276,9 +285,10 @@ public class AgentSessionLogReader {
         }
         if ("tool".equals(role) && content.startsWith("[tool_result:")) {
             ToolResult result = parseToolResult(content, toolCallId);
+            if (FrontendToolCompat.isInternalTool(result.name)) return List.of();
             return List.of(toolMessage(id, "tool", "plugin_call_output", result.name, result.callId, null, result.output));
         }
-        return optional(textMessage(raw, role, content));
+        return optional(textMessage(raw, role, restoreUserText(content, role)));
     }
 
     private List<Map<String, Object>> optional(Map<String, Object> message) {
@@ -438,44 +448,28 @@ public class AgentSessionLogReader {
     }
 
     private boolean isInternalStateMessage(Map<String, Object> raw) {
-        String name = stringValue(raw.get("name"));
-        return isInternalName(name)
-                || contentStartsWith(raw.get("content"), COMPACTION_SUMMARY_PREFIX);
+        if ("user".equals(lower(raw.get("role")))
+                && contentContainsExplicitSkillPrompt(raw.get("content"))) {
+            return false;
+        }
+        return ConversationVisibility.isModelOnly(raw);
     }
 
     private boolean isInternalLogMessage(Map<String, Object> raw, String content) {
-        return isInternalName(stringValue(raw.get("name")))
-                || content.startsWith(COMPACTION_SUMMARY_PREFIX);
-    }
-
-    private boolean isInternalName(String name) {
-        return "__compaction_summary__".equals(name)
-                || "__system__".equals(name)
-                || "__internal__".equals(name);
+        Map<String, Object> normalized = new LinkedHashMap<>(raw);
+        normalized.putIfAbsent("content", content);
+        return ConversationVisibility.isModelOnly(normalized);
     }
 
     private boolean isInternalFrontendMessage(Map<String, Object> message) {
+        if (ConversationVisibility.isModelOnly(message)) return true;
         Object metadataRaw = message.get("metadata");
         if (metadataRaw instanceof Map<?, ?> metadata
-                && "__compaction_summary__".equals(stringValue(metadata.get("original_name")))) {
+                && ConversationVisibility.isInternalName(stringValue(metadata.get("original_name")))) {
             return true;
         }
-        return firstText(message).startsWith(COMPACTION_SUMMARY_PREFIX);
-    }
-
-    private boolean contentStartsWith(Object content, String prefix) {
-        if (content instanceof String text) return text.startsWith(prefix);
-        if (!(content instanceof List<?> blocks) || blocks.isEmpty()) return false;
-        Object first = blocks.get(0);
-        return first instanceof Map<?, ?> block && stringValue(block.get("text")).startsWith(prefix);
-    }
-
-    private String firstText(Map<String, Object> message) {
-        Object content = message.get("content");
-        if (!(content instanceof List<?> blocks) || blocks.isEmpty()) return "";
-        Object first = blocks.get(0);
-        if (!(first instanceof Map<?, ?> block)) return "";
-        return stringValue(block.get("text"));
+        return ConversationVisibility.startsWithInternalEnvelope(
+                ConversationVisibility.firstText(message.get("content")));
     }
 
     private String rawId(Map<String, Object> raw) {
@@ -549,8 +543,26 @@ public class AgentSessionLogReader {
     }
 
     private String stripInjectedSkillBlock(String text, String role) {
+        String restored = restoreUserText(text, role);
+        if (ExplicitSkillInvocation.isModelPrompt(text)) return restored;
         if (!"user".equals(role) || text == null || !text.contains("<skill")) return text;
         return text.replaceFirst("(?s)\\s*<skill\\b[^>]*>.*</skill>\\s*$", "");
+    }
+
+    private String restoreUserText(String text, String role) {
+        return "user".equals(role) ? ExplicitSkillInvocation.userVisibleText(text) : text;
+    }
+
+    private boolean contentContainsExplicitSkillPrompt(Object content) {
+        if (content instanceof String text) return ExplicitSkillInvocation.isModelPrompt(text);
+        if (!(content instanceof List<?> blocks)) return false;
+        for (Object item : blocks) {
+            if (item instanceof Map<?, ?> block
+                    && ExplicitSkillInvocation.isModelPrompt(stringValue(block.get("text")))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String timestamp(Object value) {

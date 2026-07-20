@@ -230,6 +230,16 @@ public class ConfigManager {
         if (light.getTokenCountEstimateDivisor() <= 0) light.setTokenCountEstimateDivisor(4.0);
         if (light.getContextCompactConfig() == null) light.setContextCompactConfig(agent.getContextCompact());
         if (light.getToolResultPruningConfig() == null) light.setToolResultPruningConfig(new ToolResultPruningConfig());
+        ToolResultPruningConfig pruning = light.getToolResultPruningConfig();
+        if (!pruning.isEnabled()
+                && pruning.getPruningOldMsgMaxBytes() <= 0
+                && pruning.getPruningRecentMsgMaxBytes() <= 0) {
+            // Migrate the old untouched defaults. Explicit non-zero disabled settings remain disabled.
+            ToolResultPruningConfig defaults = new ToolResultPruningConfig();
+            pruning.setEnabled(true);
+            pruning.setPruningOldMsgMaxBytes(defaults.getPruningOldMsgMaxBytes());
+            pruning.setPruningRecentMsgMaxBytes(defaults.getPruningRecentMsgMaxBytes());
+        }
         if (light.getScrollConfig() == null) light.setScrollConfig(new ScrollContextConfig());
         ScrollContextConfig scroll = light.getScrollConfig();
         if (scroll.getDbFilename() == null || scroll.getDbFilename().isBlank()) scroll.setDbFilename("history.db");

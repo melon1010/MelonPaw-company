@@ -1,6 +1,7 @@
 package com.melon.app.task;
 
 import com.melon.app.runner.AgentRunner;
+import com.melon.app.runner.ConversationVisibility;
 import com.melon.app.runner.ChatManager;
 import com.melon.app.runner.MelonPawEnvelopeMapper;
 import io.agentscope.core.event.AgentEvent;
@@ -82,7 +83,7 @@ public class EnterpriseTaskRetryCoordinator {
 
     private UserMessage userMessage(EnterpriseTaskService.RetryIntent intent) {
         return intent.internal()
-                ? new UserMessage("__internal__", intent.message())
+                ? ConversationVisibility.modelOnlyUserMessage(intent.message(), "task_retry")
                 : new UserMessage(intent.message());
     }
 

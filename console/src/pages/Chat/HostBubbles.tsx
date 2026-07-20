@@ -11,24 +11,37 @@
  *   so it re-renders when plugins register/dispose — no need to rebuild the
  *   parent useMemo (and avoid re-mounting bubbles on every plugin change).
  *
- * The vendor's Card components are deep-imported because they're not in the
+ * Vendor response primitives are deep-imported because they are not in the
  * package's top-level exports. If the SDK reorganizes its internal paths,
- * update the two import statements below.
+ * update the imports below.
  */
-import React from "react";
+import React, { useMemo } from "react";
 // eslint-disable-next-line import/no-unresolved
 import VendorRequestCardOriginal from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/AgentScopeRuntime/Request/Card";
 // eslint-disable-next-line import/no-unresolved
-import VendorResponseCardOriginal from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/AgentScopeRuntime/Response/Card";
-// Vendor `.d.ts` doesn't yet describe the contentPrepend/contentAppend
-// slots we added in the patched .js (Response/Card.js + Request/Card.js).
-// Loosen the prop type so TS doesn't reject the passthrough; runtime
-// behaviour is unchanged.
+import VendorResponseActions from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/AgentScopeRuntime/Response/Actions";
+// eslint-disable-next-line import/no-unresolved
+import VendorApproval from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/AgentScopeRuntime/Response/Approval";
+// eslint-disable-next-line import/no-unresolved
+import VendorResponseError from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/AgentScopeRuntime/Response/Error";
+// eslint-disable-next-line import/no-unresolved
+import VendorResponseMessage from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/AgentScopeRuntime/Response/Message";
+// eslint-disable-next-line import/no-unresolved
+import VendorTool from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/AgentScopeRuntime/Response/Tool";
+// eslint-disable-next-line import/no-unresolved
+import AgentScopeRuntimeResponseBuilder from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/AgentScopeRuntime/Response/Builder";
+// eslint-disable-next-line import/no-unresolved
+import { useChatAnywhereOptions } from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/Context/ChatAnywhereOptionsContext";
+import type {
+  IAgentScopeRuntimeMessage,
+  IAgentScopeRuntimeResponse,
+} from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/AgentScopeRuntime/types";
+import { AgentScopeRuntimeMessageType } from "@agentscope-ai/chat/lib/AgentScopeRuntimeWebUI/core/AgentScopeRuntime/types";
+import { Avatar, Flex } from "antd";
+// The patched request card accepts contentPrepend/contentAppend although the
+// vendor declaration has not added those props yet.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const VendorRequestCard = VendorRequestCardOriginal as React.ComponentType<any>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const VendorResponseCard =
-  VendorResponseCardOriginal as React.ComponentType<any>;
 import {
   useChatScalarSnapshot,
   useChatListSnapshot,
@@ -39,6 +52,11 @@ import type {
   ChatRequestData,
   ChatResponseData,
 } from "../../plugins/registry/types";
+import ConversationProcess, {
+  buildConversationRenderSegments,
+  hasVisibleAnswerContent,
+  pairToolMessages,
+} from "../../components/ConversationProcess";
 
 function sortByOrder<T extends { item: { order?: number } }>(arr: T[]): T[] {
   return arr
@@ -48,6 +66,115 @@ function sortByOrder<T extends { item: { order?: number } }>(arr: T[]): T[] {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyCardProps = any;
+
+interface HostDefaultResponseCardProps {
+  data: IAgentScopeRuntimeResponse;
+  isLast?: boolean;
+  contentPrepend?: React.ReactNode;
+  contentAppend?: React.ReactNode;
+}
+
+function HostDefaultResponseCard({
+  data,
+  isLast,
+  contentPrepend,
+  contentAppend,
+}: HostDefaultResponseCardProps) {
+  const avatar = useChatAnywhereOptions((options) => options?.welcome?.avatar);
+  const nick = useChatAnywhereOptions((options) => options?.welcome?.nick);
+  const messages = useMemo(
+    () => pairToolMessages(data.output ?? []),
+    [data.output],
+  );
+  const segments = useMemo(
+    () => buildConversationRenderSegments(messages),
+    [messages],
+  );
+  const isGenerating = AgentScopeRuntimeResponseBuilder.maybeGenerating(data);
+
+  const identity = avatar ? (
+    <Flex align="center" gap={8} style={{ marginBottom: 8 }}>
+      <Avatar src={avatar} />
+      {nick ? <span>{nick as React.ReactNode}</span> : null}
+    </Flex>
+  ) : null;
+
+  const renderAnswerMessage = (message: IAgentScopeRuntimeMessage) => {
+    switch (message.type) {
+      case AgentScopeRuntimeMessageType.MESSAGE:
+        return <VendorResponseMessage key={message.id} data={message} />;
+      case AgentScopeRuntimeMessageType.ERROR:
+        return <VendorResponseError key={message.id} data={message} />;
+      case AgentScopeRuntimeMessageType.HEARTBEAT:
+        return null;
+      default:
+        return null;
+    }
+  };
+
+  if (!messages.length && isGenerating) {
+    return (
+      <>
+        {identity}
+        {contentPrepend}
+        <ConversationProcess
+          messages={[]}
+          hasAnswerContent={false}
+          isGenerating
+        />
+        {contentAppend}
+        <VendorResponseActions data={data} isLast={isLast} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      {identity}
+      {contentPrepend}
+      {segments.map((segment, index) => {
+        if (segment.type === "answer") {
+          return (
+            <React.Fragment key={`answer-${index}`}>
+              {segment.messages.map(renderAnswerMessage)}
+            </React.Fragment>
+          );
+        }
+
+        const hasLaterAnswer = segments
+          .slice(index + 1)
+          .some(
+            (laterSegment) =>
+              laterSegment.type === "answer" &&
+              hasVisibleAnswerContent(laterSegment.messages),
+          );
+        const isComplete = hasLaterAnswer || !isGenerating;
+        const segmentKey =
+          segment.messages[0]?.id ??
+          `process-${index}-${segment.messages.length}`;
+
+        return (
+          <ConversationProcess
+            key={segmentKey}
+            messages={segment.messages}
+            hasAnswerContent={isComplete}
+            isGenerating={isGenerating && !isComplete}
+            renderToolDetails={(message, context) =>
+              context.isApprovalRequest ? (
+                <VendorApproval data={message} />
+              ) : (
+                <VendorTool data={message} />
+              )
+            }
+          />
+        );
+      })}
+      {data.error ? <VendorResponseError data={data.error} /> : null}
+      {contentAppend}
+      <VendorResponseActions data={data} isLast={isLast} />
+    </>
+  );
+}
 
 export function HostRequestCard(props: { data: ChatRequestData }) {
   const extScalar = useChatScalarSnapshot();
@@ -157,11 +284,11 @@ export function HostResponseCard(props: {
     );
 
   const fallback = () => (
-    <VendorResponseCard
-      data={props.data as AnyCardProps}
+    <HostDefaultResponseCard
+      data={props.data as unknown as IAgentScopeRuntimeResponse}
       isLast={props.isLast}
-      contentPrepend={contentPrepend as AnyCardProps}
-      contentAppend={contentAppend as AnyCardProps}
+      contentPrepend={contentPrepend}
+      contentAppend={contentAppend}
     />
   );
 

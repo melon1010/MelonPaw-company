@@ -4,6 +4,7 @@ import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.auth.EnterpriseIdentityStore;
 import com.melon.app.cron.CronExecutor;
 import com.melon.app.cron.CronManager;
+import com.melon.app.cron.CronSchedulingService;
 import com.melon.app.service.InboxStore;
 import com.melon.channels.ChannelConfigService;
 import com.melon.core.config.ConfigManager;
@@ -15,8 +16,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import java.nio.file.Path;
 import java.time.Instant;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.*;
 
 import static com.melon.core.util.ValueUtils.booleanValue;
@@ -30,20 +29,20 @@ import static com.melon.core.util.ValueUtils.stringValue;
 public class CronCompatController {
 
     private final ConfigManager configManager;
-    private final CronManager cronManager;
+    private final CronSchedulingService schedulingService;
     private final CronExecutor cronExecutor;
     private final ChannelConfigService channelConfigService;
     private final InboxStore inboxStore;
     private final EnterpriseIdentityStore identityStore;
 
     public CronCompatController(ConfigManager configManager,
-                                CronManager cronManager,
+                                CronSchedulingService schedulingService,
                                  CronExecutor cronExecutor,
                                  ChannelConfigService channelConfigService,
                                  InboxStore inboxStore,
                                  EnterpriseIdentityStore identityStore) {
         this.configManager = configManager;
-        this.cronManager = cronManager;
+        this.schedulingService = schedulingService;
         this.cronExecutor = cronExecutor;
         this.channelConfigService = channelConfigService;
         this.inboxStore = inboxStore;
@@ -54,7 +53,8 @@ public class CronCompatController {
     public Mono<ResponseEntity<?>> listJobs(@RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
         return Mono.fromCallable(() -> {
             List<Map<String, Object>> jobs = loadJobs(agentId);
-            syncScheduledJobs(agentId, jobs);
+            String effectiveAgent = AgentRequestSupport.agentId(agentId);
+            schedulingService.syncAll(effectiveAgent, workspaceDir(effectiveAgent), jobs);
             return ResponseEntity.ok(jobs);
         });
     }
@@ -64,13 +64,11 @@ public class CronCompatController {
                                              @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                              @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
-            List<Map<String, Object>> jobs = loadJobs(agentId);
-            Map<String, Object> job = CronJobStore.normalize(body, UUID.randomUUID().toString());
-            job.put("agent_id", AgentRequestSupport.agentId(agentId));
-            stampOwner(job, principal);
-            jobs.add(job);
-            saveJobs(agentId, jobs);
-            syncScheduledJob(agentId, job, true);
+            String effectiveAgent = AgentRequestSupport.agentId(agentId);
+            Map<String, Object> candidate = new LinkedHashMap<>(body);
+            stampOwner(candidate, principal);
+            Map<String, Object> job = schedulingService.create(
+                    effectiveAgent, workspaceDir(effectiveAgent), candidate);
             return ResponseEntity.ok(job);
         });
     }
@@ -84,7 +82,7 @@ public class CronCompatController {
                 return ResponseEntity.notFound().build();
             }
             Map<String, Object> view = new LinkedHashMap<>(job);
-            view.put("state", stateFor(job));
+            view.put("state", stateFor(agentId, job));
             view.put("history", historyFor(job));
             return ResponseEntity.ok(view);
         });
@@ -95,21 +93,16 @@ public class CronCompatController {
                                                @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                                @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
-            List<Map<String, Object>> jobs = loadJobs(agentId);
-            for (int i = 0; i < jobs.size(); i++) {
-                if (CronJobStore.matches(jobs.get(i), id)) {
-                    Map<String, Object> updated = CronJobStore.normalize(body, id);
-                    updated.put("agent_id", AgentRequestSupport.agentId(agentId));
-                    updated.put("created_at", jobs.get(i).get("created_at"));
-                    updated.put("owner_user_id", ownerOf(jobs.get(i), principal));
-                    normalizeDispatchOwner(updated, ownerOf(jobs.get(i), principal));
-                    jobs.set(i, updated);
-                    saveJobs(agentId, jobs);
-                    syncScheduledJob(agentId, updated, true);
-                    return ResponseEntity.ok(updated);
-                }
-            }
-            return ResponseEntity.notFound().build();
+            String effectiveAgent = AgentRequestSupport.agentId(agentId);
+            Map<String, Object> previous = findJob(effectiveAgent, id);
+            if (previous == null) return ResponseEntity.notFound().build();
+            String owner = ownerOf(previous, principal);
+            Map<String, Object> candidate = new LinkedHashMap<>(body);
+            candidate.put("owner_user_id", owner);
+            normalizeDispatchOwner(candidate, owner);
+            Map<String, Object> updated = schedulingService.replace(
+                    effectiveAgent, workspaceDir(effectiveAgent), id, candidate);
+            return updated != null ? ResponseEntity.ok(updated) : ResponseEntity.notFound().build();
         });
     }
 
@@ -117,14 +110,9 @@ public class CronCompatController {
     public Mono<ResponseEntity<?>> deleteJob(@PathVariable String id,
                                              @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
         return Mono.fromCallable(() -> {
-            List<Map<String, Object>> jobs = loadJobs(agentId);
-            boolean removed = jobs.removeIf(job -> CronJobStore.matches(job, id));
-            if (!removed) {
-                return ResponseEntity.notFound().build();
-            }
-            saveJobs(agentId, jobs);
-            cronManager.cancel(runtimeId(agentId, id));
-            return ResponseEntity.noContent().build();
+            String effectiveAgent = AgentRequestSupport.agentId(agentId);
+            boolean deleted = schedulingService.delete(effectiveAgent, workspaceDir(effectiveAgent), id);
+            return deleted ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
         });
     }
 
@@ -151,27 +139,42 @@ public class CronCompatController {
             if (booleanValue(job.getOrDefault("enabled", true), true) == false) {
                 return ResponseEntity.status(409).body(Map.of("detail", "Cron job is disabled"));
             }
-            String prompt = promptValue(job);
+            String prompt = schedulingService.promptValue(job);
             if (prompt.isBlank()) {
                 return ResponseEntity.status(409).body(Map.of("detail", "Cron job prompt is empty"));
             }
             String runAt = Instant.now().toString();
             String jobId = String.valueOf(job.get("id"));
-            String taskId = "manual-" + jobId + "-" + System.currentTimeMillis();
-            String runId = "cron-" + AgentRequestSupport.agentId(agentId) + ":" + taskId;
+            String runId = UUID.randomUUID().toString();
             markRun(agentId, id, runAt, "manual", "running", null);
             if (booleanValue(job.getOrDefault("save_result_to_inbox", true), true)) {
-                inboxStore.createTrace(runId, Map.of("job_id", jobId, "job_name", stringValue(job.get("name"), "Cron job")));
+                try {
+                    inboxStore.createTrace(runId, Map.of(
+                            "job_id", jobId,
+                            "job_name", stringValue(job.get("name"), "Cron job")));
+                } catch (RuntimeException e) {
+                    markRun(agentId, id, runAt, "manual", "error", e.getMessage());
+                    throw e;
+                }
             }
-            cronExecutor.injectDispatchedMessage(AgentRequestSupport.agentId(agentId), prompt, runId, dispatch(job),
-                    reply -> {
-                        markRun(agentId, id, runAt, "manual", "success", null);
-                        appendManualInboxEvent(agentId, job, runId, cleanText(reply), null);
-                    },
-                    err -> {
-                        markRun(agentId, id, runAt, "manual", "error", err.getMessage());
-                        appendManualInboxEvent(agentId, job, runId, "", err);
-                    });
+            try {
+                cronExecutor.injectDispatchedMessage(AgentRequestSupport.agentId(agentId), prompt, runId,
+                        schedulingService.dispatch(job),
+                        reply -> {
+                            markRun(agentId, id, runAt, "manual", "success", null);
+                            appendManualInboxEvent(agentId, job, runId, cleanText(reply), null);
+                        },
+                        err -> {
+                            markRun(agentId, id, runAt, "manual", "error", err.getMessage());
+                            appendManualInboxEvent(agentId, job, runId, "", err);
+                        });
+            } catch (RuntimeException e) {
+                markRun(agentId, id, runAt, "manual", "error", e.getMessage());
+                if (booleanValue(job.getOrDefault("save_result_to_inbox", true), true)) {
+                    inboxStore.finalizeTrace(runId, "error", e.getMessage());
+                }
+                throw e;
+            }
             return ResponseEntity.ok(Map.of(
                     "started", true,
                     "job_id", jobId,
@@ -188,7 +191,7 @@ public class CronCompatController {
             if (job == null) {
                 return ResponseEntity.notFound().build();
             }
-            return ResponseEntity.ok(stateFor(job));
+            return ResponseEntity.ok(stateFor(agentId, job));
         });
     }
 
@@ -235,102 +238,44 @@ public class CronCompatController {
 
     private Mono<ResponseEntity<?>> setEnabled(String agentId, String id, boolean enabled) {
         return Mono.fromCallable(() -> {
-            List<Map<String, Object>> jobs = loadJobs(agentId);
-            for (Map<String, Object> job : jobs) {
-                if (CronJobStore.matches(job, id)) {
-                    job.put("enabled", enabled);
-                    job.put("paused", !enabled);
-                    saveJobs(agentId, jobs);
-                    if (enabled) {
-                        syncScheduledJob(agentId, job, true);
-                    } else {
-                        cronManager.cancel(runtimeId(agentId, String.valueOf(job.get("id"))));
-                    }
-                    return ResponseEntity.noContent().build();
-                }
-            }
-            return ResponseEntity.notFound().build();
+            String effectiveAgent = AgentRequestSupport.agentId(agentId);
+            boolean updated = schedulingService.setEnabled(
+                    effectiveAgent, workspaceDir(effectiveAgent), id, enabled);
+            return updated ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
         });
     }
 
-    private Map<String, Object> stateFor(Map<String, Object> job) {
+    private Map<String, Object> stateFor(String agentId, Map<String, Object> job) {
         boolean enabled = booleanValue(job.getOrDefault("enabled", true), true);
+        CronManager.CronJob runtime = schedulingService.runtimeJob(
+                AgentRequestSupport.agentId(agentId), String.valueOf(job.get("id")));
+        long lastRun = runtime != null && runtime.getLastRun() > 0
+                ? runtime.getLastRun() : longValue(job.get("last_run_time"));
+        long nextRun = runtime != null && runtime.getNextRun() > 0
+                ? runtime.getNextRun() : longValue(job.get("next_run_time"));
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("job_id", String.valueOf(job.get("id")));
         state.put("enabled", enabled);
         state.put("paused", !enabled);
         state.put("running", false);
-        state.put("last_run_at", stringValue(job.get("last_run_at"), ""));
-        state.put("next_run_at", stringValue(job.get("next_run_at"), ""));
-        state.put("last_run_time", job.getOrDefault("last_run_time", 0));
-        state.put("next_run_time", job.getOrDefault("next_run_time", 0));
+        state.put("last_run_at", instantValue(lastRun, stringValue(job.get("last_run_at"), "")));
+        state.put("next_run_at", instantValue(nextRun, stringValue(job.get("next_run_at"), "")));
+        state.put("last_run_time", lastRun);
+        state.put("next_run_time", nextRun);
         return state;
     }
 
-    private void syncScheduledJobs(String agentId, List<Map<String, Object>> jobs) {
-        for (Map<String, Object> job : jobs) {
-            syncScheduledJob(agentId, job, false);
-        }
+    private String instantValue(long epochMillis, String fallback) {
+        return epochMillis > 0 ? Instant.ofEpochMilli(epochMillis).toString() : fallback;
     }
 
-    private void syncScheduledJob(String agentId, Map<String, Object> job, boolean force) {
-        String id = String.valueOf(job.get("id"));
-        String runtimeId = runtimeId(agentId, id);
-        if (!force && cronManager.get(runtimeId) != null) {
-            return;
+    private long longValue(Object value) {
+        if (value instanceof Number number) return number.longValue();
+        try {
+            return value == null ? 0 : Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return 0;
         }
-        cronManager.cancel(runtimeId);
-        if (!booleanValue(job.getOrDefault("enabled", true), true)) {
-            return;
-        }
-        CronManager.CronJob cronJob = toCronJob(agentId, job);
-        if (cronJob.getMessage() == null || cronJob.getMessage().isBlank()) {
-            return;
-        }
-        cronManager.schedule(cronJob);
-    }
-
-    private CronManager.CronJob toCronJob(String agentId, Map<String, Object> job) {
-        CronManager.CronJob cronJob = new CronManager.CronJob();
-        cronJob.setId(runtimeId(agentId, String.valueOf(job.get("id"))));
-        cronJob.setSourceId(String.valueOf(job.get("id")));
-        cronJob.setName(stringValue(job.get("name"), "Cron job"));
-        cronJob.setAgentId(AgentRequestSupport.agentId(agentId));
-        cronJob.setMessage(promptValue(job));
-        cronJob.setEnabled(booleanValue(job.getOrDefault("enabled", true), true));
-        cronJob.setSaveResultToInbox(booleanValue(job.getOrDefault("save_result_to_inbox", true), true));
-        cronJob.setTaskType(stringValue(job.get("task_type"), "agent"));
-        cronJob.setDispatch(dispatch(job));
-        Object schedule = job.get("schedule");
-        if (schedule instanceof Map<?, ?> map && "once".equalsIgnoreCase(String.valueOf(map.get("type")))) {
-            cronJob.setTriggerType(CronManager.TriggerType.ONE_SHOT);
-            cronJob.setDelayMs(delayUntil(stringValue(map.get("run_at"), "")));
-        } else {
-            cronJob.setTriggerType(CronManager.TriggerType.CRON);
-            cronJob.setCronExpression(normalizeCronExpression(stringValue(job.get("cron"), stringValue(job.get("cron_expr"), ""))));
-        }
-        return cronJob;
-    }
-
-    private String runtimeId(String agentId, String jobId) {
-        return AgentRequestSupport.agentId(agentId) + ":" + jobId;
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> dispatch(Map<String, Object> job) {
-        Object raw = job.get("dispatch");
-        if (raw instanceof Map<?, ?> map) {
-            Map<String, Object> copy = new LinkedHashMap<>();
-            map.forEach((key, value) -> copy.put(String.valueOf(key), value));
-            Map<String, Object> meta = mapCopy(copy.get("meta"));
-            meta.put("execution_user_id", ownerOf(job, null));
-            copy.put("meta", meta);
-            return copy;
-        }
-        String owner = ownerOf(job, null);
-        return Map.of("type", "channel", "channel", "console",
-                "target", Map.of("user_id", owner, "session_id", "cron_job"),
-                "mode", "final", "meta", Map.of("execution_user_id", owner));
     }
 
     private void stampOwner(Map<String, Object> job, EnterprisePrincipal principal) {
@@ -377,72 +322,9 @@ public class CronCompatController {
         return result;
     }
 
-    private String normalizeCronExpression(String cron) {
-        String value = cron == null ? "" : cron.trim().replaceAll("\\s+", " ");
-        if (value.split(" ").length == 5) {
-            return "0 " + value;
-        }
-        return value;
-    }
-
-    private long delayUntil(String runAt) {
-        if (runAt == null || runAt.isBlank()) {
-            return 0;
-        }
-        try {
-            return Math.max(0, Instant.parse(runAt).toEpochMilli() - System.currentTimeMillis());
-        } catch (DateTimeParseException ignored) {
-            try {
-                return Math.max(0, ZonedDateTime.parse(runAt).toInstant().toEpochMilli() - System.currentTimeMillis());
-            } catch (DateTimeParseException ignoredAgain) {
-                return 0;
-            }
-        }
-    }
-
-    private String promptValue(Map<String, Object> job) {
-        String direct = stringValue(firstPresent(job, "prompt", "query", "text", "message"), "");
-        if (!direct.isBlank()) {
-            return direct;
-        }
-        Object request = job.get("request");
-        if (!(request instanceof Map<?, ?> requestMap)) {
-            return "";
-        }
-        Object input = requestMap.get("input");
-        if (!(input instanceof List<?> messages)) {
-            return "";
-        }
-        List<String> parts = new ArrayList<>();
-        for (Object message : messages) {
-            if (!(message instanceof Map<?, ?> messageMap)) continue;
-            Object content = messageMap.get("content");
-            if (!(content instanceof List<?> blocks)) continue;
-            for (Object block : blocks) {
-                if (block instanceof Map<?, ?> blockMap && "text".equals(String.valueOf(blockMap.get("type")))) {
-                    parts.add(stringValue(blockMap.get("text"), ""));
-                }
-            }
-        }
-        return String.join("\n", parts).trim();
-    }
-
-    private Object firstPresent(Map<String, Object> map, String... keys) {
-        for (String key : keys) {
-            if (map.containsKey(key)) {
-                return map.get(key);
-            }
-        }
-        return null;
-    }
-
     @SuppressWarnings("unchecked")
     private void markRun(String agentId, String id, String runAt, String trigger, String status, String error) {
-        List<Map<String, Object>> jobs = loadJobs(agentId);
-        for (Map<String, Object> job : jobs) {
-            if (!CronJobStore.matches(job, id)) {
-                continue;
-            }
+        CronJobStore.update(workspaceDir(agentId), id, job -> {
             job.put("last_run_at", runAt);
             job.put("last_run_time", Instant.parse(runAt).toEpochMilli());
             List<Map<String, Object>> history = new ArrayList<>();
@@ -467,9 +349,7 @@ public class CronCompatController {
                 history = new ArrayList<>(history.subList(0, 50));
             }
             job.put("history", history);
-            saveJobs(agentId, jobs);
-            return;
-        }
+        });
     }
 
     @SuppressWarnings("unchecked")
@@ -502,10 +382,6 @@ public class CronCompatController {
             }
         }
         return jobs;
-    }
-
-    private void saveJobs(String agentId, List<Map<String, Object>> jobs) {
-        CronJobStore.save(workspaceDir(agentId), jobs);
     }
 
     private Path workspaceDir(String agentId) {

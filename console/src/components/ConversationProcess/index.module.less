@@ -1,0 +1,309 @@
+.process {
+  width: 100%;
+  margin: 2px 0 10px;
+  color: var(--mp-text-secondary);
+  overflow: hidden;
+}
+
+.processHeader {
+  width: auto;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--mp-text);
+    background: var(--mp-surface-subtle);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--mp-primary);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.processTitle {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.summary {
+  flex: 0 0 auto;
+  color: var(--mp-text-tertiary);
+
+  &::before {
+    content: " · ";
+  }
+}
+
+.headerIcon {
+  flex: 0 0 auto;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.timeline {
+  margin-top: 8px;
+  padding-left: 2px;
+  display: flex;
+  flex-direction: column;
+}
+
+.step {
+  position: relative;
+  min-width: 0;
+  padding: 0 0 12px 34px;
+  color: var(--mp-text-secondary);
+
+  &:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 9px;
+    top: 25px;
+    bottom: 0;
+    width: 1px;
+    background: var(--mp-border-strong);
+  }
+}
+
+.stepButton {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 2px 4px 2px 0;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--mp-text);
+    background: var(--mp-surface-subtle);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--mp-primary);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.stepMain {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepName {
+  min-width: 0;
+  color: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.serverLabel {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--mp-text-tertiary);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepMeta {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mp-text-tertiary);
+}
+
+.status {
+  color: inherit;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  white-space: nowrap;
+}
+
+.statusRunning {
+  color: var(--mp-text-secondary);
+}
+
+.statusFailed {
+  color: var(--mp-danger);
+}
+
+.reasoningMarker {
+  position: absolute;
+  left: 5px;
+  top: 12px;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--mp-text-tertiary);
+  box-shadow: 0 0 0 3px var(--mp-canvas);
+}
+
+.toolMarker,
+.completedMarker {
+  position: absolute;
+  left: 0;
+  top: 7px;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  color: var(--mp-text-tertiary);
+  background: var(--mp-canvas);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reasoningDetails,
+.toolDetails,
+.approvalDetails {
+  padding: 6px 4px 0 0;
+}
+
+.reasoningDetails pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--mp-border);
+  border-radius: 6px;
+  color: var(--mp-text-secondary);
+  background: var(--mp-surface-subtle);
+  font-family: inherit;
+  font-size: 0.75rem;
+  line-height: 1.125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+}
+
+.toolDetails,
+.approvalDetails {
+  color: var(--mp-text);
+}
+
+.moreButton {
+  width: fit-content;
+  min-height: 32px;
+  margin: 0 auto 8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--mp-text-tertiary);
+  background: transparent;
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--mp-text);
+    background: var(--mp-surface-subtle);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--mp-primary);
+    outline-offset: 2px;
+  }
+}
+
+.completedStep {
+  position: relative;
+  min-height: 24px;
+  padding-left: 34px;
+  color: var(--mp-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.completedMarker {
+  top: 2px;
+}
+
+@media (pointer: coarse) {
+  .processHeader,
+  .stepButton,
+  .moreButton {
+    min-height: 44px;
+  }
+
+  .reasoningMarker {
+    top: 18px;
+  }
+
+  .toolMarker {
+    top: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .step {
+    padding-left: 30px;
+  }
+
+  .stepButton {
+    gap: 8px;
+  }
+
+  .serverLabel {
+    display: none;
+  }
+
+  .summary {
+    max-width: 48vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processHeader,
+  .stepButton,
+  .moreButton {
+    transition: none;
+  }
+}

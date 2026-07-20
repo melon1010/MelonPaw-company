@@ -8,6 +8,8 @@ public final class ToolsConfigSelfCheck {
             "edit_file",
             "grep_search",
             "glob_search",
+            "web_search",
+            "web_fetch",
             "view_image",
             "view_video",
             "send_file_to_user",
@@ -28,6 +30,8 @@ public final class ToolsConfigSelfCheck {
         assertVisible(tools, "execute_shell_command");
         assertVisible(tools, "grep_search");
         assertVisible(tools, "glob_search");
+        assertVisible(tools, "web_search");
+        assertVisible(tools, "web_fetch");
         assertHidden(tools, "view_image");
         assertHidden(tools, "view_video");
         assertRemoved(tools, "desktop_screenshot");

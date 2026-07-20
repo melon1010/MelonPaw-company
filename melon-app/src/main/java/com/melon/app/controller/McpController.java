@@ -74,15 +74,17 @@ public class McpController {
         });
     }
 
-    @GetMapping("/{clientKey}")
+    @GetMapping({"/{clientKey}", "/client"})
     public Mono<ResponseEntity<?>> getClient(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
         return blocking(() -> {
             McpClientManager manager = manager(resolvedAgentId);
-            var config = manager.getServer(clientKey);
+            var config = manager.getServer(resolvedClientKey);
             if (config == null) {
                 return ResponseEntity.notFound().build();
             }
@@ -105,21 +107,24 @@ public class McpController {
         }));
     }
 
-    @PutMapping("/{clientKey}")
+    @PutMapping({"/{clientKey}", "/client"})
     public Mono<ResponseEntity<?>> updateClient(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey, @RequestBody Map<String, Object> body,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
+            @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
         return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP client updated", () -> {
             McpClientManager manager = manager(resolvedAgentId);
-            var existing = manager.getServer(clientKey);
+            var existing = manager.getServer(resolvedClientKey);
             if (existing == null) {
                 return ResponseEntity.notFound().build();
             }
             Map<String, Object> merged = mergeClientBody(existing, body);
-            merged.put("id", clientKey);
-            manager.unregister(clientKey);
+            merged.put("id", resolvedClientKey);
+            manager.unregister(resolvedClientKey);
             var config = McpClientManager.McpServerConfig.fromMap(merged);
             manager.register(config);
             reloadAgent(resolvedAgentId);
@@ -127,32 +132,36 @@ public class McpController {
         }));
     }
 
-    @PatchMapping("/toggle/{clientKey}")
+    @PatchMapping({"/toggle/{clientKey}", "/client/toggle"})
     public Mono<ResponseEntity<?>> toggleClient(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
         return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP client toggled", () -> {
             McpClientManager manager = manager(resolvedAgentId);
-            var config = manager.getServer(clientKey);
+            var config = manager.getServer(resolvedClientKey);
             if (config == null) {
                 return ResponseEntity.notFound().build();
             }
-            manager.setEnabled(clientKey, !config.isEnabled());
+            manager.setEnabled(resolvedClientKey, !config.isEnabled());
             reloadAgent(resolvedAgentId);
             return ResponseEntity.ok(clientInfo(resolvedAgentId, manager, config));
         }));
     }
 
-    @DeleteMapping("/{clientKey}")
+    @DeleteMapping({"/{clientKey}", "/client"})
     public Mono<ResponseEntity<?>> deleteClient(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
         return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP client deleted", () -> {
-            boolean removed = manager(resolvedAgentId).unregister(clientKey);
+            boolean removed = manager(resolvedAgentId).unregister(resolvedClientKey);
             if (!removed) {
                 return ResponseEntity.notFound().build();
             }
@@ -161,28 +170,33 @@ public class McpController {
         }));
     }
 
-    @GetMapping("/tools/{clientKey}")
+    @GetMapping({"/tools/{clientKey}", "/client/tools"})
     public Mono<ResponseEntity<?>> listClientTools(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
-        return blocking(() -> ResponseEntity.ok(toolInfos(manager(resolvedAgentId), clientKey)));
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
+        return blocking(() -> ResponseEntity.ok(toolInfos(manager(resolvedAgentId), resolvedClientKey)));
     }
 
-    @PutMapping("/tools/{clientKey}")
+    @PutMapping({"/tools/{clientKey}", "/client/tools"})
     public Mono<ResponseEntity<?>> updateToolWhitelist(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey, @RequestBody Map<String, Object> body,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
+            @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
         return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP tool policy updated", () -> {
             McpClientManager manager = manager(resolvedAgentId);
-            var config = manager.getServer(clientKey);
+            var config = manager.getServer(resolvedClientKey);
             if (config == null) return ResponseEntity.notFound().build();
-            manager.setToolWhitelist(clientKey, toStringListOrNull(body != null ? body.get("tools") : null));
+            manager.setToolWhitelist(resolvedClientKey, toStringListOrNull(body != null ? body.get("tools") : null));
             reloadAgent(resolvedAgentId);
-            return ResponseEntity.ok(toolInfos(manager, clientKey));
+            return ResponseEntity.ok(toolInfos(manager, resolvedClientKey));
         }));
     }
 
@@ -194,39 +208,46 @@ public class McpController {
         return blocking(() -> ResponseEntity.ok(recentAccessPrincipals(resolvedAgentId)));
     }
 
-    @GetMapping("/policy/{clientKey}")
+    @GetMapping({"/policy/{clientKey}", "/client/policy"})
     public Mono<ResponseEntity<?>> getPolicy(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
-        return blocking(() -> ResponseEntity.ok(policy(resolvedAgentId, clientKey)));
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
+        return blocking(() -> ResponseEntity.ok(policy(resolvedAgentId, resolvedClientKey)));
     }
 
-    @PutMapping("/policy/{clientKey}")
+    @PutMapping({"/policy/{clientKey}", "/client/policy"})
     public Mono<ResponseEntity<?>> updatePolicy(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey, @RequestBody Map<String, Object> body,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
+            @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
         return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP access policy updated",
                 () -> ResponseEntity.ok(
-                        accessPolicyService.save(scope(resolvedAgentId), clientKey, body))));
+                        accessPolicyService.save(scope(resolvedAgentId), resolvedClientKey, body))));
     }
 
-    @PostMapping("/oauth/start/{clientKey}")
+    @PostMapping({"/oauth/start/{clientKey}", "/client/oauth/start"})
     public Mono<ResponseEntity<?>> startOAuth(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
             @RequestBody(required = false) Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
         return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP OAuth configured", () -> {
             try {
                 Map<String, Object> status = new LinkedHashMap<>(
-                        manager(resolvedAgentId).configureOAuth(clientKey, body));
+                        manager(resolvedAgentId).configureOAuth(resolvedClientKey, body));
                 status.put("auth_url", "");
-                status.put("session_id", clientKey);
+                status.put("session_id", resolvedClientKey);
                 status.put("authorization_url", "");
                 return ResponseEntity.ok(status);
             } catch (Exception e) {
@@ -235,24 +256,28 @@ public class McpController {
         }));
     }
 
-    @GetMapping("/oauth/status/{clientKey}")
+    @GetMapping({"/oauth/status/{clientKey}", "/client/oauth/status"})
     public Mono<ResponseEntity<?>> oauthStatus(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
         return blocking(() -> ResponseEntity.ok(
-                manager(resolvedAgentId).oauthStatus(clientKey)));
+                manager(resolvedAgentId).oauthStatus(resolvedClientKey)));
     }
 
-    @DeleteMapping("/oauth/{clientKey}")
+    @DeleteMapping({"/oauth/{clientKey}", "/client/oauth"})
     public Mono<ResponseEntity<?>> revokeOAuth(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-            @PathVariable String clientKey,
+            @PathVariable(required = false) String clientKey,
+            @RequestParam(value = "client_key", required = false) String queryClientKey,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         String resolvedAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        String resolvedClientKey = resolveClientKey(clientKey, queryClientKey);
         return blocking(() -> versionedMutation(resolvedAgentId, principal, "MCP OAuth removed", () -> {
-            if (!manager(resolvedAgentId).clearOAuth(clientKey)) {
+            if (!manager(resolvedAgentId).clearOAuth(resolvedClientKey)) {
                 return ResponseEntity.notFound().build();
             }
             return ResponseEntity.ok(Map.of("message", "oauth disabled"));
@@ -529,6 +554,14 @@ public class McpController {
 
     private String scope(String agentId) {
         return AgentRequestSupport.agentId(agentId);
+    }
+
+    private String resolveClientKey(String pathClientKey, String queryClientKey) {
+        String clientKey = queryClientKey != null ? queryClientKey : pathClientKey;
+        if (clientKey == null || clientKey.isBlank()) {
+            throw new IllegalArgumentException("MCP client key is required");
+        }
+        return clientKey;
     }
 
     private void reloadAgent(String agentId) {

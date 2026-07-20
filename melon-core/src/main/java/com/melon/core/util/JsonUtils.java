@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -67,9 +68,21 @@ public final class JsonUtils {
      * 先写入临时文件, 再原子移动.
      */
     public static void save(Path jsonPath, Object value) {
+        try {
+            saveOrThrow(jsonPath, value);
+        } catch (UncheckedIOException e) {
+            log.error("Failed to save JSON to {}", jsonPath, e.getCause());
+        }
+    }
+
+    /**
+     * Atomically saves JSON and propagates I/O failures to callers that require transactional behavior.
+     */
+    public static void saveOrThrow(Path jsonPath, Object value) {
         Path tmp = null;
         try {
-            Files.createDirectories(jsonPath.getParent());
+            Path parent = jsonPath.toAbsolutePath().normalize().getParent();
+            if (parent != null) Files.createDirectories(parent);
             tmp = jsonPath.resolveSibling(
                     jsonPath.getFileName() + ".tmp-" + UUID.randomUUID());
             mapper.writerWithDefaultPrettyPrinter().writeValue(tmp.toFile(), value);
@@ -81,7 +94,7 @@ public final class JsonUtils {
             }
             log.debug("JSON saved to {}", jsonPath);
         } catch (IOException e) {
-            log.error("Failed to save JSON to {}", jsonPath, e);
+            throw new UncheckedIOException("Failed to save JSON to " + jsonPath, e);
         } finally {
             if (tmp != null) {
                 try {

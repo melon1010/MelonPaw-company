@@ -42,8 +42,6 @@ import static com.melon.core.util.ValueUtils.stringValue;
 public class HistoryStore {
 
     private static final Logger log = LoggerFactory.getLogger(HistoryStore.class);
-    private static final Set<String> RECALL_TOOL_NAMES = Set.of("recall_history_python", "execute_python");
-
     private final ConfigManager configManager;
     private final Set<Path> initializedDbs = ConcurrentHashMap.newKeySet();
     private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
@@ -93,9 +91,8 @@ public class HistoryStore {
             boolean autoCommit = conn.getAutoCommit();
             conn.setAutoCommit(false);
             try {
-                for (Entry entry : entries) {
-                    append(conn, entry);
-                }
+                reconcileSessionProjection(conn, normalizeAgentId(agentId),
+                        valueOrDefault(sessionId, "default"), entries);
                 conn.commit();
             } catch (SQLException e) {
                 conn.rollback();
@@ -169,8 +166,10 @@ public class HistoryStore {
 
     public int count(String agentId, String sessionId) {
         try (Connection conn = open(historyPath(agentId));
-             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM conversation_history WHERE session_id = ?")) {
-            ps.setString(1, valueOrDefault(sessionId, "default"));
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COUNT(*) FROM conversation_history WHERE agent_id = ? AND session_id = ?")) {
+            ps.setString(1, normalizeAgentId(agentId));
+            ps.setString(2, valueOrDefault(sessionId, "default"));
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? rs.getInt(1) : 0;
             }
@@ -501,7 +500,8 @@ public class HistoryStore {
         st.execute("CREATE INDEX IF NOT EXISTS ch_session ON conversation_history(session_id)");
         st.execute("CREATE INDEX IF NOT EXISTS ch_agent ON conversation_history(agent_id)");
         st.execute("CREATE INDEX IF NOT EXISTS ch_kind ON conversation_history(kind)");
-        st.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_dedup ON conversation_history(session_id, dedup_key)");
+        st.execute("DROP INDEX IF EXISTS ux_dedup");
+        st.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_dedup ON conversation_history(agent_id, session_id, dedup_key)");
         try {
             boolean existed = tableExists(st, "conversation_history_fts");
             st.execute("""
@@ -516,15 +516,25 @@ public class HistoryStore {
         }
     }
 
-    private void append(Connection conn, Entry entry) throws SQLException {
+    private void upsert(Connection conn, Entry entry) throws SQLException {
         String sql = """
                 INSERT INTO conversation_history
                 (session_id, agent_id, kind, role, name, content, tool_call_id, tool_input,
                  tool_state, headline, blocks, metadata, created_at, dedup_key)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(session_id, dedup_key) DO NOTHING
+                ON CONFLICT(agent_id, session_id, dedup_key) DO UPDATE SET
+                    kind = excluded.kind,
+                    role = excluded.role,
+                    name = excluded.name,
+                    content = excluded.content,
+                    tool_call_id = excluded.tool_call_id,
+                    tool_input = excluded.tool_input,
+                    tool_state = excluded.tool_state,
+                    headline = excluded.headline,
+                    blocks = excluded.blocks,
+                    metadata = excluded.metadata
                 """;
-        try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, entry.sessionId());
             ps.setString(2, entry.agentId());
             ps.setString(3, entry.kind());
@@ -539,32 +549,19 @@ public class HistoryStore {
             ps.setString(12, entry.metadata());
             ps.setString(13, entry.createdAt());
             ps.setString(14, entry.dedupKey());
-            int changed = ps.executeUpdate();
-            String name = entry.name();
-            if (changed == 0 || !hasFts(conn) || (name != null && RECALL_TOOL_NAMES.contains(name))) return;
-            try (ResultSet keys = ps.getGeneratedKeys()) {
-                if (keys.next()) {
-                    try (PreparedStatement fts = conn.prepareStatement(
-                            "INSERT INTO conversation_history_fts(rowid, content) VALUES (?, ?)")) {
-                        fts.setLong(1, keys.getLong(1));
-                        fts.setString(2, valueOrDefault(entry.content(), ""));
-                        fts.executeUpdate();
-                    }
-                }
-            } catch (SQLException e) {
-                log.debug("history FTS insert skipped", e);
-            }
+            ps.executeUpdate();
         }
     }
 
     private List<Entry> entries(String agentId, String sessionId, List<?> context) {
         List<Entry> entries = new ArrayList<>();
         String now = DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneOffset.UTC).format(Instant.now());
+        int visibleTurn = 0;
         for (Object item : context) {
             if (!(item instanceof Map<?, ?> rawMessage)) continue;
             Map<String, Object> message = asMap(rawMessage);
             String role = valueOrDefault(stringValue(message.get("role")), "assistant");
-            String messageId = valueOrDefault(stringValue(message.get("id")), Integer.toHexString(JsonUtils.toJson(message).hashCode()));
+            if ("user".equalsIgnoreCase(role)) visibleTurn++;
             Object contentRaw = message.get("content");
             List<Map<String, Object>> blocks = blocks(contentRaw);
             List<Map<String, Object>> nonResults = blocks.stream()
@@ -574,15 +571,97 @@ public class HistoryStore {
                     .filter(block -> "tool_result".equals(stringValue(block.get("type"))))
                     .toList();
             if (!nonResults.isEmpty() || results.isEmpty()) {
-                entries.add(entry(agentId, sessionId, role, nonResults, message, messageId + ":turn", now));
+                String semantic = JsonUtils.toJson(nonResults.isEmpty() ? contentRaw : nonResults);
+                String dedupKey = "turn:" + visibleTurn + ":" + role + ":" + digest(semantic);
+                entries.add(entry(agentId, sessionId, role, nonResults, message, dedupKey, now));
             }
             int resultIndex = 0;
             for (Map<String, Object> result : results) {
                 String resultId = valueOrDefault(stringValue(result.get("id")), String.valueOf(resultIndex++));
-                entries.add(toolResult(agentId, sessionId, role, result, messageId + ":tool_result:" + resultId, now));
+                entries.add(toolResult(agentId, sessionId, role, result,
+                        "turn:" + visibleTurn + ":tool_result:" + resultId, now));
             }
         }
         return entries;
+    }
+
+    /** Reconciles the searchable projection while preserving seq for unchanged visible messages. */
+    private void reconcileSessionProjection(Connection connection, String agentId, String sessionId,
+                                            List<Entry> entries) throws SQLException {
+        Map<String, IndexedRow> existing = indexedRows(connection, agentId, sessionId);
+        boolean fts = hasFts(connection);
+        if (fts) deleteFtsRows(connection, existing.values());
+
+        Set<String> currentKeys = new HashSet<>();
+        for (Entry entry : entries) currentKeys.add(entry.dedupKey());
+        try (PreparedStatement delete = connection.prepareStatement(
+                "DELETE FROM conversation_history WHERE seq = ?")) {
+            for (Map.Entry<String, IndexedRow> row : existing.entrySet()) {
+                if (currentKeys.contains(row.getKey())) continue;
+                delete.setLong(1, row.getValue().seq());
+                delete.addBatch();
+            }
+            delete.executeBatch();
+        }
+        for (Entry entry : entries) upsert(connection, entry);
+        if (fts) insertFtsRows(connection, indexedRows(connection, agentId, sessionId).values());
+    }
+
+    private Map<String, IndexedRow> indexedRows(Connection connection, String agentId, String sessionId)
+            throws SQLException {
+        Map<String, IndexedRow> rows = new LinkedHashMap<>();
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT seq, dedup_key, content FROM conversation_history "
+                        + "WHERE agent_id = ? AND session_id = ?")) {
+            statement.setString(1, agentId);
+            statement.setString(2, sessionId);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    long seq = result.getLong("seq");
+                    String dedupKey = result.getString("dedup_key");
+                    rows.put(dedupKey == null || dedupKey.isBlank() ? "\u0000legacy:" + seq : dedupKey,
+                            new IndexedRow(seq, valueOrDefault(result.getString("content"), "")));
+                }
+            }
+        }
+        return rows;
+    }
+
+    private void deleteFtsRows(Connection connection, Iterable<IndexedRow> rows) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO conversation_history_fts(conversation_history_fts, rowid, content) "
+                        + "VALUES('delete', ?, ?)")) {
+            for (IndexedRow row : rows) {
+                statement.setLong(1, row.seq());
+                statement.setString(2, row.content());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    private void insertFtsRows(Connection connection, Iterable<IndexedRow> rows) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO conversation_history_fts(rowid, content) VALUES (?, ?)")) {
+            for (IndexedRow row : rows) {
+                statement.setLong(1, row.seq());
+                statement.setString(2, row.content());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    private String digest(String value) {
+        try {
+            byte[] bytes = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) result.append(String.format("%02x", b));
+            return result.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
     }
 
     private Entry entry(String agentId, String sessionId, String role, List<Map<String, Object>> blocks,
@@ -752,6 +831,10 @@ public class HistoryStore {
 
     private String messageId(String dedupKey) {
         if (dedupKey == null || dedupKey.isBlank()) return "";
+        if (dedupKey.startsWith("turn:")) {
+            int marker = dedupKey.indexOf(':', "turn:".length());
+            return marker > 0 ? dedupKey.substring(0, marker) : dedupKey;
+        }
         int marker = dedupKey.indexOf(':');
         return marker > 0 ? dedupKey.substring(0, marker) : dedupKey;
     }
@@ -793,5 +876,8 @@ public class HistoryStore {
     private record Entry(String sessionId, String agentId, String kind, String role, String name, String content,
                          String toolCallId, String toolInput, String toolState, String headline, String blocks,
                          String metadata, String createdAt, String dedupKey) {
+    }
+
+    private record IndexedRow(long seq, String content) {
     }
 }

@@ -160,7 +160,7 @@ public class MelonAgentFactory {
                 .toolResultEviction(toolResultEviction)
                 .memory(memoryConfig)
                 .stateStore(stateStore)
-                .maxIters(agentConfig.getRunning().getMaxIters())
+                .maxIters(effectiveMaxIters(agentConfig))
                 .maxRetries(agentConfig.getRunning().isLlmRetryEnabled() ? agentConfig.getRunning().getLlmMaxRetries() : 0)
                 .modelExecutionConfig(modelExecutionConfig(agentConfig))
                 .toolExecutionConfig(toolExecutionConfig(agentConfig))
@@ -208,6 +208,7 @@ public class MelonAgentFactory {
         }
 
         HarnessAgent agent = builder.build();
+        SubagentTaskCoordinator.install(agent, workspaceDir);
         if (isEnabled(agentConfig, "execute_shell_command")) {
             installOptionalShellTool(agent);
         }
@@ -221,16 +222,18 @@ public class MelonAgentFactory {
     private HarnessAgent createRestrictedSubagent(String parentAgentId, AgentConfig config,
                                                   Path workspaceDir, String role) {
         String normalizedRole = role == null || role.isBlank() ? "researcher" : role;
-        boolean shellEnabled = "researcher".equalsIgnoreCase(normalizedRole)
-                || "executor".equalsIgnoreCase(normalizedRole);
+        boolean shellEnabled = "executor".equalsIgnoreCase(normalizedRole);
+        Toolkit subagentToolkit = new Toolkit();
+        registerIfEnabled(subagentToolkit, config, "web_search", "com.melon.tools.web.WebSearchTool");
+        registerIfEnabled(subagentToolkit, config, "web_fetch", "com.melon.tools.web.WebFetchTool");
         HarnessAgent.Builder subagent = HarnessAgent.builder()
                 .name(normalizedRole + "-subagent")
                 .agentId(parentAgentId + "-worker")
                 .description("Isolated " + normalizedRole + " worker with role-scoped workspace tools")
                 .workspace(workspaceDir)
-                .maxIters(config.getRunning().getMaxIters())
-                .sysPrompt("You are the " + normalizedRole + " role in a single-level enterprise delegation. "
-                        + "Stay within the assigned workspace and return concise evidence for the coordinator.")
+                .maxIters(effectiveMaxIters(config))
+                .sysPrompt(subagentSystemPrompt(normalizedRole))
+                .toolkit(subagentToolkit)
                 .permissionContext(PermissionContextState.builder().mode(PermissionMode.BYPASS).build())
                 .disableSubagents()
                 .disableSessionPersistence();
@@ -238,8 +241,9 @@ public class MelonAgentFactory {
         List<String> allowedTools = new ArrayList<>("executor".equalsIgnoreCase(normalizedRole)
                 ? List.of("read_file", "write_file", "edit_file", "grep_files", "glob_files", "list_files")
                 : List.of("read_file", "grep_files", "glob_files", "list_files"));
+        allowedTools.add("web_search");
+        allowedTools.add("web_fetch");
         if (shellEnabled) {
-            allowedTools.add("execute");
             allowedTools.add("execute_shell_command");
         }
         roleTools.setAllow(List.copyOf(allowedTools));
@@ -266,6 +270,23 @@ public class MelonAgentFactory {
         return agent;
     }
 
+    private String subagentSystemPrompt(String role) {
+        String common = "You are the " + role + " role in a single-level enterprise delegation. "
+                + "Stay within the assigned workspace and return concise evidence for the coordinator. "
+                + "Prefer web_search, web_fetch, and file tools; use execute_shell_command only for actual system commands. ";
+        if ("researcher".equalsIgnoreCase(role)) {
+            return common + "For every material claim, identify the source URL and quote or summarize the supporting evidence. "
+                    + "Separate successfully inspected sources from failed or inaccessible sources. Never describe a failed fetch as verified. "
+                    + "Call out conflicting evidence and uncertain conclusions explicitly.";
+        }
+        if ("reviewer".equalsIgnoreCase(role)) {
+            return common + "Act as an adversarial verifier, not a copy editor. Check internal contradictions, numeric reasoning, "
+                    + "source-to-claim support, and whether failed sources were incorrectly counted as verification. "
+                    + "Return concrete conflicts and unsupported claims before any corrected synthesis.";
+        }
+        return common + "Report completed actions, observable results, and any failed verification step without hiding it.";
+    }
+
     /** Keeps the Harness shell contract compatible with skills that omit optional cwd/timeout. */
     private void installOptionalShellTool(HarnessAgent agent) {
         if (agent == null || agent.getWorkspaceManager() == null
@@ -288,18 +309,14 @@ public class MelonAgentFactory {
             this.workspace = workspace != null ? workspace.toAbsolutePath().normalize() : null;
         }
 
-        @Tool(name = "execute", description = "Execute a shell command in the isolated Agent workspace.")
-        public String execute(RuntimeContext runtimeContext,
-                              @ToolParam(name = "command", description = "Shell command to execute") String command,
-                              @ToolParam(name = "working_directory", required = false,
-                                      description = "Relative workspace directory; defaults to the workspace root") String workingDirectory,
-                              @ToolParam(name = "timeout", required = false,
-                                      description = "Timeout in seconds; defaults to 30") Integer timeout) {
+        private String execute(RuntimeContext runtimeContext, String command,
+                               String workingDirectory, Integer timeout) {
             return delegate.execute(runtimeContext, command, normalizeWorkingDirectory(workingDirectory),
                     timeout != null ? timeout : 30);
         }
 
-        @Tool(name = "execute_shell_command", description = "Execute a shell command in the isolated Agent workspace.")
+        @Tool(name = "execute_shell_command", description = "Execute an actual system command in the isolated Agent workspace. "
+                + "Do not use this tool for web browsing, HTTP requests, file reading, or text search when specialized tools exist.")
         public String executeShellCommand(RuntimeContext runtimeContext,
                                           @ToolParam(name = "command", description = "Shell command to execute") String command,
                                           @ToolParam(name = "working_directory", required = false,
@@ -325,6 +342,8 @@ public class MelonAgentFactory {
 
     private Toolkit buildToolkit(String agentId, AgentConfig config, Path workspaceDir) {
         Toolkit toolkit = new Toolkit();
+        registerIfEnabled(toolkit, config, "web_search", "com.melon.tools.web.WebSearchTool");
+        registerIfEnabled(toolkit, config, "web_fetch", "com.melon.tools.web.WebFetchTool");
         registerIfEnabled(toolkit, config, "view_image", "com.melon.tools.media.ViewImageTool", workspaceDir);
         registerIfEnabled(toolkit, config, "view_video", "com.melon.tools.media.ViewVideoTool", workspaceDir);
         registerIfEnabled(toolkit, config, "get_current_time", "com.melon.tools.util.GetCurrentTimeTool",
@@ -332,7 +351,6 @@ public class MelonAgentFactory {
         registerIfEnabled(toolkit, config, "set_user_timezone", "com.melon.tools.util.SetUserTimezoneTool");
         registerIfEnabled(toolkit, config, "get_token_usage", "com.melon.tools.util.GetTokenUsageTool");
         registerIfEnabled(toolkit, config, "send_file_to_user", "com.melon.tools.util.SendFileToUserTool", workspaceDir.toString());
-        registerIfEnabled(toolkit, config, "create_cron_job", "com.melon.tools.cron.CreateCronJobTool", workspaceDir);
         for (ToolkitContributor contributor : toolkitContributors) {
             try {
                 contributor.contribute(agentId, config, workspaceDir, toolkit);
@@ -515,6 +533,7 @@ public class MelonAgentFactory {
         List<MiddlewareBase> list = new ArrayList<>();
 
         // Workspace context, memory and skills are provided by HarnessAgent.
+        list.add(new ToolRoutingMiddleware());
         list.add(new MediaFilterMiddleware());
 
         if (config.getRunning().isAutoContinueOnTextOnly()) {
@@ -551,8 +570,11 @@ public class MelonAgentFactory {
     }
 
     private ExecutionConfig toolExecutionConfig(AgentConfig config) {
+        // Shell and MCP tools enforce their own per-call limits. The Harness-level timeout is a
+        // final safety ceiling shared by every tool, so binding it to shell_command_timeout would
+        // also interrupt task_wait and subagent orchestration after the shell-specific duration.
         return ExecutionConfig.builder()
-                .timeout(Duration.ofMillis(Math.max(1000, Math.round(config.getRunning().getShellCommandTimeout() * 1000))))
+                .timeout(Duration.ofMinutes(11))
                 .maxAttempts(1)
                 .build();
     }
@@ -584,7 +606,6 @@ public class MelonAgentFactory {
 
     private List<String> lifecycleApprovalTools() {
         return List.of(
-                "create_cron_job",
                 "skill_manage",
                 "propose_skill",
                 "task_cancel",
@@ -615,7 +636,7 @@ public class MelonAgentFactory {
                 "grep_files", "glob_files", "list_files"));
         tools.addAll(lifecycleApprovalTools());
         tools.addAll(smartApprovalTools());
-        tools.addAll(List.of("memory_search", "memory_get", "session_search"));
+        tools.addAll(List.of("memory_search", "memory_get", "session_search", "create_cron_job"));
         return List.copyOf(tools);
     }
 
@@ -668,7 +689,10 @@ public class MelonAgentFactory {
 
         LightContextConfig light = config.getLightContextConfig();
         ToolResultPruningConfig pruning = light != null ? light.getToolResultPruningConfig() : null;
-        if (pruning == null || !pruning.isEnabled()) return null;
+        if (pruning == null || !pruning.isEnabled()) {
+            // Preserve AgentScope's hard 80K safety threshold when aggressive pruning is disabled.
+            return ToolResultEvictionConfig.defaults();
+        }
         int maxChars = firstPositive(pruning.getPruningOldMsgMaxBytes(), pruning.getPruningRecentMsgMaxBytes());
         if (maxChars > 0) {
             builder.maxResultChars(maxChars);
@@ -708,6 +732,12 @@ public class MelonAgentFactory {
     private int shellTimeoutSeconds(AgentConfig config) {
         int seconds = (int) Math.ceil(config.getRunning().getShellCommandTimeout());
         return Math.max(1, seconds);
+    }
+
+    private int effectiveMaxIters(AgentConfig config) {
+        return config != null && config.getRunning() != null
+                ? config.getRunning().getMaxIters()
+                : com.melon.core.config.RunningConfig.DEFAULT_MAX_ITERS;
     }
 
 }

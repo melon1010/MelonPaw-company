@@ -44,6 +44,7 @@ import SetTimezoneCard from "./SetTimezoneCard";
 import TokenUsageCard from "./TokenUsageCard";
 import MemorySearchCard from "./MemorySearchCard";
 import ShellCard from "./ShellCard";
+import GenericToolCard from "./GenericToolCard";
 
 // ── Common props type ─────────────────────────────────────────────────
 
@@ -83,6 +84,10 @@ export const BUILTIN_CARD_REGISTRY: Record<string, BuiltinCardComponent> = {
 
   // Memory
   memory_search: MemorySearchCard,
+
+  // Read-only web tools use the shared generic card until a richer result view is needed.
+  web_search: GenericToolCard,
+  web_fetch: GenericToolCard,
 
   // Shell
   execute_shell_command: ShellCard,

@@ -56,6 +56,7 @@ public class McpClientManager {
     private final ConcurrentHashMap<String, Object> connectionLocks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<Boolean>> connectionAttempts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicInteger> restartCounts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Boolean> retryableConnectionFailures = new ConcurrentHashMap<>();
     private final AtomicBoolean initialized = new AtomicBoolean();
     private final ScheduledExecutorService lifecycle = Executors.newScheduledThreadPool(2, task -> {
         Thread thread = new Thread(task, "mcp-lifecycle");
@@ -119,6 +120,7 @@ public class McpClientManager {
             config.setName("mcp-" + config.getId());
         }
         servers.put(config.getId(), config);
+        retryableConnectionFailures.remove(config.getId());
         connectionStates.put(config.getId(), state(config.getId(), false, null,
                 config.isEnabled() ? "DISCONNECTED" : "DISABLED", null));
         persist();
@@ -143,6 +145,7 @@ public class McpClientManager {
         connectionStates.remove(id);
         connectionLocks.remove(id);
         restartCounts.remove(id);
+        retryableConnectionFailures.remove(id);
         oauthTokens.remove(id);
         persist();
         log.info("MCP server unregistered: id={}", id);
@@ -238,6 +241,7 @@ public class McpClientManager {
             log.info("Disconnecting MCP server: id={}", id);
         }
         closeSessions(id);
+        retryableConnectionFailures.remove(id);
         McpServerConfig config = servers.get(id);
         connectionStates.put(id, state(id, false, null,
                 config != null && !config.isEnabled() ? "DISABLED" : "DISCONNECTED", null));
@@ -438,7 +442,11 @@ public class McpClientManager {
             result.complete(true);
             return;
         }
-        if (attempt >= MAX_RECONNECT_ATTEMPTS || result.isCancelled()) {
+        boolean retryable = retryableConnectionFailures.getOrDefault(id, true);
+        if (!retryable || attempt >= MAX_RECONNECT_ATTEMPTS || result.isCancelled()) {
+            if (!retryable) {
+                log.warn("MCP connection failure is not retryable; waiting for configuration change: id={}", id);
+            }
             result.complete(false);
             return;
         }
@@ -488,13 +496,15 @@ public class McpClientManager {
             } else {
                 throw new IOException("Unknown MCP transport: " + config.getTransport());
             }
+            retryableConnectionFailures.remove(id);
             connectionStates.put(id, state(id, true, null, "CONNECTED", null));
             persist();
             log.info("MCP server connected: id={}, tools={}", id, config.getTools().size());
             return true;
         } catch (Exception e) {
             closeSessions(id);
-            String error = firstNonBlank(e.getMessage(), e.getClass().getSimpleName());
+            String error = connectionError(e);
+            retryableConnectionFailures.put(id, isRetryableConnectionFailure(config.getTransport(), e));
             log.error("Failed to connect MCP server: id={}", id, e);
             connectionStates.put(id, state(id, false, error, "ERROR", null));
             return false;
@@ -529,9 +539,10 @@ public class McpClientManager {
     private void markUnhealthy(String id, Exception error) {
         closeSessions(id);
         restartCounts.computeIfAbsent(id, ignored -> new AtomicInteger()).incrementAndGet();
-        connectionStates.put(id, state(id, false,
-                firstNonBlank(error.getMessage(), error.getClass().getSimpleName()), "ERROR", null));
         McpServerConfig config = servers.get(id);
+        retryableConnectionFailures.put(id,
+                config != null && isRetryableConnectionFailure(config.getTransport(), error));
+        connectionStates.put(id, state(id, false, connectionError(error), "ERROR", null));
         if (!shuttingDown && config != null && config.isEnabled()) connectAsync(id);
     }
 
@@ -651,8 +662,62 @@ public class McpClientManager {
                 : configManager.resolveStateDir().resolve("mcp-clients.json");
     }
 
-    private boolean isHttpTransport(String transport) {
+    private static boolean isHttpTransport(String transport) {
         return "sse".equals(transport) || "streamable_http".equals(transport) || "http".equals(transport);
+    }
+
+    /**
+     * Retries only failures that can plausibly recover without changing the MCP configuration.
+     * A stdio process that exits during startup is normally deterministic; repeatedly launching it
+     * obscures the original stderr and can trigger repeated package downloads or login prompts.
+     */
+    static boolean isRetryableConnectionFailure(String transport, Throwable failure) {
+        String detail = throwableDetail(failure).toLowerCase(Locale.ROOT);
+
+        if (containsAny(detail,
+                "typeerror", "syntaxerror", "referenceerror", "cannot find module", "module_not_found",
+                "command not found", "no such file or directory", "permission denied",
+                "stdio mcp command is required", "unknown mcp transport", "unsupported protocol",
+                "unauthorized", "forbidden", "invalid api key", "invalid token")) {
+            return false;
+        }
+        if (detail.matches("(?s).*\\bhttp\\s+(400|401|403|404|405|409|410|422)\\b.*")) {
+            return false;
+        }
+        if (containsAny(detail,
+                "timed out", "timeout", "temporarily unavailable", "connection reset",
+                "connection refused", "connectexception", "unknownhost", "eai_again",
+                "enotfound", "econnreset", "econnrefused", "socket hang up", "broken pipe",
+                "rate limit", "too many requests")
+                || detail.matches("(?s).*\\bhttp\\s+(408|425|429|5\\d\\d)\\b.*")) {
+            return true;
+        }
+        return isHttpTransport(transport);
+    }
+
+    private String connectionError(Throwable failure) {
+        String detail = firstNonBlank(failure == null ? null : failure.getMessage(),
+                failure == null ? "MCP connection failed" : failure.getClass().getSimpleName());
+        int lineEnd = detail.indexOf('\n');
+        if (lineEnd >= 0) detail = detail.substring(0, lineEnd);
+        detail = detail.strip();
+        return detail.length() <= 1000 ? detail : detail.substring(0, 997) + "...";
+    }
+
+    private static String throwableDetail(Throwable failure) {
+        StringBuilder detail = new StringBuilder();
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            if (current.getMessage() != null) detail.append(' ').append(current.getMessage());
+            detail.append(' ').append(current.getClass().getSimpleName());
+        }
+        return detail.toString();
+    }
+
+    private static boolean containsAny(String value, String... candidates) {
+        for (String candidate : candidates) {
+            if (value.contains(candidate)) return true;
+        }
+        return false;
     }
 
     private String authorizationHeader(McpServerConfig config) throws IOException {

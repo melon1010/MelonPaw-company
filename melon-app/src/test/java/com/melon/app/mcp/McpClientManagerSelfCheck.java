@@ -113,12 +113,12 @@ public final class McpClientManagerSelfCheck {
                     throw new AssertionError("Authorization header was not injected");
                 }
 
-                String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+                String javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toString();
                 McpClientManager.McpServerConfig stdio = McpClientManager.McpServerConfig.fromMap(Map.of(
                         "id", "stdio",
                         "name", "stdio",
                         "transport", "stdio",
-                        "command", java,
+                        "command", javaExecutable,
                         "args", List.of(
                                 "-cp", System.getProperty("java.class.path"),
                                 McpClientManagerSelfCheck.class.getName(), "--stdio-server")

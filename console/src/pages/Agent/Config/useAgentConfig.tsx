@@ -41,13 +41,14 @@ export function useAgentConfig() {
           ? config.memory_manager_backend
           : "file";
       form.setFieldsValue({
+        max_iters: Math.min(32, Math.max(1, config.max_iters ?? 12)),
         shell_command_timeout: config.shell_command_timeout ?? 60.0,
         loop: {
           ...config.loop,
           iteration: {
             ...config.loop?.iteration,
             max_iterations:
-              config.loop?.iteration?.max_iterations ?? config.max_iters ?? 100,
+              config.loop?.iteration?.max_iterations ?? 6,
           },
         },
         llm_retry_enabled: config.llm_retry_enabled,

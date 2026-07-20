@@ -135,6 +135,7 @@ public class MultiAgentManager {
         HarnessAgent old = agents.remove(agentId);
         running.remove(agentId);
         if (old != null) {
+            closeAgent(old, "reload");
             log.info("Agent {} removed for reload", agentId);
         }
     }
@@ -143,6 +144,7 @@ public class MultiAgentManager {
      * 重载所有 Agent.
      */
     public void reloadAll() {
+        agents.values().forEach(agent -> closeAgent(agent, "reload all"));
         agents.clear();
         running.clear();
         log.info("All agents cleared for reload");
@@ -169,7 +171,16 @@ public class MultiAgentManager {
         running.remove(agentId);
         HarnessAgent removed = agents.remove(agentId);
         if (removed != null) {
+            closeAgent(removed, "stop");
             log.info("Agent {} stopped and removed", agentId);
+        }
+    }
+
+    private void closeAgent(HarnessAgent agent, String reason) {
+        try {
+            agent.close();
+        } catch (RuntimeException e) {
+            log.warn("Failed to close Agent {} during {}", agent.getAgentId(), reason, e);
         }
     }
 
@@ -208,6 +219,8 @@ public class MultiAgentManager {
     /** Clears the live and persisted AgentScope state for one authenticated session. */
     public void clearSession(String agentId, String userId, String sessionId) {
         HarnessAgent agent = getOrCreate(agentId);
+        RuntimeContext taskContext = RuntimeContext.builder().userId(userId).sessionId(sessionId).build();
+        SubagentTaskCoordinator.cancelRunning(agent, taskContext);
         AgentState state = agent.getDelegate().getAgentState(userId, sessionId);
         state.contextMutable().clear();
         state.setSummary("");

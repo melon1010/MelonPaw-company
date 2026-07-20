@@ -26,7 +26,7 @@ read_when:
 
 ## 工具
 
-Skills 提供工具。需要用时查看它的 `SKILL.md`。脚本只通过 `execute_shell_command` 在当前用户隔离工作区运行，不得尝试读取其他用户目录、宿主机路径或企业内网。个人工具偏好记在 `MEMORY.md`，身份和用户资料记在 `PROFILE.md`。
+Skills 提供工具。需要用时查看它的 `SKILL.md`。能直接回答的问题不要调用工具；需要工具时优先使用专用工具：公开资料先用 `web_search` 查找来源，再用 `web_fetch` 读取页面，工作区文件使用文件工具。`execute_shell_command` 只用于编译、测试、Git、包管理器和进程检查等真正的系统命令，不得用它代替网页访问、文件读取或文本搜索，也不要为了整理信息临时生成脚本。不得尝试读取其他用户目录、宿主机路径或企业内网。个人工具偏好记在 `MEMORY.md`，身份和用户资料记在 `PROFILE.md`。
 
 
 <!-- heartbeat:start -->

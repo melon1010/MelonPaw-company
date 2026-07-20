@@ -5,7 +5,11 @@ import com.melon.core.util.JsonUtils;
 import io.agentscope.core.agent.RuntimeContext;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -114,10 +118,7 @@ public class McpAccessPolicyService {
     }
 
     private Path policyFile(String agentId, String serverId) {
-        String safeId = serverId == null ? "" : serverId.trim();
-        if (!safeId.matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")) {
-            throw new IllegalArgumentException("Invalid MCP server id");
-        }
+        String fileName = policyFileName(serverId);
         String scope = agentId == null || agentId.isBlank() ? "default" : agentId.trim();
         if (!scope.matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")) {
             throw new IllegalArgumentException("Invalid Agent id");
@@ -125,7 +126,26 @@ public class McpAccessPolicyService {
         Path root = "default".equals(scope)
                 ? configManager.resolveStateDir()
                 : configManager.resolveWorkspaceDir(scope).resolve(".melon");
-        return root.resolve("mcp-policies").resolve(safeId + ".json");
+        return root.resolve("mcp-policies").resolve(fileName);
+    }
+
+    private String policyFileName(String serverId) {
+        if (serverId == null || serverId.isBlank()) {
+            throw new IllegalArgumentException("MCP server id is required");
+        }
+        if (serverId.matches("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")) {
+            return serverId + ".json";
+        }
+        return "server-" + sha256(serverId) + ".json";
+    }
+
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
     }
 
     private String contextValue(RuntimeContext context, String key, String fallback) {

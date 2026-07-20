@@ -35,9 +35,6 @@ public class ChatManager {
     private static final Logger log = LoggerFactory.getLogger(ChatManager.class);
     private static final TypeReference<LinkedHashMap<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private static final int DEFAULT_TOOL_OUTPUT_TOKEN_CAP = 3000;
-    private static final String COMPACTION_SUMMARY_PREFIX =
-            "You are in the middle of a conversation that has been summarized.";
-
     private final ConfigManager configManager;
     private final HistoryStore historyStore;
     private final AgentStateLookup stateLookup;
@@ -186,6 +183,10 @@ public class ChatManager {
         mergeFrontendContext(state, prependContext);
         injectTurnUsage(state, turnUsage);
         state = repairCompactedStateFromLog(agentId, sessionId, state, prependContext, turnUsage);
+        if (hasCompactionSummary(state)) {
+            state = repairCompactedStateFromShadow(
+                    state, previousShadowState(agentId, channel, userId, sessionId));
+        }
         if (!state.isEmpty()) {
             saveSessionShadow(agentId, channel, userId, sessionId, state);
         }
@@ -386,6 +387,59 @@ public class ChatManager {
         return repaired;
     }
 
+    /**
+     * Keeps the last complete frontend projection when compaction succeeded but its append-only
+     * AgentScope log is unavailable. Stable message IDs are the primary merge key; semantic
+     * fallback is limited to the recent tail so an intentionally repeated prompt in a later turn
+     * is not removed.
+     */
+    private Map<String, Object> repairCompactedStateFromShadow(
+            Map<String, Object> compacted, Map<String, Object> previous) {
+        Object previousRaw = previous.get("context");
+        Object compactedRaw = compacted.get("context");
+        if (!(previousRaw instanceof List<?> previousContext) || previousContext.isEmpty()
+                || !(compactedRaw instanceof List<?> compactedContext)) {
+            return compacted;
+        }
+        List<Object> combined = new ArrayList<>(previousContext);
+        java.util.Set<String> seenIds = new java.util.HashSet<>();
+        for (Object item : previousContext) {
+            if (item instanceof Map<?, ?> message) {
+                String id = stringValue(message.get("id"));
+                if (!id.isBlank()) seenIds.add(id);
+            }
+        }
+        int recentStart = Math.max(0, previousContext.size() - 32);
+        java.util.Set<String> recentFingerprints = new java.util.HashSet<>();
+        for (int i = recentStart; i < previousContext.size(); i++) {
+            if (previousContext.get(i) instanceof Map<?, ?> message) {
+                recentFingerprints.add(contextFingerprint(message));
+            }
+        }
+        for (Object item : compactedContext) {
+            if (!(item instanceof Map<?, ?> rawMessage)) continue;
+            Map<String, Object> message = asMap(rawMessage);
+            if (ConversationVisibility.isModelOnly(message)) continue;
+            String id = stringValue(message.get("id"));
+            if (!id.isBlank() && seenIds.contains(id)) continue;
+            String fingerprint = contextFingerprint(message);
+            if (id.isBlank() && recentFingerprints.contains(fingerprint)) continue;
+            combined.add(message);
+            if (!id.isBlank()) seenIds.add(id);
+            recentFingerprints.add(fingerprint);
+        }
+        Map<String, Object> repaired = new LinkedHashMap<>(compacted);
+        repaired.put("context", combined);
+        log.info("Repaired compacted session shadow from previous frontend projection: messages={}",
+                combined.size());
+        return repaired;
+    }
+
+    private String contextFingerprint(Map<?, ?> message) {
+        return stringValue(message.get("role")).toLowerCase() + ":"
+                + JsonUtils.toJson(message.get("content"));
+    }
+
     private boolean hasCompactionSummary(Map<String, Object> state) {
         Object raw = state.get("context");
         if (!(raw instanceof List<?> context)) return false;
@@ -449,12 +503,14 @@ public class ChatManager {
     private Map<String, Object> logLineToStateMessage(String agentId, Map<String, Object> raw) {
         String role = stringValue(raw.get("role")).toLowerCase();
         if (role.isBlank()) role = "assistant";
+        String content = stringValue(raw.get("content"));
+        if ("user".equals(role)) content = ExplicitSkillInvocation.userVisibleText(content);
         Map<String, Object> message = new LinkedHashMap<>();
         message.put("id", valueOrDefault(stringValue(raw.get("id")), UUID.randomUUID().toString()));
         message.put("role", role);
         message.put("name", "user".equals(role) ? "user" : normalizeAgentId(agentId));
         message.put("metadata", Map.of());
-        message.put("content", logContentBlocks(role, stringValue(raw.get("content")), stringValue(raw.get("toolCallId"))));
+        message.put("content", logContentBlocks(role, content, stringValue(raw.get("toolCallId"))));
         return message;
     }
 
@@ -571,6 +627,8 @@ public class ChatManager {
         if (!(raw instanceof List<?> context)) return;
         List<Object> normalized = new ArrayList<>();
         Map<String, Object> lastAssistant = null;
+        List<String> currentTurnFingerprints = new ArrayList<>();
+        java.util.Set<String> seenMessageIds = new java.util.HashSet<>();
         for (Object item : context) {
             if (!(item instanceof Map<?, ?> rawMessage)) {
                 normalized.add(item);
@@ -581,11 +639,23 @@ public class ChatManager {
             if (isInternalContextMessage(message)) {
                 continue;
             }
+            String id = stringValue(message.get("id"));
+            if (!id.isBlank() && !seenMessageIds.add(id)) continue;
+            String role = stringValue(message.get("role"));
+            if ("user".equals(role)) {
+                currentTurnFingerprints.clear();
+                normalized.add(message);
+                lastAssistant = null;
+                continue;
+            }
             if ("tool".equals(stringValue(message.get("role"))) && mergeToolMessage(lastAssistant, message)) {
                 continue;
             }
+            List<String> fingerprints = blockFingerprints(message.get("content"));
+            if (!fingerprints.isEmpty() && currentTurnFingerprints.containsAll(fingerprints)) continue;
+            currentTurnFingerprints.addAll(fingerprints);
             normalized.add(message);
-            lastAssistant = "assistant".equals(stringValue(message.get("role"))) ? message : null;
+            lastAssistant = "assistant".equals(role) ? message : null;
         }
         state.put("context", normalized);
     }
@@ -724,14 +794,15 @@ public class ChatManager {
     }
 
     private boolean isInternalContextMessage(Map<String, Object> message) {
-        String name = stringValue(message.get("name"));
-        if ("__compaction_summary__".equals(name)) return true;
-        return "__system__".equals(name) || "__internal__".equals(name);
+        return ConversationVisibility.isModelOnly(message);
     }
 
     private boolean isInternalLogMessage(Map<String, Object> raw) {
-        return stringValue(raw.get("content")).startsWith(COMPACTION_SUMMARY_PREFIX)
-                || "__compaction_summary__".equals(stringValue(raw.get("name")));
+        if ("user".equalsIgnoreCase(stringValue(raw.get("role")))
+                && ExplicitSkillInvocation.isModelPrompt(stringValue(raw.get("content")))) {
+            return false;
+        }
+        return ConversationVisibility.isModelOnly(raw);
     }
 
     @SuppressWarnings("unchecked")
@@ -827,7 +898,7 @@ public class ChatManager {
             Object item = context.get(i);
             if (!(item instanceof Map<?, ?> raw)) continue;
             String role = stringValue(raw.get("role")).toLowerCase();
-            if ("user".equals(role) && !"__compaction_summary__".equals(stringValue(raw.get("name")))) {
+            if ("user".equals(role) && !isInternalContextName(stringValue(raw.get("name")))) {
                 return context.size();
             }
             if (firstAssistant < 0 && ("assistant".equals(role) || "tool".equals(role))) {
@@ -835,6 +906,10 @@ public class ChatManager {
             }
         }
         return firstAssistant >= 0 ? firstAssistant : context.size();
+    }
+
+    private boolean isInternalContextName(String name) {
+        return ConversationVisibility.isInternalName(name);
     }
 
     @SuppressWarnings("unchecked")

@@ -48,7 +48,7 @@ class FilesPreviewIsolationTest {
                 configManager, new FileGuardService(settings));
 
         var response = controller.preview(employee(), "default", secret.toString()).block();
-        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
     }
 
     @Test
@@ -94,9 +94,9 @@ class FilesPreviewIsolationTest {
         EnterprisePrincipal breakGlass = new EnterprisePrincipal(
                 "admin-id", "admin", "Admin", true,
                 Set.of("SYSTEM_ADMIN"), Set.of("data:breakglass"), "", "");
-        assertEquals(HttpStatus.FORBIDDEN,
+        assertEquals(HttpStatus.NOT_FOUND,
                 controller.preview(admin, "default", outside.toString()).block().getStatusCode());
-        assertEquals(HttpStatus.FORBIDDEN,
+        assertEquals(HttpStatus.NOT_FOUND,
                 controller.preview(breakGlass, "default", outside.toString()).block().getStatusCode());
     }
 

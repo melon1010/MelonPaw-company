@@ -337,7 +337,7 @@ public class SkillController {
                     ? agentAccessService.resolveSkillDistributionTargets(
                             principal, requestedWorkspaceIds(body),
                             Boolean.TRUE.equals(body != null ? body.get("all_workspaces") : null))
-                    : List.of(agentAccessService.resolveConfiguration(principal, agentId));
+                    : List.of(agentAccessService.ensurePersonalAgent(principal));
             if (targets.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("detail", "At least one target is required"));
             }

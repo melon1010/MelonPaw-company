@@ -11,6 +11,9 @@ import type {
   MCPOAuthStatusResponse,
 } from "../types";
 
+const clientEndpoint = (suffix: string, clientKey: string) =>
+  `/mcp/client${suffix}?client_key=${encodeURIComponent(clientKey)}`;
+
 export const mcpApi = {
   /**
    * List all MCP clients
@@ -21,7 +24,7 @@ export const mcpApi = {
    * Get details of a specific MCP client
    */
   getMCPClient: (clientKey: string) =>
-    request<MCPClientInfo>(`/mcp/${encodeURIComponent(clientKey)}`),
+    request<MCPClientInfo>(clientEndpoint("", clientKey)),
 
   /**
    * Create a new MCP client
@@ -36,7 +39,7 @@ export const mcpApi = {
    * Update an existing MCP client
    */
   updateMCPClient: (clientKey: string, body: MCPClientUpdateRequest) =>
-    request<MCPClientInfo>(`/mcp/${encodeURIComponent(clientKey)}`, {
+    request<MCPClientInfo>(clientEndpoint("", clientKey), {
       method: "PUT",
       body: JSON.stringify(body),
     }),
@@ -45,7 +48,7 @@ export const mcpApi = {
    * Toggle MCP client enabled status
    */
   toggleMCPClient: (clientKey: string) =>
-    request<MCPClientInfo>(`/mcp/toggle/${encodeURIComponent(clientKey)}`, {
+    request<MCPClientInfo>(clientEndpoint("/toggle", clientKey), {
       method: "PATCH",
     }),
 
@@ -53,7 +56,7 @@ export const mcpApi = {
    * Delete an MCP client
    */
   deleteMCPClient: (clientKey: string) =>
-    request<{ message: string }>(`/mcp/${encodeURIComponent(clientKey)}`, {
+    request<{ message: string }>(clientEndpoint("", clientKey), {
       method: "DELETE",
     }),
 
@@ -61,7 +64,7 @@ export const mcpApi = {
    * List tools from a connected MCP server
    */
   listMCPTools: (clientKey: string) =>
-    request<MCPToolInfo[]>(`/mcp/tools/${encodeURIComponent(clientKey)}`),
+    request<MCPToolInfo[]>(clientEndpoint("/tools", clientKey)),
 
   /**
    * List recent source-scoped principals for MCP access rules.
@@ -73,13 +76,13 @@ export const mcpApi = {
    * Get saved MCP access policy. Does not require the MCP server to be online.
    */
   getMCPPolicy: (clientKey: string) =>
-    request<MCPAccessPolicy>(`/mcp/policy/${encodeURIComponent(clientKey)}`),
+    request<MCPAccessPolicy>(clientEndpoint("/policy", clientKey)),
 
   /**
    * Update saved MCP access policy. Does not require the MCP server to be online.
    */
   updateMCPPolicy: (clientKey: string, body: MCPAccessPolicy) =>
-    request<MCPAccessPolicy>(`/mcp/policy/${encodeURIComponent(clientKey)}`, {
+    request<MCPAccessPolicy>(clientEndpoint("/policy", clientKey), {
       method: "PUT",
       body: JSON.stringify(body),
     }),
@@ -88,7 +91,7 @@ export const mcpApi = {
    * Update tool whitelist for an MCP client
    */
   updateMCPToolWhitelist: (clientKey: string, tools: string[] | null) =>
-    request<MCPToolInfo[]>(`/mcp/tools/${encodeURIComponent(clientKey)}`, {
+    request<MCPToolInfo[]>(clientEndpoint("/tools", clientKey), {
       method: "PUT",
       body: JSON.stringify({ tools }),
     }),
@@ -99,7 +102,7 @@ export const mcpApi = {
    */
   startOAuth: (clientKey: string, body: MCPOAuthStartRequest) =>
     request<MCPOAuthStartResponse>(
-      `/mcp/oauth/start/${encodeURIComponent(clientKey)}`,
+      clientEndpoint("/oauth/start", clientKey),
       {
         method: "POST",
         body: JSON.stringify(body),
@@ -110,16 +113,14 @@ export const mcpApi = {
    * Get current OAuth token status for an MCP client.
    */
   getOAuthStatus: (clientKey: string) =>
-    request<MCPOAuthStatusResponse>(
-      `/mcp/oauth/status/${encodeURIComponent(clientKey)}`,
-    ),
+    request<MCPOAuthStatusResponse>(clientEndpoint("/oauth/status", clientKey)),
 
   /**
    * Revoke / clear OAuth tokens for an MCP client.
    */
   revokeOAuth: (clientKey: string) =>
     request<{ message: string }>(
-      `/mcp/oauth/${encodeURIComponent(clientKey)}`,
+      clientEndpoint("/oauth", clientKey),
       { method: "DELETE" },
     ),
 };

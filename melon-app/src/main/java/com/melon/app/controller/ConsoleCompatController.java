@@ -8,6 +8,8 @@ import com.melon.app.runner.AgentRunner;
 import com.melon.app.runner.ChatManager;
 import com.melon.app.runner.ChatSpec;
 import com.melon.app.runner.CommandDispatcher;
+import com.melon.app.runner.ConversationVisibility;
+import com.melon.app.runner.ExplicitSkillInvocation;
 import com.melon.app.runner.MelonPawEnvelopeMapper;
 import com.melon.app.service.ApprovalService;
 import com.melon.app.service.InboxStore;
@@ -158,7 +160,7 @@ public class ConsoleCompatController {
         String effectiveText = expandExplicitSkillCommand(agentId, text);
         List<Msg> msgs = List.of(effectiveText.equals(text)
                 ? new UserMessage(effectiveText)
-                : new UserMessage("__internal__", effectiveText));
+                : ConversationVisibility.modelOnlyUserMessage(effectiveText, "skill_expansion"));
         MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId, task.taskId(), task.runId());
         AtomicReference<Throwable> taskFailure = new AtomicReference<>();
         AtomicReference<Flux<ServerSentEvent<String>>> detachedRef = new AtomicReference<>();
@@ -765,11 +767,7 @@ public class ConsoleCompatController {
                 ? parts[1].trim() : "Apply this skill and report the result.";
         try {
             String instructions = skillService.getSkillContent(agentId, requested);
-            return "The user explicitly invoked the workspace skill named '" + requested + "'. "
-                    + "Treat the following SKILL.md as mandatory instructions. Load any referenced skill "
-                    + "resources when needed, then complete the user request.\n\n<skill_instructions>\n"
-                    + instructions + "\n</skill_instructions>\n\n<user_request>\n"
-                    + request + "\n</user_request>";
+            return ExplicitSkillInvocation.modelPrompt(requested, instructions, request);
         } catch (java.io.IOException e) {
             throw new IllegalStateException("Failed to load skill '" + requested + "'", e);
         }

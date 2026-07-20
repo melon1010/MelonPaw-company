@@ -17,8 +17,13 @@ import java.util.Map;
 public class CreateCronJobTool extends ToolBase {
 
     private final Path workspaceDir;
+    private final CronJobCreator jobCreator;
 
     public CreateCronJobTool(Path workspaceDir) {
+        this(workspaceDir, body -> CronJobStore.create(workspaceDir, body));
+    }
+
+    public CreateCronJobTool(Path workspaceDir, CronJobCreator jobCreator) {
         super(ToolBase.builder()
                 .name("create_cron_job")
                 .description("Create a scheduled task in the current workspace jobs.json.")
@@ -37,6 +42,7 @@ public class CreateCronJobTool extends ToolBase {
                 .readOnly(false)
                 .concurrencySafe(false));
         this.workspaceDir = workspaceDir;
+        this.jobCreator = jobCreator;
     }
 
     private static Map<String, Object> parseSchema(String json) {
@@ -76,7 +82,7 @@ public class CreateCronJobTool extends ToolBase {
         body.put("dispatch", Map.of("type", "channel", "channel", "console",
                 "target", Map.of("user_id", ownerUserId), "mode", "final", "meta", Map.of()));
 
-        Map<String, Object> job = CronJobStore.create(workspaceDir, body);
+        Map<String, Object> job = jobCreator.create(body);
         return Mono.just(ToolResultBlock.text("Cron job created: " + job.get("name")
                 + "\nid: " + job.get("id")
                 + "\ncron: " + job.get("cron")
@@ -85,5 +91,10 @@ public class CreateCronJobTool extends ToolBase {
 
     private static String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    @FunctionalInterface
+    public interface CronJobCreator {
+        Map<String, Object> create(Map<String, Object> body);
     }
 }

@@ -32,6 +32,8 @@ public class ToolsConfig {
         put(m, "edit_file", true, "Edit file using find-and-replace", "🖊️");
         put(m, "grep_search", true, "Search file contents by pattern", "🔍");
         put(m, "glob_search", true, "Find files matching a glob pattern", "📁");
+        put(m, "web_search", true, "Search current public web pages without using shell commands", "🌐");
+        put(m, "web_fetch", true, "Read a public web page with private-network and content-size protection", "🔗");
         put(m, "view_image", true, "Load an image into LLM context for visual analysis", false, "🖼️");
         put(m, "view_video", true, "Load a video into LLM context for visual analysis", false, "🎥");
         put(m, "send_file_to_user", true, "Send files to user", "📤");
