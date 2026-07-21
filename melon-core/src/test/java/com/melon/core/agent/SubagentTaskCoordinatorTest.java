@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -98,7 +99,33 @@ class SubagentTaskCoordinatorTest {
         assertTrue(repository.delivered.get("task_b"));
     }
 
+    @Test
+    void reviewerReceivesCompletedSourceTaskResults() {
+        FakeRepository repository = new FakeRepository();
+        repository.put("research_a", "researcher", CompletableFuture.completedFuture("verified evidence"));
+        AtomicReference<String> delegatedTask = new AtomicReference<>();
+        AgentTool delegate = spawnDelegate(repository, new AtomicInteger(), delegatedTask);
+        SubagentTaskCoordinator.ManagedAgentSpawnTool spawn =
+                new SubagentTaskCoordinator.ManagedAgentSpawnTool(
+                        delegate, repository, new SubagentTaskCoordinator.InvocationLedger(
+                                tempDir.resolve("review-invocations.json")));
+
+        spawn.callAsync(ToolCallParam.builder()
+                .runtimeContext(RuntimeContext.builder().userId("u1").sessionId("s1").build())
+                .input(Map.of("agent_id", "reviewer", "task", "review the evidence",
+                        "source_task_ids", List.of("research_a")))
+                .build()).block();
+
+        assertTrue(delegatedTask.get().contains("verified evidence"));
+        assertTrue(delegatedTask.get().contains("research_a"));
+    }
+
     private AgentTool spawnDelegate(FakeRepository repository, AtomicInteger calls) {
+        return spawnDelegate(repository, calls, null);
+    }
+
+    private AgentTool spawnDelegate(
+            FakeRepository repository, AtomicInteger calls, AtomicReference<String> delegatedTask) {
         return new AgentTool() {
             @Override
             public String getName() {
@@ -117,6 +144,7 @@ class SubagentTaskCoordinatorTest {
 
             @Override
             public Mono<ToolResultBlock> callAsync(ToolCallParam param) {
+                if (delegatedTask != null) delegatedTask.set(String.valueOf(param.getInput().get("task")));
                 int number = calls.incrementAndGet();
                 repository.lastTimeoutSeconds = ((Number) param.getInput().get("timeout_seconds")).intValue();
                 String taskId = "task_" + number;

@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Locale;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -295,6 +296,8 @@ public class AgentRunner {
                         List<ToolUseBlock> approvalCalls = new ArrayList<>();
                         List<Map<String, Object>> requests = new ArrayList<>();
                         List<ConfirmResult> immediate = new ArrayList<>();
+                        Path workspaceRoot = configManager != null
+                                ? configManager.resolveWorkspaceDir(agentId) : null;
                         for (ToolUseBlock toolCall : confirm.getToolCalls()) {
                             if ("agent_spawn".equalsIgnoreCase(toolCall.getName())) {
                                 String role = stringValue(toolCall.getInput() != null
@@ -313,7 +316,7 @@ public class AgentRunner {
                                 default -> disabled
                                         ? toolRiskClassifier.forceAllow(toolCall)
                                         : (strict ? toolRiskClassifier.forceStrict(toolCall)
-                                                  : toolRiskClassifier.classify(toolCall,
+                                                  : toolRiskClassifier.classify(toolCall, workspaceRoot,
                                                           isMcpTool(agent, toolCall.getName()),
                                                           isReadOnlyTool(agent, toolCall.getName())));
                             };
@@ -382,6 +385,7 @@ public class AgentRunner {
         String mode = approvalService != null ? approvalService.getApprovalMode(agentId) : "RISK_BASED";
         boolean strict = "STRICT".equalsIgnoreCase(mode);
         boolean disabled = "OFF".equalsIgnoreCase(mode);
+        Path workspaceRoot = configManager != null ? configManager.resolveWorkspaceDir(agentId) : null;
         List<ConfirmResult> results = new ArrayList<>();
         for (ToolUseBlock call : calls) {
             String mcpEffect = mcpAccessEffect(agent, call.getName(), ctx);
@@ -391,7 +395,7 @@ public class AgentRunner {
                 default -> disabled
                         ? toolRiskClassifier.forceAllow(call)
                         : (strict ? toolRiskClassifier.forceStrict(call)
-                                  : toolRiskClassifier.classify(call,
+                                  : toolRiskClassifier.classify(call, workspaceRoot,
                                           isMcpTool(agent, call.getName()),
                                           isReadOnlyTool(agent, call.getName())));
             };
@@ -452,6 +456,8 @@ public class AgentRunner {
         approval.put("risk_code", assessment.code());
         approval.put("findings_count", 1);
         approval.put("findings_summary", assessment.summary());
+        approval.put("effects", assessment.effects().stream().map(Enum::name).sorted().toList());
+        if (!assessment.resource().isBlank()) approval.put("resource", assessment.resource());
         approval.put("tool_params", toolCall.getInput());
         approval.put("created_at", System.currentTimeMillis() / 1000.0);
         approval.put("timeout_seconds", 300);
@@ -728,7 +734,9 @@ public class AgentRunner {
                             : answer + "\n\nRepetition protection reminder:\n" + doom.reminder();
                     return evaluateLoop(agent, mode, objective, evaluationContext, settings.rubricPrompt())
                             .flatMapMany(evaluation -> {
-                                if (evaluation.complete()) return Flux.<AgentEvent>just(terminal);
+                                if (evaluation.complete() == null || evaluation.complete()) {
+                                    return Flux.<AgentEvent>just(terminal);
+                                }
                                 if (interventions >= settings.maxInterventions()) {
                                     return Flux.<AgentEvent>just(terminal);
                                 }
@@ -774,11 +782,13 @@ public class AgentRunner {
 
     private LoopEvaluation parseLoopEvaluation(String result) {
         if (result == null || result.isBlank()) {
-            return new LoopEvaluation(false, "Evaluator returned no result");
+            return new LoopEvaluation(null, "Evaluator returned no result");
         }
         String firstLine = result.lines().findFirst().orElse("").trim();
-        boolean complete = "COMPLETE".equals(firstLine.toUpperCase(java.util.Locale.ROOT));
-        return new LoopEvaluation(complete, result);
+        String verdict = firstLine.toUpperCase(java.util.Locale.ROOT);
+        if ("COMPLETE".equals(verdict)) return new LoopEvaluation(true, result);
+        if ("CONTINUE".equals(verdict)) return new LoopEvaluation(false, result);
+        return new LoopEvaluation(null, result);
     }
 
     private LoopSettings loopSettings(String agentId) {
@@ -907,7 +917,9 @@ public class AgentRunner {
             return "MISSION MODE. Complete the mission below using the native subagent tools. "
                     + "Decompose it into independent work, delegate meaningful subtasks with agent_spawn "
                     + "using only researcher, executor, or reviewer roles, "
-                    + "collect task IDs and use task_wait to join parallel work, then use a reviewer for material factual conclusions. "
+                    + "collect task IDs and use one task_wait call to join each parallel batch. When spawning a reviewer, "
+                    + "pass every completed worker task ID in source_task_ids so the runtime supplies the full results; "
+                    + "do not ask the reviewer to rediscover them from files or history. "
                     + "Reconcile conflicts, numeric claims, and source failures before returning one final result. "
                     + "Do not merely describe a plan. You have at most " + maxIterations + " coordinator rounds.\n\n"
                     + "Mission:\n" + objective;
@@ -926,7 +938,7 @@ public class AgentRunner {
                 + (evaluation == null || evaluation.isBlank() ? "Continue and verify remaining work." : evaluation);
     }
 
-    private record LoopEvaluation(boolean complete, String detail) {}
+    private record LoopEvaluation(Boolean complete, String detail) {}
 
     /** Request metadata must not be able to replace the authenticated execution identity. */
     private boolean isReservedContextKey(String key) {

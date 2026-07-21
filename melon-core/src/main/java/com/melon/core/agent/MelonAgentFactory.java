@@ -231,7 +231,7 @@ public class MelonAgentFactory {
                 .agentId(parentAgentId + "-worker")
                 .description("Isolated " + normalizedRole + " worker with role-scoped workspace tools")
                 .workspace(workspaceDir)
-                .maxIters(effectiveMaxIters(config))
+                .maxIters(subagentMaxIters(config, normalizedRole))
                 .sysPrompt(subagentSystemPrompt(normalizedRole))
                 .toolkit(subagentToolkit)
                 .permissionContext(PermissionContextState.builder().mode(PermissionMode.BYPASS).build())
@@ -277,12 +277,14 @@ public class MelonAgentFactory {
         if ("researcher".equalsIgnoreCase(role)) {
             return common + "For every material claim, identify the source URL and quote or summarize the supporting evidence. "
                     + "Separate successfully inspected sources from failed or inaccessible sources. Never describe a failed fetch as verified. "
-                    + "Call out conflicting evidence and uncertain conclusions explicitly.";
+                    + "Call out conflicting evidence and uncertain conclusions explicitly. Stop when 6-8 independent sources cover the task; "
+                    + "do not repeat equivalent searches.";
         }
         if ("reviewer".equalsIgnoreCase(role)) {
             return common + "Act as an adversarial verifier, not a copy editor. Check internal contradictions, numeric reasoning, "
                     + "source-to-claim support, and whether failed sources were incorrectly counted as verification. "
-                    + "Return concrete conflicts and unsupported claims before any corrected synthesis.";
+                    + "Review the supplied worker handoff before using tools. Do not scan chat or session history and do not repeat broad research; "
+                    + "use targeted lookup only for a disputed cited claim. Return concrete conflicts and unsupported claims before any corrected synthesis.";
         }
         return common + "Report completed actions, observable results, and any failed verification step without hiding it.";
     }
@@ -534,6 +536,7 @@ public class MelonAgentFactory {
 
         // Workspace context, memory and skills are provided by HarnessAgent.
         list.add(new ToolRoutingMiddleware());
+        list.add(new ToolFailureGuardMiddleware());
         list.add(new MediaFilterMiddleware());
 
         if (config.getRunning().isAutoContinueOnTextOnly()) {
@@ -738,6 +741,13 @@ public class MelonAgentFactory {
         return config != null && config.getRunning() != null
                 ? config.getRunning().getMaxIters()
                 : com.melon.core.config.RunningConfig.DEFAULT_MAX_ITERS;
+    }
+
+    private int subagentMaxIters(AgentConfig config, String role) {
+        int configured = effectiveMaxIters(config);
+        if ("reviewer".equalsIgnoreCase(role)) return Math.min(configured, 6);
+        if ("researcher".equalsIgnoreCase(role)) return Math.min(configured, 8);
+        return configured;
     }
 
 }

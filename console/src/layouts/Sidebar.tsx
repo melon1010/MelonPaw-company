@@ -29,6 +29,7 @@ import { useMenuItems, useRoutes } from "../plugins/registry/hooks";
 import { Slot } from "../plugins/registry/Slot";
 import { flattenMenu, type FlatMenuEntry } from "./registry/adapter";
 import { SidebarAccount, SidebarBrand } from "./SidebarChrome";
+import { useAgentStore } from "../stores/agentStore";
 
 const { Sider } = Layout;
 const MOBILE_SIDEBAR_QUERY = "(max-width: 768px)";
@@ -69,6 +70,7 @@ export default function Sidebar({
   const { user } = useAuth();
   const canUseAgents = hasPermission(user, "agents:use");
   const canUseInbox = canAccessRoute("core.inbox", user);
+  const selectedAgent = useAgentStore((state) => state.selectedAgent);
   const [isMobile, setIsMobile] = useState(isMobileSidebarViewport);
   const [hasInboxUnread, setHasInboxUnread] = useState(false);
 
@@ -146,10 +148,11 @@ export default function Sidebar({
   useEffect(() => {
     if (!canUseAgents) return;
     let cancelled = false;
+    syncSessionsGlobal([]);
     void sessionApi
       .getSessionList()
       .then((list) => {
-        if (!cancelled && list.length > 0) {
+        if (!cancelled) {
           syncSessionsGlobal(list as ExtendedSession[]);
         }
       })
@@ -157,7 +160,7 @@ export default function Sidebar({
     return () => {
       cancelled = true;
     };
-  }, [canUseAgents]);
+  }, [canUseAgents, selectedAgent]);
 
   const handleNewChat = useCallback(() => {
     if (location.pathname.startsWith("/chat")) {
@@ -350,6 +353,7 @@ export default function Sidebar({
                   {t("chat.recentConversations", "Recent chats")}
                 </div>
                 <SidebarSessionList
+                  key={selectedAgent}
                   historyOnly
                   onNewChat={handleNewChat}
                   onSessionClick={handleSidebarSessionClick}

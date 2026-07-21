@@ -7,6 +7,7 @@ import io.agentscope.core.event.DataBlockDeltaEvent;
 import io.agentscope.core.event.DataBlockEndEvent;
 import io.agentscope.core.event.DataBlockStartEvent;
 import io.agentscope.core.event.ModelCallEndEvent;
+import io.agentscope.core.event.RequestStopEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.event.TextBlockEndEvent;
 import io.agentscope.core.event.TextBlockStartEvent;
@@ -47,6 +48,9 @@ public class MelonPawEnvelopeMapper {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String TURN_USAGE_META_KEY = "qwenpaw_turn_usage";
+    private static final String PHASE_CANDIDATE = "candidate";
+    private static final String PHASE_FINAL = "final";
+    private static final String PHASE_PROGRESS = "progress";
     private static final long DEFAULT_MAX_INPUT_LENGTH = 131_072L;
 
     private final String responseId = "response_" + UUID.randomUUID().toString().replace("-", "");
@@ -98,6 +102,7 @@ public class MelonPawEnvelopeMapper {
         Map<String, Object> content = textContent(text != null ? text : "", false, 0);
         Map<String, Object> started = runtimeMessage(messageId, "message", "assistant", "in_progress", List.of());
         if (metadata != null && !metadata.isEmpty()) started.put("metadata", new LinkedHashMap<>(metadata));
+        setMessagePhase(started, PHASE_FINAL, true);
         events.add(sse("message", tag(started)));
         events.add(contentEvent(messageId, "text", Map.of("text", text != null ? text : ""), false, "completed", 0));
         Map<String, Object> completedMessage = runtimeMessage(
@@ -105,6 +110,7 @@ public class MelonPawEnvelopeMapper {
         if (metadata != null && !metadata.isEmpty()) {
             completedMessage.put("metadata", new LinkedHashMap<>(metadata));
         }
+        setMessagePhase(completedMessage, PHASE_FINAL, true);
         outputMessages.add(new LinkedHashMap<>(completedMessage));
         events.add(sse("message", tag(completedMessage)));
         Map<String, Object> completed = response("completed");
@@ -133,7 +139,12 @@ public class MelonPawEnvelopeMapper {
             case DATA_BLOCK_DELTA -> dataDelta((DataBlockDeltaEvent) event);
             case DATA_BLOCK_END -> dataEnd((DataBlockEndEvent) event);
             case MODEL_CALL_END -> modelCallEnd((ModelCallEndEvent) event);
-            case AGENT_END -> finish();
+            case REQUEST_STOP -> stopNotice((RequestStopEvent) event);
+            // AGENT_END closes the logical Agent turn, but AgentScope may still be
+            // consolidating memory. The owner finalizes the response when the
+            // event stream itself completes so clients and task state share one
+            // completion boundary.
+            case AGENT_END -> List.of();
             default -> List.of();
         };
     }
@@ -142,7 +153,8 @@ public class MelonPawEnvelopeMapper {
         if (finalized) return List.of();
         finalized = true;
         List<ServerSentEvent<String>> events = new ArrayList<>();
-        events.addAll(finalizeTextMessage());
+        events.addAll(finalizeTextMessage(PHASE_FINAL));
+        promoteLastTextMessage(events);
         Map<String, Object> turnUsage = turnUsageSnapshot();
         decorateOutputMessages(turnUsage);
         Map<String, Object> completed = response("completed");
@@ -157,10 +169,23 @@ public class MelonPawEnvelopeMapper {
         return events;
     }
 
+    private void promoteLastTextMessage(List<ServerSentEvent<String>> events) {
+        for (int i = outputMessages.size() - 1; i >= 0; i--) {
+            Map<String, Object> message = outputMessages.get(i);
+            if (!"message".equals(message.get("type")) || !"assistant".equals(message.get("role"))) continue;
+            Map<String, Object> metadata = message.get("metadata") instanceof Map<?, ?> raw
+                    ? asStringMap(raw) : Map.of();
+            if (PHASE_FINAL.equals(metadata.get("phase"))) return;
+            setMessagePhase(message, PHASE_FINAL, true);
+            events.add(sse("message", tag(new LinkedHashMap<>(message))));
+            return;
+        }
+    }
+
     public List<ServerSentEvent<String>> error(Throwable e) {
         String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
         List<ServerSentEvent<String>> events = new ArrayList<>();
-        events.addAll(finalizeTextMessage());
+        events.addAll(finalizeTextMessage(PHASE_PROGRESS));
         Map<String, Object> turnUsage = turnUsageSnapshot();
         decorateOutputMessages(turnUsage);
         Map<String, Object> failed = response("failed");
@@ -274,7 +299,7 @@ public class MelonPawEnvelopeMapper {
     }
 
     private List<ServerSentEvent<String>> toolCallStart(ToolCallStartEvent event) {
-        List<ServerSentEvent<String>> events = new ArrayList<>(finalizeTextMessage());
+        List<ServerSentEvent<String>> events = new ArrayList<>(finalizeTextMessage(PHASE_PROGRESS));
         String callId = safeId(event.getToolCallId());
         String toolName = FrontendToolCompat.displayToolName(event.getToolCallName());
         ToolState state = new ToolState(callId, toolName, event.getToolCallName());
@@ -386,13 +411,24 @@ public class MelonPawEnvelopeMapper {
         return List.of();
     }
 
+    private List<ServerSentEvent<String>> stopNotice(RequestStopEvent event) {
+        List<ServerSentEvent<String>> events = new ArrayList<>(finalizeTextMessage(PHASE_PROGRESS));
+        String reason = event.getReason() == null || event.getReason().isBlank()
+                ? "Execution paused by runtime policy."
+                : event.getReason();
+        Map<String, Object> content = textContent(reason, false, 0);
+        events.add(completedMessageEvent(newMessageId(), "message", "assistant",
+                List.of(content), PHASE_FINAL));
+        return events;
+    }
+
     private void ensureTextMessage(List<ServerSentEvent<String>> events) {
         if (textMessageStarted) return;
         textMessageStarted = true;
         events.add(messageEvent(textMessageId, "message", "assistant", "in_progress", List.of()));
     }
 
-    private List<ServerSentEvent<String>> finalizeTextMessage() {
+    private List<ServerSentEvent<String>> finalizeTextMessage(String phase) {
         if (!textMessageStarted) return List.of();
         for (TextBlockState state : textBlocks.values()) {
             if (!state.completed) {
@@ -408,7 +444,8 @@ public class MelonPawEnvelopeMapper {
             textBlocks.clear();
             return List.of();
         }
-        List<ServerSentEvent<String>> events = List.of(completedMessageEvent(textMessageId, "message", "assistant", new ArrayList<>(textContents)));
+        List<ServerSentEvent<String>> events = List.of(completedMessageEvent(
+                textMessageId, "message", "assistant", new ArrayList<>(textContents), phase));
         textMessageId = newMessageId();
         textMessageStarted = false;
         textContents.clear();
@@ -421,7 +458,13 @@ public class MelonPawEnvelopeMapper {
     }
 
     private ServerSentEvent<String> completedMessageEvent(String id, String type, String role, List<Map<String, Object>> content) {
+        return completedMessageEvent(id, type, role, content, defaultPhase(type));
+    }
+
+    private ServerSentEvent<String> completedMessageEvent(String id, String type, String role,
+                                                           List<Map<String, Object>> content, String phase) {
         Map<String, Object> message = runtimeMessage(id, type, role, "completed", content);
+        setMessagePhase(message, phase, PHASE_FINAL.equals(phase));
         outputMessages.add(new LinkedHashMap<>(message));
         return sse("message", tag(message));
     }
@@ -447,8 +490,28 @@ public class MelonPawEnvelopeMapper {
         message.put("status", status);
         message.put("content", content);
         message.put("name", "assistant");
+        setMessagePhase(message, defaultPhase(type), false);
         if (usage != null) message.put("usage", usage);
         return message;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void setMessagePhase(Map<String, Object> message, String phase, boolean terminal) {
+        Map<String, Object> metadata = message.get("metadata") instanceof Map<?, ?> raw
+                ? new LinkedHashMap<>((Map<String, Object>) raw) : new LinkedHashMap<>();
+        metadata.put("turn_id", responseId);
+        metadata.put("phase", phase);
+        if ("message".equals(message.get("type"))) metadata.put("terminal", terminal);
+        message.put("metadata", metadata);
+    }
+
+    private String defaultPhase(String type) {
+        return switch (type) {
+            case "reasoning" -> "reasoning";
+            case "plugin_call", "plugin_call_output" -> "tool";
+            case "message" -> PHASE_CANDIDATE;
+            default -> "process";
+        };
     }
 
     private Map<String, Object> response(String status) {
@@ -593,13 +656,23 @@ public class MelonPawEnvelopeMapper {
         String id = string(output.get("id"));
         Object rawContent = output.get("content");
         if (!(rawContent instanceof List<?> content)) return Map.of();
-        return switch (type) {
+        Map<String, Object> converted = switch (type) {
             case "message" -> textStateMessage(id, content, false);
             case "reasoning" -> textStateMessage(id, content, true);
             case "plugin_call" -> toolCallStateMessage(id, content);
             case "plugin_call_output" -> toolResultStateMessage(id, content);
             default -> Map.of();
         };
+        if (!converted.isEmpty() && output.get("metadata") instanceof Map<?, ?> rawMetadata) {
+            converted.put("metadata", new LinkedHashMap<>(asStringMap(rawMetadata)));
+        }
+        return converted;
+    }
+
+    private Map<String, Object> asStringMap(Map<?, ?> raw) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        raw.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
     }
 
     private Map<String, Object> textStateMessage(String id, List<?> content, boolean thinking) {

@@ -2,6 +2,7 @@ package com.melon.app.runner;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.agentscope.core.event.AgentEndEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
 import io.agentscope.core.event.TextBlockEndEvent;
 import io.agentscope.core.event.TextBlockStartEvent;
@@ -111,6 +112,38 @@ public final class MelonPawEnvelopeMapperSelfCheck {
         if (!String.valueOf(resultData.get("output")).contains("/tmp")) {
             throw new AssertionError("output text missing: " + resultData);
         }
+
+        Map<String, Object> progress = payloads.stream()
+                .filter(p -> "message".equals(p.get("type")))
+                .filter(p -> "completed".equals(p.get("status")))
+                .filter(p -> p.get("metadata") instanceof Map<?, ?> metadata
+                        && "progress".equals(metadata.get("phase")))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("pre-tool text was not marked as progress"));
+        if (Boolean.TRUE.equals(((Map<?, ?>) progress.get("metadata")).get("terminal"))) {
+            throw new AssertionError("progress message was marked terminal: " + progress);
+        }
+        boolean promoted = payloads.stream()
+                .filter(p -> "message".equals(p.get("type")))
+                .filter(p -> "completed".equals(p.get("status")))
+                .anyMatch(p -> p.get("metadata") instanceof Map<?, ?> metadata
+                        && "final".equals(metadata.get("phase"))
+                        && Boolean.TRUE.equals(metadata.get("terminal")));
+        if (!promoted) {
+            throw new AssertionError("last text was not promoted after the trailing tool result");
+        }
+
+        MelonPawEnvelopeMapper completionBoundary = new MelonPawEnvelopeMapper("s3");
+        List<Map<String, Object>> boundaryPayloads = new ArrayList<>();
+        collect(boundaryPayloads, completionBoundary.translate(new AgentEndEvent("r3")));
+        boolean completedBeforeStreamEnd = boundaryPayloads.stream()
+                .anyMatch(p -> "response".equals(p.get("object"))
+                        && "completed".equals(p.get("status")));
+        if (completedBeforeStreamEnd) {
+            throw new AssertionError("AGENT_END completed the response before stream completion");
+        }
+        collect(boundaryPayloads, completionBoundary.finish());
+        verifyCompletedOutput(boundaryPayloads, 0);
 
     }
 

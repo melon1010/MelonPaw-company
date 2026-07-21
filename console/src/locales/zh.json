@@ -2212,6 +2212,12 @@
     "unpinDrawer": "取消固定",
     "statusIdle": "空闲",
     "statusInProgress": "进行中",
+    "projectScope": "项目空间",
+    "personalScope": "个人空间",
+    "agentScope": "智能体空间",
+    "scopeTooltip": "当前对话运行于 {{name}}",
+    "switchScope": "切换当前空间",
+    "scopeEmpty": "暂无可用空间",
     "executionProcess": {
       "starting": "正在思考",
       "active": "思考中",
@@ -2993,6 +2999,20 @@
     "executeDefault": "执行 工具"
   },
   "preview": {
+    "fileTitle": "文件预览",
+    "downloadHint": "请使用右上角的下载按钮保存该文件。",
+    "fullWidth": "占满内容区域",
+    "restoreSplit": "恢复分屏",
+    "unsupported": "暂不支持在此预览该文件类型",
+    "textTooLarge": "文本文件过大，无法直接预览",
+    "officeTooLarge": "Office 文件超过 20 MB，无法直接预览",
+    "resize": "调整文件预览大小",
+    "spreadsheet": {
+      "worksheets": "工作表",
+      "summary": "{{rows}} 行 / {{columns}} 列",
+      "empty": "该工作表没有可显示的数据",
+      "truncated": "为保持预览流畅，仅显示前 {{rows}} 行和 {{columns}} 列"
+    },
     "error": {
       "SENSITIVE_FILE_BLOCKED": "该文件被文件防护拦截（敏感文件保护）。",
       "OUTSIDE_WORKSPACE": "该文件位于工作区范围之外。请在 设置 → 安全 → 文件防护 中启用「允许控制台预览工作区外文件」。",

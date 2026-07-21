@@ -28,8 +28,12 @@ public final class EnterpriseTaskServiceSelfCheck {
                 service.startPersonal("AGENT", "user-1", "agent-1", "Concurrent", "session-1",
                         "console", "request-2", "chat-1", "request-2");
                 throw new AssertionError("active session accepted a concurrent task");
-            } catch (IllegalStateException expected) {
-                // Expected: one active writer per user, Agent and session.
+            } catch (EnterpriseTaskService.ActiveTaskConflictException expected) {
+                require(first.taskId().equals(expected.taskId())
+                                && first.runId().equals(expected.runId())
+                                && "session-1".equals(expected.sessionId())
+                                && "RUNNING".equals(expected.status()),
+                        "active task conflict did not identify the current run");
             }
 
             service.succeed(first, "done");

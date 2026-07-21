@@ -163,8 +163,10 @@ public class EnterpriseTaskService {
                     throw new AgentMutationInProgressException(
                             "Agent resources are being updated; retry the task shortly");
                 }
-                if (hasActiveRun(connection, owner, agent, session)) {
-                    throw new IllegalStateException("This session already has an active task");
+                ActiveTask active = findActiveRun(connection, owner, agent, session);
+                if (active != null) {
+                    throw new ActiveTaskConflictException(
+                            active.taskId(), active.runId(), session, active.status());
                 }
 
                 String now = Instant.now().toString();
@@ -492,8 +494,10 @@ public class EnterpriseTaskService {
                     throw new AgentMutationInProgressException(
                             "Agent resources are being updated; retry the task shortly");
                 }
-                if (hasActiveRun(connection, owner, agent, session)) {
-                    throw new IllegalStateException("This session already has an active task");
+                ActiveTask active = findActiveRun(connection, owner, agent, session);
+                if (active != null) {
+                    throw new ActiveTaskConflictException(
+                            active.taskId(), active.runId(), session, active.status());
                 }
 
                 int attempt;
@@ -996,38 +1000,42 @@ public class EnterpriseTaskService {
     }
 
     private Map<String, Object> findActive(String ownerUserId, String agentId, String sessionId) {
-        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement("""
-                SELECT t.task_id, r.run_id, t.status FROM enterprise_tasks t
-                JOIN enterprise_task_runs r ON r.task_id = t.task_id
-                WHERE t.owner_user_id = ? AND t.agent_id = ? AND t.session_id = ?
-                  AND t.status IN ('RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED')
-                ORDER BY t.created_at DESC LIMIT 1
-                """)) {
-            statement.setString(1, required(ownerUserId, "owner user"));
-            statement.setString(2, required(agentId, "Agent"));
-            statement.setString(3, required(sessionId, "session"));
-            try (ResultSet result = statement.executeQuery()) {
-                if (!result.next()) return Map.of();
-                return Map.of("task_id", result.getString(1), "run_id", result.getString(2),
-                        "status", result.getString(3));
-            }
+        try (Connection connection = open()) {
+            ActiveTask active = findActiveRun(connection,
+                    required(ownerUserId, "owner user"),
+                    required(agentId, "Agent"),
+                    required(sessionId, "session"));
+            return active == null ? Map.of() : Map.of(
+                    "task_id", active.taskId(),
+                    "run_id", active.runId(),
+                    "status", active.status());
         } catch (SQLException e) {
             throw databaseFailure("find active task", e);
         }
     }
 
-    private boolean hasActiveRun(Connection connection, String owner, String agent, String session) throws SQLException {
+    private ActiveTask findActiveRun(Connection connection, String owner, String agent, String session)
+            throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT 1 FROM enterprise_tasks
-                WHERE owner_user_id = ? AND agent_id = ? AND session_id = ?
-                  AND status IN ('RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED')
-                LIMIT 1
+                SELECT t.task_id, r.run_id, t.status
+                FROM enterprise_tasks t
+                JOIN enterprise_task_runs r ON r.task_id = t.task_id
+                WHERE t.owner_user_id = ? AND t.agent_id = ? AND t.session_id = ?
+                  AND t.status IN ('RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED')
+                  AND r.attempt = (
+                      SELECT MAX(latest.attempt)
+                      FROM enterprise_task_runs latest
+                      WHERE latest.task_id = t.task_id
+                  )
+                ORDER BY t.updated_at DESC LIMIT 1
                 """)) {
             statement.setString(1, owner);
             statement.setString(2, agent);
             statement.setString(3, session);
             try (ResultSet result = statement.executeQuery()) {
-                return result.next();
+                return result.next()
+                        ? new ActiveTask(result.getString(1), result.getString(2), result.getString(3))
+                        : null;
             }
         }
     }
@@ -1243,6 +1251,9 @@ public class EnterpriseTaskService {
     public record TaskRun(String taskId, String runId, boolean created) {
     }
 
+    private record ActiveTask(String taskId, String runId, String status) {
+    }
+
     public record Delegation(String delegationId, String parentTaskId, String parentRunId,
                              String childTaskId, String childRunId, String role) {
     }
@@ -1251,6 +1262,38 @@ public class EnterpriseTaskService {
 
         public AgentMutationInProgressException(String message) {
             super(message);
+        }
+    }
+
+    public static final class ActiveTaskConflictException extends IllegalStateException {
+
+        private final String taskId;
+        private final String runId;
+        private final String sessionId;
+        private final String status;
+
+        public ActiveTaskConflictException(String taskId, String runId, String sessionId, String status) {
+            super("This session already has an active task");
+            this.taskId = taskId;
+            this.runId = runId;
+            this.sessionId = sessionId;
+            this.status = status;
+        }
+
+        public String taskId() {
+            return taskId;
+        }
+
+        public String runId() {
+            return runId;
+        }
+
+        public String sessionId() {
+            return sessionId;
+        }
+
+        public String status() {
+            return status;
         }
     }
 

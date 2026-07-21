@@ -35,6 +35,10 @@ public class SendFileToUserTool {
             if (!Files.isRegularFile(path)) {
                 return error("File not found: " + filePath);
             }
+            ArtifactValidator.Result validation = ArtifactValidator.validate(path);
+            if (!validation.valid()) {
+                return error("File is not ready for delivery: " + validation.message());
+            }
             String mimeType = Files.probeContentType(path);
             DataBlock file = DataBlock.builder()
                     .name(path.getFileName().toString())

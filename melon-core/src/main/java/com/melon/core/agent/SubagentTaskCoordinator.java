@@ -123,6 +123,8 @@ public final class SubagentTaskCoordinator {
     public record TaskSnapshot(String taskId, String agentId, TaskStatus status) {}
 
     static final class ManagedAgentSpawnTool extends ToolBase {
+        private static final int MAX_SOURCE_TASKS = 16;
+        private static final int MAX_HANDOFF_CHARS = 64_000;
         private final AgentTool delegate;
         private final TaskRepository repository;
         private final InvocationLedger ledger;
@@ -134,8 +136,9 @@ public final class SubagentTaskCoordinator {
                     .name(SPAWN_TOOL)
                     .description(delegate.getDescription()
                             + " The call always starts in the background and returns a stable task_id immediately. "
-                            + "Equivalent unfinished work in the same session reuses its existing task_id.")
-                    .inputSchema(delegate.getParameters())
+                            + "Equivalent unfinished work in the same session reuses its existing task_id. "
+                            + "For reviewer tasks, source_task_ids injects completed worker results directly.")
+                    .inputSchema(withSourceTaskIds(delegate.getParameters()))
                     .readOnly(false)
                     .concurrencySafe(true)
                     .stateInjected(delegate instanceof ToolBase tool && tool.isStateInjected()));
@@ -184,6 +187,15 @@ public final class SubagentTaskCoordinator {
                     && input.get("role") != null && !String.valueOf(input.get("role")).isBlank()) {
                 input.put("agent_id", input.get("role"));
             }
+            List<String> sourceTaskIds = taskIds(input.remove("source_task_ids"));
+            if ("reviewer".equalsIgnoreCase(String.valueOf(input.get("agent_id")))
+                    && !sourceTaskIds.isEmpty()) {
+                String handoff = sourceTaskHandoff(context, sourceTaskIds);
+                if (handoff.startsWith("Error:")) {
+                    return Mono.just(ToolResultBlock.text(handoff));
+                }
+                input.put("task", String.valueOf(input.getOrDefault("task", "")) + "\n\n" + handoff);
+            }
             input.put("timeout_seconds", 0);
             String fingerprint = invocationFingerprint(context, input);
             if (input.get("label") == null || String.valueOf(input.get("label")).isBlank()) {
@@ -209,6 +221,52 @@ public final class SubagentTaskCoordinator {
                     .cache();
             Mono<ToolResultBlock> raced = starting.putIfAbsent(fingerprint, created);
             return raced != null ? raced : created;
+        }
+
+        private String sourceTaskHandoff(RuntimeContext context, List<String> taskIds) {
+            String sessionId = context != null ? context.getSessionId() : null;
+            StringBuilder result = new StringBuilder(
+                    "Authoritative worker results follow. Review these first; do not scan chat or session history.");
+            for (String taskId : taskIds) {
+                BackgroundTask task = repository.getTask(context, sessionId, taskId);
+                if (task == null) return "Error: source task not found: " + taskId;
+                if (!task.getTaskStatus().isTerminal()) return "Error: source task is still running: " + taskId;
+                result.append("\n\n--- source task ").append(taskId)
+                        .append(" ---\nstatus: ").append(task.getTaskStatus().name().toLowerCase(Locale.ROOT));
+                String output = task.getResult();
+                if (output != null && !output.isBlank()) {
+                    result.append("\nresult:\n").append(output);
+                } else if (task.getError() != null) {
+                    result.append("\nerror: ").append(task.getError().getMessage());
+                }
+            }
+            return limit(result.toString(), MAX_HANDOFF_CHARS);
+        }
+
+        private static List<String> taskIds(Object value) {
+            if (!(value instanceof Collection<?> raw)) return List.of();
+            LinkedHashSet<String> result = new LinkedHashSet<>();
+            for (Object item : raw) {
+                String id = item == null ? "" : String.valueOf(item).trim();
+                if (!id.isBlank()) result.add(id);
+                if (result.size() >= MAX_SOURCE_TASKS) break;
+            }
+            return List.copyOf(result);
+        }
+
+        private static Map<String, Object> withSourceTaskIds(Map<String, Object> schema) {
+            Map<String, Object> result = new LinkedHashMap<>(schema != null ? schema : Map.of());
+            Map<String, Object> properties = new LinkedHashMap<>();
+            if (result.get("properties") instanceof Map<?, ?> raw) {
+                raw.forEach((key, value) -> properties.put(String.valueOf(key), value));
+            }
+            properties.put("source_task_ids", Map.of(
+                    "type", "array",
+                    "items", Map.of("type", "string"),
+                    "maxItems", MAX_SOURCE_TASKS,
+                    "description", "Completed worker task IDs whose full results the reviewer must inspect"));
+            result.put("properties", properties);
+            return result;
         }
     }
 

@@ -57,12 +57,16 @@ public class AgentSessionLogReader {
     public List<Map<String, Object>> readFrontendMessages(String agentId, String userId, String channel, String sessionId) {
         Map<String, Object> shadow = chatManager.loadSessionShadow(agentId, channel, userId, sessionId);
         List<Map<String, Object>> shadowMessages = deduplicateMessages(readPythonSessionMessages(shadow));
-        if (!shadowMessages.isEmpty() && !looksTruncatedConsoleHistory(shadowMessages)) return shadowMessages;
+        if (!shadowMessages.isEmpty() && !looksTruncatedConsoleHistory(shadowMessages)) {
+            return annotateTurnPhases(shadowMessages);
+        }
 
         Map<String, Object> state = stateLookup.findAsMap(agentId, userId, sessionId);
         if (!state.isEmpty()) {
             List<Map<String, Object>> messages = deduplicateMessages(readStateMessages(state));
-            if (!messages.isEmpty() && !looksTruncatedConsoleHistory(messages)) return messages;
+            if (!messages.isEmpty() && !looksTruncatedConsoleHistory(messages)) {
+                return annotateTurnPhases(messages);
+            }
         }
 
         Path logFile = findSessionLog(agentId, sessionId);
@@ -79,7 +83,48 @@ public class AgentSessionLogReader {
             log.warn("Failed to read AgentScope session log: {}", logFile, e);
             return List.of();
         }
-        return deduplicateMessages(messages);
+        return annotateTurnPhases(deduplicateMessages(messages));
+    }
+
+    private List<Map<String, Object>> annotateTurnPhases(List<Map<String, Object>> messages) {
+        List<Map<String, Object>> result = new ArrayList<>(messages.size());
+        int start = 0;
+        while (start < messages.size()) {
+            int end = start + 1;
+            while (end < messages.size() && !"user".equals(lower(messages.get(end).get("role")))) end++;
+            String turnId = "user".equals(lower(messages.get(start).get("role")))
+                    ? stringValue(messages.get(start).get("id")) : "turn-" + start;
+            if (turnId.isBlank()) turnId = "turn-" + start;
+
+            int finalText = -1;
+            for (int i = start; i < end; i++) {
+                Map<String, Object> message = messages.get(i);
+                if ("assistant".equals(lower(message.get("role")))
+                        && "message".equals(lower(message.get("type")))) finalText = i;
+            }
+            for (int i = start; i < end; i++) {
+                Map<String, Object> copy = new LinkedHashMap<>(messages.get(i));
+                Map<String, Object> metadata = copy.get("metadata") instanceof Map<?, ?> raw
+                        ? asMap(raw) : new LinkedHashMap<>();
+                String role = lower(copy.get("role"));
+                String type = lower(copy.get("type"));
+                metadata.put("turn_id", turnId);
+                if ("user".equals(role)) {
+                    metadata.put("phase", "input");
+                } else if ("assistant".equals(role) && "message".equals(type)) {
+                    metadata.put("phase", i == finalText ? "final" : "progress");
+                    metadata.put("terminal", i == finalText);
+                } else if ("reasoning".equals(type)) {
+                    metadata.put("phase", "reasoning");
+                } else {
+                    metadata.put("phase", "tool");
+                }
+                copy.put("metadata", metadata);
+                result.add(copy);
+            }
+            start = end;
+        }
+        return result;
     }
 
     private List<Map<String, Object>> deduplicateMessages(List<Map<String, Object>> messages) {

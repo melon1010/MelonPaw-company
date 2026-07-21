@@ -1761,6 +1761,12 @@
     }
   },
   "chat": {
+    "projectScope": "プロジェクトスペース",
+    "personalScope": "個人スペース",
+    "agentScope": "エージェントスペース",
+    "scopeTooltip": "現在の会話: {{name}}",
+    "switchScope": "ワークスペースを切り替える",
+    "scopeEmpty": "利用可能なワークスペースがありません",
     "modelSelectTooltip": "モデルを選択",
     "newChatTooltip": "新しいチャット",
     "shareConversationTooltip": "会話を共有",
@@ -2474,6 +2480,20 @@
     "retry": "再試行"
   },
   "preview": {
+    "fileTitle": "ファイルプレビュー",
+    "downloadHint": "右上のダウンロードボタンからこのファイルを保存できます。",
+    "fullWidth": "プレビューを全幅に拡大",
+    "restoreSplit": "分割表示に戻す",
+    "unsupported": "このファイル形式はここではプレビューできません",
+    "textTooLarge": "テキストファイルが大きすぎるため直接プレビューできません",
+    "officeTooLarge": "Office ファイルがインラインプレビューの上限 20 MB を超えています",
+    "resize": "ファイルプレビューのサイズを変更",
+    "spreadsheet": {
+      "worksheets": "ワークシート",
+      "summary": "{{rows}} 行 / {{columns}} 列",
+      "empty": "このワークシートには表示できるデータがありません",
+      "truncated": "快適に表示するため、先頭の {{rows}} 行と {{columns}} 列のみ表示しています"
+    },
     "error": {
       "SENSITIVE_FILE_BLOCKED": "このファイルはファイルガードによりブロックされています（機密ファイル保護）。",
       "OUTSIDE_WORKSPACE": "このファイルはワークスペースの範囲外です。設定 → セキュリティ → ファイルガード で「コンソールでワークスペース外ファイルのプレビューを許可」を有効にしてください。",

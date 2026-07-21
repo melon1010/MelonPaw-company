@@ -16,11 +16,11 @@ metadata:
 
 - **markitdown[pptx]**：从演示文稿中提取文本
 - **Pillow**：生成缩略图网格
-- **pptxgenjs**（`npm install -g pptxgenjs`）：从零开始创建演示文稿
+- **pptxgenjs**：由 MelonPaw 沙箱运行时预装，用于从零开始创建演示文稿
 - **LibreOffice**（`soffice`）：演示文稿转 PDF
 - **pdftoppm**（poppler-utils）：PDF 转图片，用于缩略图/视觉工作流
 - 如果 `pdftoppm` 不可用，可使用 Python 备选方案 `pdf2image`。
-- 在 Windows 上，依赖项必须已安装并在 `PATH` 中可用；如果缺失，报告依赖问题并停止（不要反复重试）。
+- 依赖项缺失时应报告运行环境问题并停止；不得在对话执行期间安装或升级依赖。
 
 ## 快速参考
 

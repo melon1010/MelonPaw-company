@@ -3,8 +3,18 @@ import {
   IAgentScopeRuntimeWebUIOptions,
   type IAgentScopeRuntimeWebUIRef,
 } from "@agentscope-ai/chat";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Alert, Button, Dropdown, Modal, Result, Tooltip } from "antd";
+import { Group, Panel, Separator } from "react-resizable-panels";
+import type { GroupImperativeHandle } from "react-resizable-panels";
+import { GripHorizontal, GripVertical } from "lucide-react";
 import { useAppMessage } from "../../hooks/useAppMessage";
 import { ExclamationCircleOutlined, SettingOutlined } from "@ant-design/icons";
 import {
@@ -44,6 +54,11 @@ import ChatHomeWelcome from "./components/ChatHomeWelcome";
 import ChatActionGroup from "./components/ChatActionGroup";
 import ChatHeaderTitle from "./components/ChatHeaderTitle";
 import ChatSearchPanel from "./components/ChatSearchPanel";
+import ChatFilePreview from "./components/ChatFilePreview";
+import {
+  ChatFilePreviewContext,
+  type ChatPreviewFile,
+} from "./components/ChatFilePreview/context";
 import ChatSessionInitializer from "./components/ChatSessionInitializer";
 import { ApprovalCard } from "../../components/ApprovalCard/ApprovalCard";
 import { commandsApi } from "../../api/modules/commands";
@@ -60,6 +75,7 @@ import {
 import { ChatScalar, ChatList } from "../../plugins/registry/slotKeys";
 import { HostRequestCard, HostResponseCard } from "./HostBubbles";
 import { withGenericFallback } from "../../components/Chat/ToolCards/adapters/v1Adapter";
+import AgentScopeSwitcher from "../../components/AgentScopeSwitcher";
 
 interface SenderSkillsMenuProps {
   skills: Array<{ name: string; description?: string }>;
@@ -156,7 +172,6 @@ import {
   getSessionIdFromPath,
   buildSessionPath,
 } from "../../utils/sessionRoute";
-import { openExternalLink } from "../../utils/openExternalLink";
 import { useUploadLimitStore } from "../../stores/uploadLimitStore";
 import MessageQueuePanel from "./components/MessageQueuePanel";
 import {
@@ -1075,6 +1090,27 @@ const timestampStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+const STACKED_FILE_PREVIEW_QUERY = "(max-width: 900px)";
+
+function useStackedFilePreview(): boolean {
+  const [stacked, setStacked] = useState(() =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia(STACKED_FILE_PREVIEW_QUERY).matches
+      : false,
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(STACKED_FILE_PREVIEW_QUERY);
+    const handleChange = (event: MediaQueryListEvent) =>
+      setStacked(event.matches);
+    setStacked(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
+
+  return stacked;
+}
+
 export default function ChatPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -1123,6 +1159,54 @@ export default function ChatPage() {
     }>
   >([]);
   const { selectedAgent } = useAgentStore();
+  const stackedFilePreview = useStackedFilePreview();
+  const [previewFile, setPreviewFile] = useState<ChatPreviewFile | null>(null);
+  const [fullWidthFilePreview, setFullWidthFilePreview] = useState(false);
+  const splitGroupRef = useRef<GroupImperativeHandle>(null);
+  const previewRestoreSizeRef = useRef(38);
+  const restorePreviewLayoutRef = useRef(false);
+  const openFilePreview = useCallback(
+    (file: ChatPreviewFile) => setPreviewFile(file),
+    [],
+  );
+  const closeFilePreview = useCallback(() => {
+    setFullWidthFilePreview(false);
+    restorePreviewLayoutRef.current = false;
+    setPreviewFile(null);
+  }, []);
+  const toggleFullWidthFilePreview = useCallback(() => {
+    if (!fullWidthFilePreview) {
+      previewRestoreSizeRef.current =
+        splitGroupRef.current?.getLayout()["file-preview"] ??
+        (stackedFilePreview ? 56 : 38);
+      setFullWidthFilePreview(true);
+      return;
+    }
+
+    restorePreviewLayoutRef.current = true;
+    setFullWidthFilePreview(false);
+  }, [fullWidthFilePreview, stackedFilePreview]);
+
+  useLayoutEffect(() => {
+    if (!previewFile || !splitGroupRef.current) return;
+
+    if (fullWidthFilePreview) {
+      splitGroupRef.current.setLayout({
+        conversation: 0,
+        "file-preview": 100,
+      });
+      return;
+    }
+
+    if (restorePreviewLayoutRef.current) {
+      const previewSize = previewRestoreSizeRef.current;
+      splitGroupRef.current.setLayout({
+        conversation: 100 - previewSize,
+        "file-preview": previewSize,
+      });
+      restorePreviewLayoutRef.current = false;
+    }
+  }, [fullWidthFilePreview, previewFile, stackedFilePreview]);
   const { toolRenderConfig } = usePlugins();
   const extScalar = useChatScalarSnapshot();
   const extLists = useChatListSnapshot();
@@ -1985,12 +2069,22 @@ export default function ChatPage() {
   // ── End Message Queue ───────────────────────────────────────────────────
 
   const onFileCardClick = useCallback(
-    (fileInfo: { name?: string; size?: number; url?: string }) => {
+    (fileInfo: {
+      name?: string;
+      size?: number;
+      type?: string;
+      url?: string;
+    }) => {
       if (fileInfo.url) {
-        openExternalLink(fileInfo.url);
+        openFilePreview({
+          name: fileInfo.name,
+          size: fileInfo.size,
+          type: fileInfo.type,
+          url: fileInfo.url,
+        });
       }
     },
-    [],
+    [openFilePreview],
   );
 
   // Shortcut key for voice recording (Ctrl+Shift+M or Cmd+Shift+M on Mac)
@@ -2780,6 +2874,7 @@ export default function ChatPage() {
               onLoadingChange={setChatLoading}
             />
             <div className={styles.chatHeaderLeading}>
+              <AgentScopeSwitcher />
               {chatId ? (
                 <span className={styles.chatConversationTitle}>
                   <ChatHeaderTitle />
@@ -3092,129 +3187,213 @@ export default function ChatPage() {
   ]);
 
   return (
-    <div className={styles.chatPageRoot}>
-      {/* Main chat area */}
-      <div className={styles.chatMainArea}>
-        <div
-          className={
-            isWideMode
-              ? `${styles.chatMessagesArea} ${styles.wideMode}`
-              : styles.chatMessagesArea
-          }
+    <ChatFilePreviewContext.Provider value={openFilePreview}>
+      <div className={styles.chatPageRoot}>
+        <Group
+          groupRef={splitGroupRef}
+          className={`${styles.chatSplitGroup} ${
+            stackedFilePreview ? styles.chatSplitGroupStacked : ""
+          }`}
+          orientation={stackedFilePreview ? "vertical" : "horizontal"}
         >
-          <AgentScopeRuntimeWebUI
-            ref={chatRef}
-            key={refreshKey}
-            options={options}
-          />
-        </div>
-
-        {/* Rate-limit guidance banner */}
-        {rateLimitAlternatives.length > 0 && (
-          <div className={styles.rateLimitBanner}>
-            <span className={styles.rateLimitText}>
-              {t("chat.rateLimitMessage")}
-            </span>
-            <div className={styles.rateLimitActions}>
-              {canManageModels &&
-                rateLimitAlternatives.slice(0, 3).map((alt) => (
-                  <Button
-                    key={`${alt.provider_id}/${alt.model_id}`}
-                    size="small"
-                    type="default"
-                    onClick={async () => {
-                      try {
-                        await providerApi.setActiveLlm({
-                          provider_id: alt.provider_id,
-                          model: alt.model_id,
-                          scope: "agent",
-                          agent_id: selectedAgent,
-                        });
-                        window.dispatchEvent(new CustomEvent("model-switched"));
-                        message.success(
-                          t("chat.rateLimitSwitched", {
-                            model: alt.model_name,
-                          }),
-                        );
-                        setRateLimitAlternatives([]);
-                      } catch {
-                        message.error(t("modelSelector.switchFailed"));
-                      }
-                    }}
-                  >
-                    {alt.model_name}
-                  </Button>
-                ))}
-              <Button
-                size="small"
-                type="link"
-                onClick={() => setRateLimitAlternatives([])}
-              >
-                {t("common.close")}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        <Modal
-          open={showModelPrompt}
-          closable={false}
-          footer={null}
-          width={480}
-          styles={{
-            content: isDark
-              ? {
-                  background: "#1f1f1f",
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+          <Panel
+            id="conversation"
+            className={styles.chatSplitPanel}
+            defaultSize={
+              previewFile ? (stackedFilePreview ? "44%" : "62%") : "100%"
+            }
+            minSize={
+              fullWidthFilePreview
+                ? 0
+                : previewFile
+                ? stackedFilePreview
+                  ? "180px"
+                  : "420px"
+                : 0
+            }
+          >
+            {/* Main chat area */}
+            <div className={styles.chatMainArea}>
+              <div
+                className={
+                  isWideMode
+                    ? `${styles.chatMessagesArea} ${styles.wideMode}`
+                    : styles.chatMessagesArea
                 }
-              : undefined,
-          }}
-        >
-          <Result
-            icon={<ExclamationCircleOutlined style={{ color: "#faad14" }} />}
-            title={
-              <span
-                style={{ color: isDark ? "rgba(255,255,255,0.88)" : undefined }}
               >
-                {t("modelConfig.promptTitle")}
-              </span>
-            }
-            subTitle={
-              <span
-                style={{ color: isDark ? "rgba(255,255,255,0.55)" : undefined }}
-              >
-                {t("modelConfig.promptMessage")}
-              </span>
-            }
-            extra={
-              <>
-                <Button key="skip" onClick={() => setShowModelPrompt(false)}>
-                  {t("modelConfig.skipButton")}
-                </Button>
-                {canManageModels && (
-                  <Button
-                    key="configure"
-                    type="primary"
-                    icon={<SettingOutlined />}
-                    onClick={() => {
-                      setShowModelPrompt(false);
-                      navigate("/models");
-                    }}
-                  >
-                    {t("modelConfig.configureButton")}
-                  </Button>
-                )}
-              </>
-            }
-          />
-        </Modal>
-      </div>
-      {/* End of main chat area */}
+                <AgentScopeRuntimeWebUI
+                  ref={chatRef}
+                  key={refreshKey}
+                  options={options}
+                />
+              </div>
 
-      <ChatSearchPanel
-        open={searchPanelOpen}
-        onClose={() => setSearchPanelOpen(false)}
-      />
-    </div>
+              {/* Rate-limit guidance banner */}
+              {rateLimitAlternatives.length > 0 && (
+                <div className={styles.rateLimitBanner}>
+                  <span className={styles.rateLimitText}>
+                    {t("chat.rateLimitMessage")}
+                  </span>
+                  <div className={styles.rateLimitActions}>
+                    {canManageModels &&
+                      rateLimitAlternatives.slice(0, 3).map((alt) => (
+                        <Button
+                          key={`${alt.provider_id}/${alt.model_id}`}
+                          size="small"
+                          type="default"
+                          onClick={async () => {
+                            try {
+                              await providerApi.setActiveLlm({
+                                provider_id: alt.provider_id,
+                                model: alt.model_id,
+                                scope: "agent",
+                                agent_id: selectedAgent,
+                              });
+                              window.dispatchEvent(
+                                new CustomEvent("model-switched"),
+                              );
+                              message.success(
+                                t("chat.rateLimitSwitched", {
+                                  model: alt.model_name,
+                                }),
+                              );
+                              setRateLimitAlternatives([]);
+                            } catch {
+                              message.error(t("modelSelector.switchFailed"));
+                            }
+                          }}
+                        >
+                          {alt.model_name}
+                        </Button>
+                      ))}
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={() => setRateLimitAlternatives([])}
+                    >
+                      {t("common.close")}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <Modal
+                open={showModelPrompt}
+                closable={false}
+                footer={null}
+                width={480}
+                styles={{
+                  content: isDark
+                    ? {
+                        background: "#1f1f1f",
+                        boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+                      }
+                    : undefined,
+                }}
+              >
+                <Result
+                  icon={
+                    <ExclamationCircleOutlined style={{ color: "#faad14" }} />
+                  }
+                  title={
+                    <span
+                      style={{
+                        color: isDark ? "rgba(255,255,255,0.88)" : undefined,
+                      }}
+                    >
+                      {t("modelConfig.promptTitle")}
+                    </span>
+                  }
+                  subTitle={
+                    <span
+                      style={{
+                        color: isDark ? "rgba(255,255,255,0.55)" : undefined,
+                      }}
+                    >
+                      {t("modelConfig.promptMessage")}
+                    </span>
+                  }
+                  extra={
+                    <>
+                      <Button
+                        key="skip"
+                        onClick={() => setShowModelPrompt(false)}
+                      >
+                        {t("modelConfig.skipButton")}
+                      </Button>
+                      {canManageModels && (
+                        <Button
+                          key="configure"
+                          type="primary"
+                          icon={<SettingOutlined />}
+                          onClick={() => {
+                            setShowModelPrompt(false);
+                            navigate("/models");
+                          }}
+                        >
+                          {t("modelConfig.configureButton")}
+                        </Button>
+                      )}
+                    </>
+                  }
+                />
+              </Modal>
+            </div>
+            {/* End of main chat area */}
+          </Panel>
+
+          {previewFile && (
+            <>
+              <Separator
+                id="file-preview-separator"
+                className={`${styles.chatSplitHandle} ${
+                  fullWidthFilePreview ? styles.chatSplitHandleHidden : ""
+                }`}
+                disabled={fullWidthFilePreview}
+                aria-label={t("preview.resize")}
+              >
+                {stackedFilePreview ? (
+                  <GripHorizontal size={14} aria-hidden />
+                ) : (
+                  <GripVertical size={14} aria-hidden />
+                )}
+              </Separator>
+              <Panel
+                id="file-preview"
+                className={styles.chatSplitPanel}
+                defaultSize={stackedFilePreview ? "56%" : "38%"}
+                minSize={
+                  fullWidthFilePreview
+                    ? "100%"
+                    : stackedFilePreview
+                    ? "240px"
+                    : "360px"
+                }
+                maxSize={
+                  fullWidthFilePreview
+                    ? "100%"
+                    : stackedFilePreview
+                    ? "72%"
+                    : "68%"
+                }
+                groupResizeBehavior="preserve-pixel-size"
+              >
+                <ChatFilePreview
+                  file={previewFile}
+                  fullWidth={fullWidthFilePreview}
+                  onClose={closeFilePreview}
+                  onToggleFullWidth={toggleFullWidthFilePreview}
+                />
+              </Panel>
+            </>
+          )}
+        </Group>
+
+        <ChatSearchPanel
+          open={searchPanelOpen}
+          onClose={() => setSearchPanelOpen(false)}
+        />
+      </div>
+    </ChatFilePreviewContext.Provider>
   );
 }

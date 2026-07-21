@@ -14,12 +14,12 @@ metadata:
 
 ## 前置依赖
 
-- **docx** (`npm install -g docx`): 新文档创建
+- **docx**: 由 MelonPaw 沙箱运行时预装，用于新文档创建
 - **LibreOffice** (`soffice`): `.doc` -> `.docx` 转换、修订接受和 PDF 导出
 - **pandoc**: 文本提取
 - **pdftoppm** (poppler-utils): 文档转图片工作流
 - 如果 `pdftoppm` 不可用，Python 备用路径可能使用 `pdf2image`。
-- 在 Windows 上，依赖项必须已安装并在 `PATH` 中可用；如缺失，请报告依赖问题并停止（不要反复重试）。
+- 依赖项缺失时应报告运行环境问题并停止；不得在对话执行期间安装或升级依赖。
 
 ## 概述
 
@@ -70,7 +70,7 @@ python scripts/accept_changes.py input.docx output.docx
 
 ## 创建新文档
 
-使用 JavaScript 生成 .docx 文件，然后进行验证。安装: `npm install -g docx`
+使用沙箱运行时预装的 `docx` 生成 .docx 文件，然后进行验证。
 
 ### 初始设置
 ```javascript

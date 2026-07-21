@@ -1951,6 +1951,12 @@
     }
   },
   "chat": {
+    "projectScope": "Espaço do projeto",
+    "personalScope": "Espaço pessoal",
+    "agentScope": "Espaço do agente",
+    "scopeTooltip": "Conversa atual: {{name}}",
+    "switchScope": "Alternar espaço de trabalho",
+    "scopeEmpty": "Nenhum espaço de trabalho disponível",
     "modelSelectTooltip": "Selecionar Modelo",
     "newChatTooltip": "Novo Chat",
     "shareConversationTooltip": "Compartilhar conversa",
@@ -2531,6 +2537,20 @@
     "retry": "Tentar novamente"
   },
   "preview": {
+    "fileTitle": "Visualização do arquivo",
+    "downloadHint": "Use o botão de download no canto superior direito para salvar este arquivo.",
+    "fullWidth": "Expandir visualização para a largura total",
+    "restoreSplit": "Restaurar visualização dividida",
+    "unsupported": "Este tipo de arquivo não pode ser visualizado aqui",
+    "textTooLarge": "Este arquivo de texto é grande demais para visualização direta",
+    "officeTooLarge": "Este arquivo do Office excede o limite de 20 MB para visualização direta",
+    "resize": "Redimensionar visualização do arquivo",
+    "spreadsheet": {
+      "worksheets": "Planilhas",
+      "summary": "{{rows}} linhas / {{columns}} colunas",
+      "empty": "Esta planilha não contém dados para exibir",
+      "truncated": "Para manter a visualização responsiva, somente as primeiras {{rows}} linhas e {{columns}} colunas são exibidas"
+    },
     "error": {
       "SENSITIVE_FILE_BLOCKED": "Este arquivo está bloqueado pelo File Guard (proteção de arquivos sensíveis).",
       "OUTSIDE_WORKSPACE": "Este arquivo está fora do escopo do workspace. Ative \"Permitir Preview Fora do Workspace no Console\" em Configurações → Segurança → File Guard.",

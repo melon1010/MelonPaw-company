@@ -85,11 +85,26 @@ export function isApprovalRequestMessage(
   return message.type === ConversationMessageType.MCP_APPROVAL_REQUEST;
 }
 
+export function isProgressMessage(
+  message: IAgentScopeRuntimeMessage,
+): boolean {
+  const metadata = (
+    message as IAgentScopeRuntimeMessage & {
+      metadata?: Record<string, unknown> | null;
+    }
+  ).metadata;
+  return (
+    message.type === ConversationMessageType.MESSAGE &&
+    metadata?.phase === "progress"
+  );
+}
+
 export function isConversationProcessMessage(
   message: IAgentScopeRuntimeMessage,
 ): boolean {
   return (
     message.type === ConversationMessageType.REASONING ||
+    isProgressMessage(message) ||
     message.type === ConversationMessageType.MCP_APPROVAL_REQUEST ||
     message.type === ConversationMessageType.MCP_APPROVAL_RESPONSE ||
     isToolInputMessage(message) ||
@@ -115,6 +130,14 @@ export function getToolName(message: IAgentScopeRuntimeMessage): string {
     return candidate.trim();
   }
   return isApprovalRequestMessage(message) ? "mcp_approval_request" : "tool";
+}
+
+export function isPersistentToolResultMessage(
+  message: IAgentScopeRuntimeMessage,
+): boolean {
+  return (
+    isToolOutputMessage(message) && getToolName(message) === "send_file_to_user"
+  );
 }
 
 function getToolMessageKey(message: IAgentScopeRuntimeMessage): string | null {
@@ -226,7 +249,12 @@ export function hasVisibleAnswerContent(
   messages: IAgentScopeRuntimeMessage[],
 ): boolean {
   return messages.some((message) => {
-    if (message.type !== ConversationMessageType.MESSAGE) return false;
+    if (
+      message.type !== ConversationMessageType.MESSAGE ||
+      isProgressMessage(message)
+    ) {
+      return false;
+    }
     return (message.content ?? []).some((content) => {
       if (content.type === ConversationContentType.DATA) return false;
       if (

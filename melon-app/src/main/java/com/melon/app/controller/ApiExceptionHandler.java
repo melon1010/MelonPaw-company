@@ -27,6 +27,19 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(409).body(Map.of("detail", e.getMessage()));
     }
 
+    @ExceptionHandler(EnterpriseTaskService.ActiveTaskConflictException.class)
+    public ResponseEntity<Map<String, Object>> activeTaskConflict(
+            EnterpriseTaskService.ActiveTaskConflictException e) {
+        return ResponseEntity.status(409).body(Map.of(
+                "detail", e.getMessage(),
+                "code", "ACTIVE_TASK",
+                "task_id", e.taskId(),
+                "run_id", e.runId(),
+                "session_id", e.sessionId(),
+                "status", e.status(),
+                "reconnect", true));
+    }
+
     @ExceptionHandler(EnterpriseQuotaService.QuotaExceededException.class)
     public ResponseEntity<Map<String, Object>> quotaExceeded(
             EnterpriseQuotaService.QuotaExceededException e) {

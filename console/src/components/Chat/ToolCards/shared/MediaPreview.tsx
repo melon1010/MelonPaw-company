@@ -7,13 +7,15 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { Attachments } from "@agentscope-ai/chat";
+import type { Attachment } from "@agentscope-ai/chat/lib/Attachments";
 import { Audio, Video } from "@agentscope-ai/design";
 import { Image, ConfigProvider, Alert } from "antd";
 import type { Locale } from "antd/es/locale";
-import { DownloadOutlined } from "@ant-design/icons";
+import { PanelRightOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { MediaInfo } from "./utils";
 import { openExternalLink } from "../../../../utils/openExternalLink";
+import { useChatFilePreview } from "../../../../pages/Chat/components/ChatFilePreview/context";
 import styles from "./toolCards.module.less";
 
 export interface MediaPreviewProps {
@@ -36,6 +38,7 @@ async function fetchPreviewError(
 
 const MediaPreview: React.FC<MediaPreviewProps> = ({ media }) => {
   const { t } = useTranslation();
+  const openFilePreview = useChatFilePreview();
   const [error, setError] = useState<string | null>(null);
 
   const resolveError = useCallback(
@@ -60,6 +63,15 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ media }) => {
   const handleMediaError = useCallback(() => {
     fetchPreviewError(media.url).then(resolveError);
   }, [media.url, resolveError]);
+
+  const handleFilePreview = useCallback(() => {
+    if (!media.url) return;
+    if (openFilePreview) {
+      openFilePreview({ name: media.name, url: media.url });
+      return;
+    }
+    openExternalLink(media.url);
+  }, [media.name, media.url, openFilePreview]);
 
   // For "file" type there is no native onError — proactively HEAD-check the URL
   useEffect(() => {
@@ -114,7 +126,19 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ media }) => {
         </div>
       )}
       {media.type === "file" && (
-        <div className={styles.bubbleFile}>
+        <div
+          className={styles.bubbleFile}
+          role="button"
+          tabIndex={0}
+          aria-label={`${t("common.preview")}: ${media.name}`}
+          onClick={handleFilePreview}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              handleFilePreview();
+            }
+          }}
+        >
           <Attachments.FileCard
             item={
               {
@@ -122,17 +146,12 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ media }) => {
                 name: media.name,
                 url: media.url,
                 status: "done",
-              } as any
+              } satisfies Attachment
             }
           />
-          {media.url && (
-            <div
-              className={styles.bubbleFileDownload}
-              onClick={() => openExternalLink(media.url)}
-            >
-              <DownloadOutlined />
-            </div>
-          )}
+          <span className={styles.bubbleFilePreviewAction} aria-hidden="true">
+            <PanelRightOpen size={16} />
+          </span>
         </div>
       )}
     </div>

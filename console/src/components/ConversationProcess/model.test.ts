@@ -6,6 +6,8 @@ import {
   ConversationRunStatus,
   buildConversationRenderSegments,
   isConversationProcessMessage,
+  isProgressMessage,
+  isPersistentToolResultMessage,
   pairToolMessages,
 } from "./model";
 
@@ -70,6 +72,31 @@ describe("ConversationProcess model", () => {
     ).toBe("search");
   });
 
+  it("keeps sent file results visible outside the collapsed process", () => {
+    const input = message("file-call", ConversationMessageType.TOOL_CALL, [
+      toolContent({
+        call_id: "file-1",
+        name: "send_file_to_user",
+        arguments: { file_path: "report.pdf" },
+      }),
+    ]);
+    const output = message(
+      "file-output",
+      ConversationMessageType.TOOL_CALL_OUTPUT,
+      [
+        toolContent({
+          call_id: "file-1",
+          name: "send_file_to_user",
+          output: [{ type: "file", url: "/preview/report.pdf" }],
+        }),
+      ],
+    );
+
+    const [paired] = pairToolMessages([input, output]);
+
+    expect(isPersistentToolResultMessage(paired)).toBe(true);
+  });
+
   it("classifies reasoning, tools and approval as process messages", () => {
     const content = [toolContent({ name: "tool" })];
 
@@ -116,5 +143,31 @@ describe("ConversationProcess model", () => {
       "answer",
     ]);
     expect(segments[0].messages).toHaveLength(2);
+  });
+
+  it("keeps non-terminal assistant narration in the process segment", () => {
+    const progress = {
+      ...message("progress", ConversationMessageType.MESSAGE, [
+        {
+          type: ConversationContentType.TEXT,
+          text: "I will inspect the workspace.",
+          status: ConversationRunStatus.COMPLETED,
+        },
+      ]),
+      metadata: { phase: "progress", terminal: false, turn_id: "turn-1" },
+    } as IAgentScopeRuntimeMessage & {
+      metadata: Record<string, unknown>;
+    };
+    const answer = message("answer", ConversationMessageType.MESSAGE, [
+      {
+        type: ConversationContentType.TEXT,
+        text: "Done.",
+        status: ConversationRunStatus.COMPLETED,
+      },
+    ]);
+
+    expect(isProgressMessage(progress)).toBe(true);
+    expect(buildConversationRenderSegments([progress, answer]).map((segment) => segment.type))
+      .toEqual(["process", "answer"]);
   });
 });

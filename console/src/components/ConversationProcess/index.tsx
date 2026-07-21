@@ -36,6 +36,7 @@ import {
   getToolData,
   getToolName,
   isApprovalRequestMessage,
+  isProgressMessage,
   isToolInputMessage,
   isToolOutputMessage,
 } from "./model";
@@ -394,7 +395,8 @@ export default function ConversationProcess({
       {open && messages.length ? (
         <div className={styles.timeline}>
           {visibleMessages.map((message) =>
-            message.type === ConversationMessageType.REASONING ? (
+            message.type === ConversationMessageType.REASONING ||
+            isProgressMessage(message) ? (
               <ReasoningStep key={message.id} message={message} />
             ) : (
               <ToolStep
@@ -436,5 +438,6 @@ export default function ConversationProcess({
 export {
   buildConversationRenderSegments,
   hasVisibleAnswerContent,
+  isPersistentToolResultMessage,
   pairToolMessages,
 } from "./model";

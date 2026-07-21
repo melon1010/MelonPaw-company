@@ -187,24 +187,31 @@
 .bubbleFile {
   position: relative;
   display: inline-block;
-}
-
-.bubbleFileDownload {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1;
-  opacity: 0;
-  font-size: 16px;
   border-radius: 6px;
   cursor: pointer;
-  color: #fff;
-  transition: opacity 0.2s;
+  outline: none;
 
-  .bubbleFile:hover & {
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--mp-primary);
+  }
+}
+
+.bubbleFilePreviewAction {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  align-items: center;
+  color: var(--mp-primary-contrast);
+  background: color-mix(in srgb, var(--mp-primary) 82%, transparent);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+
+  .bubbleFile:hover &,
+  .bubbleFile:focus-visible & {
     opacity: 1;
   }
 }

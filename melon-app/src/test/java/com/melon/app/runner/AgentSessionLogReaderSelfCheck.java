@@ -110,6 +110,11 @@ public final class AgentSessionLogReaderSelfCheck {
         if (!"reasoning".equals(messages.get(1).get("type")) || !"message".equals(messages.get(2).get("type"))) {
             throw new AssertionError("thinking/text order mismatch: " + messages);
         }
+        Map<?, ?> finalMetadata = (Map<?, ?>) messages.get(2).get("metadata");
+        if (!"final".equals(finalMetadata.get("phase"))
+                || !Boolean.TRUE.equals(finalMetadata.get("terminal"))) {
+            throw new AssertionError("last text before a tool was not retained as the final answer: " + finalMetadata);
+        }
         if (!"plugin_call".equals(messages.get(3).get("type"))) {
             throw new AssertionError("tool call was not converted from state");
         }
@@ -144,6 +149,9 @@ public final class AgentSessionLogReaderSelfCheck {
         }
         if (!"plugin_call".equals(messages.get(2).get("type"))) {
             throw new AssertionError("tool call was not converted");
+        }
+        if (!"final".equals(((Map<?, ?>) messages.get(1).get("metadata")).get("phase"))) {
+            throw new AssertionError("last log text before a tool was not retained as final: " + messages.get(1));
         }
         Map<?, ?> callData = (Map<?, ?>) ((Map<?, ?>) ((List<?>) messages.get(2).get("content")).get(0)).get("data");
         if (!"execute_shell_command".equals(callData.get("name"))) {

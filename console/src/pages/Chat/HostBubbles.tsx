@@ -55,8 +55,10 @@ import type {
 import ConversationProcess, {
   buildConversationRenderSegments,
   hasVisibleAnswerContent,
+  isPersistentToolResultMessage,
   pairToolMessages,
 } from "../../components/ConversationProcess";
+import styles from "./HostBubbles.module.less";
 
 function sortByOrder<T extends { item: { order?: number } }>(arr: T[]): T[] {
   return arr
@@ -152,21 +154,35 @@ function HostDefaultResponseCard({
         const segmentKey =
           segment.messages[0]?.id ??
           `process-${index}-${segment.messages.length}`;
+        const persistentResults = segment.messages.filter(
+          isPersistentToolResultMessage,
+        );
 
         return (
-          <ConversationProcess
-            key={segmentKey}
-            messages={segment.messages}
-            hasAnswerContent={isComplete}
-            isGenerating={isGenerating && !isComplete}
-            renderToolDetails={(message, context) =>
-              context.isApprovalRequest ? (
-                <VendorApproval data={message} />
-              ) : (
-                <VendorTool data={message} />
-              )
-            }
-          />
+          <React.Fragment key={segmentKey}>
+            <ConversationProcess
+              messages={segment.messages}
+              hasAnswerContent={isComplete}
+              isGenerating={isGenerating && !isComplete}
+              renderToolDetails={(message, context) => {
+                if (isPersistentToolResultMessage(message)) return null;
+                return context.isApprovalRequest ? (
+                  <VendorApproval data={message} />
+                ) : (
+                  <VendorTool data={message} />
+                );
+              }}
+            />
+            {persistentResults.length ? (
+              <div className={styles.persistentResults}>
+                {persistentResults.map((message) => (
+                  <div key={message.id} className={styles.persistentResult}>
+                    <VendorTool data={message} />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </React.Fragment>
         );
       })}
       {data.error ? <VendorResponseError data={data.error} /> : null}

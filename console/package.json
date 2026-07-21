@@ -35,6 +35,7 @@
     "antd": "^5.29.1",
     "antd-style": "^3.7.1",
     "dayjs": "^1.11.13",
+    "docx-preview": "^0.4.0",
     "i18next": "^25.8.4",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
@@ -49,6 +50,7 @@
     "react-router-dom": "^7.13.0",
     "react-syntax-highlighter": "^16.1.1",
     "react-window": "^1.8.10",
+    "read-excel-file": "^9.3.3",
     "remark-gfm": "^4.0.1",
     "zustand": "^5.0.3"
   },

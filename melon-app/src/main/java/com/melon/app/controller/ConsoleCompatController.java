@@ -47,6 +47,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 import java.util.UUID;
@@ -162,7 +163,7 @@ public class ConsoleCompatController {
                 ? new UserMessage(effectiveText)
                 : ConversationVisibility.modelOnlyUserMessage(effectiveText, "skill_expansion"));
         MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId, task.taskId(), task.runId());
-        AtomicReference<Throwable> taskFailure = new AtomicReference<>();
+        AtomicBoolean taskSettled = new AtomicBoolean();
         AtomicReference<Flux<ServerSentEvent<String>>> detachedRef = new AtomicReference<>();
         Flux<io.agentscope.core.event.AgentEvent> agentEvents;
         if (loopCommand) {
@@ -180,27 +181,35 @@ public class ConsoleCompatController {
         Flux<ServerSentEvent<String>> execution = agentEvents
                 .doOnSubscribe(s -> log.info("Console chat started: agent={}, user={}, session={}, chat={}", agentId, userId, sessionId, chatId))
                 .flatMapIterable(envelope::translate)
-                .concatWith(Flux.defer(() -> Flux.fromIterable(envelope.finish())))
+                .concatWith(Flux.defer(() -> {
+                    List<ServerSentEvent<String>> completedEvents = envelope.finish();
+                    persistConsoleSession(agentId, channel, userId, sessionId,
+                            frontendContext, envelope, false);
+                    taskService.succeed(task, envelope.visibleAssistantText());
+                    taskSettled.set(true);
+                    markConsoleChatIdle(agentId, chatId, sessionId);
+                    return Flux.fromIterable(completedEvents);
+                }))
                 .startWith(envelope.start())
                 .onErrorResume(e -> {
-                    taskFailure.set(e);
                     log.error("Console chat failed: agent={}, user={}, session={}, chat={}", agentId, userId, sessionId, chatId, e);
                     List<ServerSentEvent<String>> errorEvents = envelope.error(e);
+                    persistConsoleSession(agentId, channel, userId, sessionId,
+                            frontendContext, envelope, true);
+                    if (taskSettled.compareAndSet(false, true)) {
+                        taskService.fail(task, e);
+                    }
+                    markConsoleChatIdle(agentId, chatId, sessionId);
                     return Flux.fromIterable(errorEvents);
                 })
                 .doFinally(signal -> {
                     try {
-                        chatManager.setStatus(agentId, chatId, "idle");
-                        chatManager.saveSessionShadowFromStateStore(agentId, channel, userId, sessionId,
-                                sessionContext(frontendContext, envelope.outputStateMessagesSnapshot()), envelope.turnUsageSnapshot());
-                        if (signal == reactor.core.publisher.SignalType.CANCEL) {
-                            // The HTTP subscriber may disappear when the user changes menu.
-                            // Only an explicit stop request cancels this detached execution.
+                        if (signal == reactor.core.publisher.SignalType.CANCEL
+                                && taskSettled.compareAndSet(false, true)) {
+                            persistConsoleSession(agentId, channel, userId, sessionId,
+                                    frontendContext, envelope, true);
                             taskService.cancel(task, "execution cancelled");
-                        } else if (taskFailure.get() != null) {
-                            taskService.fail(task, taskFailure.get());
-                        } else {
-                            taskService.succeed(task, envelope.visibleAssistantText());
+                            markConsoleChatIdle(agentId, chatId, sessionId);
                         }
                     } finally {
                         Flux<ServerSentEvent<String>> detached = detachedRef.get();
@@ -220,6 +229,31 @@ public class ConsoleCompatController {
                 "Detached console chat stream ended unexpectedly: agent={}, session={}, task={}",
                 agentId, sessionId, task.taskId(), error));
         return detached;
+    }
+
+    private void persistConsoleSession(
+            String agentId, String channel, String userId, String sessionId,
+            List<Map<String, Object>> frontendContext, MelonPawEnvelopeMapper envelope,
+            boolean recoverEnvelopeOutput) {
+        try {
+            List<Map<String, Object>> recovery = recoverEnvelopeOutput
+                    ? envelope.outputStateMessagesSnapshot() : List.of();
+            chatManager.saveSessionShadowFromStateStore(agentId, channel, userId, sessionId,
+                    sessionContext(frontendContext, recovery),
+                    envelope.turnUsageSnapshot());
+        } catch (RuntimeException e) {
+            log.warn("Failed to persist console session before completion: agent={}, session={}",
+                    agentId, sessionId, e);
+        }
+    }
+
+    private void markConsoleChatIdle(String agentId, String chatId, String sessionId) {
+        try {
+            chatManager.setStatus(agentId, chatId, "idle");
+        } catch (RuntimeException e) {
+            log.warn("Failed to mark console chat idle: agent={}, session={}, chat={}",
+                    agentId, sessionId, chatId, e);
+        }
     }
 
     private String consoleStreamKey(String agentId, String userId, String channel, String sessionId) {

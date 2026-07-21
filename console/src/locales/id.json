@@ -121,6 +121,12 @@
     "unauthorized": "Tidak berwenang, silakan masuk"
   },
   "chat": {
+    "projectScope": "Ruang proyek",
+    "personalScope": "Ruang pribadi",
+    "agentScope": "Ruang agen",
+    "scopeTooltip": "Percakapan saat ini: {{name}}",
+    "switchScope": "Ganti ruang kerja",
+    "scopeEmpty": "Tidak ada ruang kerja yang tersedia",
     "modelSelectTooltip": "Pilih model",
     "newChatTooltip": "Chat baru",
     "shareConversationTooltip": "Bagikan percakapan",
@@ -862,6 +868,20 @@
     }
   },
   "preview": {
+    "fileTitle": "Pratinjau file",
+    "downloadHint": "Gunakan tombol unduh di sudut kanan atas untuk menyimpan file ini.",
+    "fullWidth": "Perluas pratinjau ke lebar penuh",
+    "restoreSplit": "Pulihkan tampilan terbagi",
+    "unsupported": "Jenis file ini tidak dapat dipratinjau di sini",
+    "textTooLarge": "File teks ini terlalu besar untuk pratinjau langsung",
+    "officeTooLarge": "File Office ini melebihi batas pratinjau langsung 20 MB",
+    "resize": "Ubah ukuran pratinjau file",
+    "spreadsheet": {
+      "worksheets": "Lembar kerja",
+      "summary": "{{rows}} baris / {{columns}} kolom",
+      "empty": "Lembar kerja ini tidak memiliki data untuk ditampilkan",
+      "truncated": "Agar pratinjau tetap responsif, hanya {{rows}} baris dan {{columns}} kolom pertama yang ditampilkan"
+    },
     "error": {
       "SENSITIVE_FILE_BLOCKED": "File diblokir oleh File Guard (perlindungan file sensitif).",
       "OUTSIDE_WORKSPACE": "File berada di luar cakupan workspace. Aktifkan \"Izinkan Pratinjau Konsol di Luar Workspace\" di Pengaturan → Keamanan → File Guard.",

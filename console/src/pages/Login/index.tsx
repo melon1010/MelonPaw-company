@@ -89,16 +89,20 @@ export default function LoginPage() {
       <aside className={styles.brandPanel} aria-label="MelonPaw-Company">
         <div className={styles.brandLockup}>
           <img className={styles.brandMark} src="/company-mark.svg" alt="" />
-          <span className={styles.brandShortName}>MelonPaw</span>
+          <div className={styles.brandNameGroup}>
+            <span className={styles.brandShortName}>MelonPaw</span>
+            <span className={styles.brandEdition}>COMPANY OS</span>
+          </div>
         </div>
 
         <div className={styles.brandStatement}>
-          <div className={styles.brandSignal} aria-hidden="true">
-            <span />
-            <span />
-          </div>
+          <div className={styles.brandKicker}>PRIVATE AI OPERATIONS</div>
           <h1>MelonPaw-Company</h1>
           <p>{t("enterprise.auth.privateEdition")}</p>
+          <div className={styles.brandCoordinates} aria-hidden="true">
+            <span>MP / 01</span>
+            <span>LOCAL CONTROL PLANE</span>
+          </div>
         </div>
 
         <div className={styles.brandFoot}>MelonPaw Company Console</div>
@@ -106,6 +110,10 @@ export default function LoginPage() {
 
       <main className={styles.authPanel}>
         <section className={styles.authContent} aria-labelledby="login-title">
+          <div className={styles.authEyebrow}>
+            <span className={styles.statusDot} aria-hidden="true" />
+            <span>{t("enterprise.auth.privateEdition")}</span>
+          </div>
           <div className={styles.heading}>
             <h2 id="login-title">
               {isBootstrap

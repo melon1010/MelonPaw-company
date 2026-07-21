@@ -2353,6 +2353,12 @@
     "unpinDrawer": "Unpin",
     "statusIdle": "Idle",
     "statusInProgress": "In progress",
+    "projectScope": "Project space",
+    "personalScope": "Personal space",
+    "agentScope": "Agent space",
+    "scopeTooltip": "This conversation runs with {{name}}",
+    "switchScope": "Switch workspace",
+    "scopeEmpty": "No available workspaces",
     "executionProcess": {
       "starting": "Starting to think",
       "active": "Thinking",
@@ -2974,6 +2980,20 @@
     "executeDefault": "Run tool"
   },
   "preview": {
+    "fileTitle": "File preview",
+    "downloadHint": "Use the download button in the top-right corner to save this file.",
+    "fullWidth": "Expand preview to full width",
+    "restoreSplit": "Restore split view",
+    "unsupported": "This file type cannot be previewed here",
+    "textTooLarge": "This text file is too large for an inline preview",
+    "officeTooLarge": "This Office file exceeds the 20 MB inline preview limit",
+    "resize": "Resize file preview",
+    "spreadsheet": {
+      "worksheets": "Worksheets",
+      "summary": "{{rows}} rows / {{columns}} columns",
+      "empty": "This worksheet has no data to display",
+      "truncated": "For a responsive preview, only the first {{rows}} rows and {{columns}} columns are shown"
+    },
     "error": {
       "SENSITIVE_FILE_BLOCKED": "This file is blocked by File Guard (sensitive file protection).",
       "OUTSIDE_WORKSPACE": "This file is outside the workspace scope. Enable \"Allow Console Preview Outside Workspace\" in Settings → Security → File Guard.",

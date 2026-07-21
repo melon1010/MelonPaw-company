@@ -1,0 +1,452 @@
+.previewPanel {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--mp-text);
+  background: var(--mp-surface);
+}
+
+.previewHeader {
+  min-height: 56px;
+  flex: 0 0 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  background: var(--mp-surface);
+  border-bottom: 1px solid var(--mp-border);
+}
+
+.fileKindIcon,
+.unsupportedIcon,
+.audioIcon {
+  display: grid;
+  place-items: center;
+  color: var(--mp-text-secondary);
+  background: var(--mp-surface-subtle);
+  border: 1px solid var(--mp-border);
+}
+
+.fileKindIcon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 6px;
+}
+
+.fileIdentity {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+
+  strong,
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: var(--mp-text);
+    font-size: 13px;
+    font-weight: 650;
+    line-height: 19px;
+  }
+
+  span {
+    color: var(--mp-text-tertiary);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 14px;
+  }
+}
+
+.previewActions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.iconButton {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--mp-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--mp-text);
+    background: var(--mp-surface-muted);
+    outline: none;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--mp-focus-ring);
+  }
+}
+
+.previewBody {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--mp-canvas);
+}
+
+.previewState,
+.audioStage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 28px;
+  color: var(--mp-text-tertiary);
+  text-align: center;
+
+  strong {
+    max-width: 42ch;
+    color: var(--mp-text);
+    font-size: 14px;
+    font-weight: 650;
+    line-height: 21px;
+  }
+
+  > span:not(.unsupportedIcon, .audioIcon) {
+    max-width: 46ch;
+    color: var(--mp-text-secondary);
+    font-size: 12px;
+    line-height: 19px;
+  }
+}
+
+.unsupportedIcon,
+.audioIcon {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+}
+
+.loadingIcon {
+  animation: preview-spin 900ms linear infinite;
+}
+
+.imageStage,
+.mediaStage {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 20px;
+  overflow: auto;
+  background:
+    linear-gradient(45deg, var(--mp-surface-subtle) 25%, transparent 25%) 0 0 /
+      16px 16px,
+    linear-gradient(-45deg, var(--mp-surface-subtle) 25%, transparent 25%) 0 8px /
+      16px 16px,
+    linear-gradient(45deg, transparent 75%, var(--mp-surface-subtle) 75%) 8px -8px /
+      16px 16px,
+    linear-gradient(-45deg, transparent 75%, var(--mp-surface-subtle) 75%) -8px 0 /
+      16px 16px,
+    var(--mp-canvas);
+}
+
+.imageStage img,
+.mediaStage video {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: var(--mp-shadow-popover);
+}
+
+.mediaStage video {
+  width: min(100%, 960px);
+  background: #000;
+}
+
+.audioStage audio {
+  width: min(100%, 440px);
+  margin-top: 8px;
+}
+
+.documentFrame {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: var(--mp-surface);
+  border: 0;
+}
+
+.officeStage {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: auto;
+  background: var(--mp-canvas);
+}
+
+.docxCanvas {
+  min-width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
+
+  :global(.docx-wrapper) {
+    min-height: 100%;
+    box-sizing: border-box;
+    align-items: flex-start;
+    padding: 24px !important;
+    background: var(--mp-canvas) !important;
+  }
+
+  :global(.docx-wrapper > section.docx) {
+    margin: 0 auto 20px;
+    border: 1px solid rgb(0 0 0 / 10%);
+    box-shadow: 0 5px 18px rgb(0 0 0 / 14%);
+  }
+}
+
+.officeStage > .previewState {
+  position: absolute;
+  inset: 0;
+}
+
+.spreadsheetStage {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--mp-text);
+  background: var(--mp-canvas);
+}
+
+.sheetBar {
+  min-height: 42px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 10px;
+  box-sizing: border-box;
+  background: var(--mp-surface);
+  border-bottom: 1px solid var(--mp-border);
+}
+
+.sheetTabs {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+
+  button {
+    min-width: 0;
+    max-width: 180px;
+    height: 30px;
+    flex: 0 0 auto;
+    padding: 0 10px;
+    overflow: hidden;
+    color: var(--mp-text-secondary);
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    font-size: 12px;
+    line-height: 30px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--mp-text);
+      background: var(--mp-surface-muted);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--mp-focus-ring);
+    }
+  }
+
+  button.activeSheet {
+    color: var(--mp-primary);
+    background: var(--mp-primary-soft);
+    font-weight: 650;
+  }
+}
+
+.sheetSummary {
+  flex: 0 0 auto;
+  color: var(--mp-text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.truncationNotice {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  color: var(--mp-text-secondary);
+  background: var(--mp-primary-soft);
+  border-bottom: 1px solid var(--mp-border);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.sheetViewport {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  scrollbar-width: thin;
+
+  table {
+    width: max-content;
+    min-width: 100%;
+    border-spacing: 0;
+    table-layout: fixed;
+    color: var(--mp-text);
+    background: var(--mp-surface);
+    font-size: 12px;
+  }
+
+  th,
+  td {
+    width: 112px;
+    min-width: 88px;
+    max-width: 320px;
+    height: 30px;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    overflow: hidden;
+    border-right: 1px solid var(--mp-border);
+    border-bottom: 1px solid var(--mp-border);
+    line-height: 19px;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    color: var(--mp-text-secondary);
+    background: var(--mp-surface-muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  tbody th {
+    width: 44px;
+    min-width: 44px;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    color: var(--mp-text-tertiary);
+    background: var(--mp-surface-muted);
+    font-size: 10px;
+    font-weight: 500;
+    text-align: center;
+  }
+
+  td {
+    background: var(--mp-surface);
+  }
+
+  tbody tr:hover td {
+    background: var(--mp-surface-subtle);
+  }
+
+  .sheetCorner {
+    width: 44px;
+    min-width: 44px;
+    left: 0;
+    z-index: 3;
+  }
+}
+
+.textPreview {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 20px 22px 32px;
+  overflow: auto;
+  color: var(--mp-text);
+  background: var(--mp-canvas);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@keyframes preview-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .previewHeader {
+    min-height: 52px;
+    flex-basis: 52px;
+    padding-left: 10px;
+  }
+
+  .fileKindIcon {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  .textPreview {
+    padding: 16px 14px 24px;
+  }
+
+  .docxCanvas :global(.docx-wrapper) {
+    padding: 12px !important;
+  }
+
+  .sheetBar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 2px;
+    padding: 5px 8px;
+  }
+
+  .sheetSummary {
+    padding: 0 4px 3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loadingIcon {
+    animation: none;
+  }
+}
