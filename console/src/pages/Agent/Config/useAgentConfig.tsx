@@ -65,7 +65,6 @@ export function useAgentConfig() {
         memory_manager_backend: memoryBackend,
         auto_title_config: config.auto_title_config ?? {
           enabled: true,
-          timeout_seconds: 30.0,
         },
       });
 
@@ -139,9 +138,7 @@ export function useAgentConfig() {
         ) as typeof original.auto_title_config,
       };
 
-      // These legacy/demo fields are intentionally excluded from the runtime contract.
-      delete (configToSave as Partial<AgentsRunningConfig>).reme_light_memory_config;
-      delete (configToSave as Partial<AgentsRunningConfig>).adbpg_memory_config;
+      // Approval policy is managed by the dedicated security flow.
       delete (configToSave as Partial<AgentsRunningConfig>).approval_level;
 
       await api.updateAgentRunningConfig(configToSave);

@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -55,6 +56,23 @@ public class RoleController {
             @RequestBody(required = false) Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         return blocking(() -> ResponseEntity.ok(save(code, body, principal).toMap()));
+    }
+
+    @DeleteMapping("/{code}")
+    @PreAuthorize("hasAuthority('roles:manage')")
+    public Mono<ResponseEntity<?>> delete(@PathVariable String code) {
+        return blocking(() -> {
+            try {
+                store.deleteCustomRole(code);
+                return ResponseEntity.noContent().build();
+            } catch (EnterpriseIdentityStore.RoleInUseException e) {
+                return ResponseEntity.status(409).body(Map.of(
+                        "detail", e.getMessage(),
+                        "role_code", e.roleCode(),
+                        "user_count", e.userCount()
+                ));
+            }
+        });
     }
 
     private EnterpriseIdentityStore.RoleRecord save(

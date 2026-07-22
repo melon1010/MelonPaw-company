@@ -15,6 +15,8 @@ import reactor.core.publisher.Mono;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
+import java.util.UUID;
 
 /** Replays persisted task input through the existing AgentRunner. */
 @Component
@@ -42,9 +44,54 @@ public class EnterpriseTaskRetryCoordinator {
         String sessionId = text(task.get("session_id"), "default");
         String chatId = text(task.get("chat_id"), "");
         String channel = text(retry.intent().env().get("channel"), "console");
+        launch(retry.intent(), run, agentId, ownerUserId, sessionId, chatId, channel);
+        return run;
+    }
+
+    /** Creates and starts a task that is independent from the interactive chat registry. */
+    public EnterpriseTaskService.TaskRun submit(String ownerUserId, String agentId, String title,
+                                                String prompt, String mode, String idempotencyKey) {
+        String executionMode = switch (text(mode, "agent").toLowerCase(Locale.ROOT)) {
+            case "agent" -> "STREAM";
+            case "goal" -> "LOOP_GOAL";
+            case "mission" -> "LOOP_MISSION";
+            default -> throw new IllegalArgumentException("mode must be agent, goal, or mission");
+        };
+        if (prompt == null || prompt.isBlank()) {
+            throw new IllegalArgumentException("prompt is required");
+        }
+        if (prompt.length() > 100_000) {
+            throw new IllegalArgumentException("prompt is too large");
+        }
+        String sessionId = "task-" + UUID.randomUUID();
+        String requestKey = text(idempotencyKey, UUID.randomUUID().toString());
+        String taskTitle = text(title, prompt.strip().replaceAll("\\s+", " "));
+        if (taskTitle.length() > 200) taskTitle = taskTitle.substring(0, 200);
+        EnterpriseTaskService.TaskRun run = tasks.startForAgent(
+                "AGENT", ownerUserId, agentId, taskTitle, sessionId,
+                "manual", requestKey, null, requestKey);
+        if (!run.created()) {
+            return run;
+        }
+        Map<String, Object> env = new LinkedHashMap<>();
+        env.put("agent_id", agentId);
+        env.put("channel", "task-center");
+        env.put("source", "task-center");
+        env.put("session_id", sessionId);
+        EnterpriseTaskService.RetryIntent intent =
+                new EnterpriseTaskService.RetryIntent(executionMode, prompt, env);
+        tasks.setRetryIntent(run, intent);
+        launch(intent, run, agentId, ownerUserId, sessionId, "", "task-center");
+        return run;
+    }
+
+    private void launch(EnterpriseTaskService.RetryIntent intent,
+                        EnterpriseTaskService.TaskRun run,
+                        String agentId, String ownerUserId, String sessionId,
+                        String chatId, String channel) {
         try {
             if (!chatId.isBlank()) chatManager.setStatus(agentId, chatId, "running");
-            execute(retry.intent(), run, agentId, ownerUserId, sessionId)
+            execute(intent, run, agentId, ownerUserId, sessionId)
                     .doOnSuccess(summary -> tasks.succeed(run, summary))
                     .doOnError(error -> tasks.fail(run, error))
                     .doFinally(signal -> finishChat(agentId, chatId, channel, ownerUserId, sessionId))
@@ -58,7 +105,6 @@ public class EnterpriseTaskRetryCoordinator {
             finishChat(agentId, chatId, channel, ownerUserId, sessionId);
             log.warn("Task retry could not start: task={}, run={}", run.taskId(), run.runId(), error);
         }
-        return run;
     }
 
     private Mono<String> execute(EnterpriseTaskService.RetryIntent intent,

@@ -1,10 +1,9 @@
 import { memo } from "react";
 import { Button } from "@agentscope-ai/design";
 import {
+  CheckCircleOutlined,
   DeleteOutlined,
   DownloadOutlined,
-  PlayCircleOutlined,
-  StopOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import type { LocalModelInfo } from "../../../../../../api/types";
@@ -17,11 +16,9 @@ interface LocalModelRowProps {
   isModelDownloading: boolean;
   isServerBusy: boolean;
   startingModelName: string | null;
-  stoppingServer: boolean;
   deletingModelName: string | null;
   onStartDownload: (model: LocalModelInfo) => void;
-  onStartServer: (model: LocalModelInfo) => void;
-  onStopServer: () => void;
+  onSelectModel: (model: LocalModelInfo) => void;
   onDeleteModel: (model: LocalModelInfo) => void;
 }
 
@@ -31,11 +28,9 @@ export const LocalModelRow = memo(function LocalModelRow({
   isModelDownloading,
   isServerBusy,
   startingModelName,
-  stoppingServer,
   deletingModelName,
   onStartDownload,
-  onStartServer,
-  onStopServer,
+  onSelectModel,
   onDeleteModel,
 }: LocalModelRowProps) {
   const { t } = useTranslation();
@@ -65,13 +60,11 @@ export const LocalModelRow = memo(function LocalModelRow({
         ) : isRunning ? (
           <>
             <Button
-              danger
               size="small"
-              icon={<StopOutlined />}
-              loading={stoppingServer}
-              onClick={onStopServer}
+              icon={<CheckCircleOutlined />}
+              disabled
             >
-              {t("models.localStopServer")}
+              {t("models.localModelInUse")}
             </Button>
             <Button
               danger
@@ -89,12 +82,11 @@ export const LocalModelRow = memo(function LocalModelRow({
             <Button
               type="primary"
               size="small"
-              icon={<PlayCircleOutlined />}
               loading={isStarting}
-              onClick={() => onStartServer(model)}
+              onClick={() => onSelectModel(model)}
               disabled={isServerBusy || isDeleting}
             >
-              {t("models.localStartServer")}
+              {t("models.localUseModel")}
             </Button>
             <Button
               danger

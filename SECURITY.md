@@ -2,14 +2,14 @@
 
 ## 支持版本
 
-当前项目仍处于早期公开准备阶段。默认只维护 `main` 分支的最新代码。
+当前项目仍处于早期公开准备阶段。默认只维护 `master` 分支的最新代码；发布版本的支持范围会在对应 Release 中说明。
 
 ## 报告漏洞
 
 请不要在公开 Issue 中披露可利用细节。建议通过以下方式私下联系维护者：
 
-- GitHub Security Advisory（仓库启用后推荐）
-- 维护者在仓库主页公布的安全邮箱
+- 优先使用仓库的 [GitHub Security Advisory](https://github.com/melon1010/MelonPaw-company/security/advisories/new)
+- 如果安全公告入口不可用，再通过仓库维护者公开资料中的私密联系方式联系；不要在公开 Issue 中粘贴利用代码、密钥或用户数据
 
 报告时请尽量包含：
 

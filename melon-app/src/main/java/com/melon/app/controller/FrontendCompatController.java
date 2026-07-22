@@ -1,6 +1,7 @@
 package com.melon.app.controller;
 
 import com.melon.core.config.ConfigManager;
+import com.melon.core.provider.ProviderManager;
 import com.melon.core.util.JsonUtils;
 import com.melon.core.util.SafePathUtil;
 import com.melon.app.cron.CronExecutor;
@@ -11,6 +12,7 @@ import com.melon.app.service.SecuritySettingsService;
 import com.melon.app.service.SkillService;
 import com.melon.app.service.ApprovalService;
 import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.auth.EnterpriseIdentityStore;
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.config.AgentConfig;
@@ -30,20 +32,26 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 import static com.melon.app.auth.EnterprisePermissions.AGENTS_MANAGE;
 import static com.melon.app.auth.EnterprisePermissions.APPROVALS_DECIDE;
 
 /**
- * Compatibility endpoints for melonPaw frontend pages whose deep backend
- * behavior is intentionally not implemented yet.
+ * Console API endpoints that bridge frontend settings to the Java runtime.
  */
 @RestController
 @RequestMapping("/api")
 public class FrontendCompatController {
 
+    private static final String LANGUAGE_PREFERENCE = "ui.language";
+    private static final Set<String> SUPPORTED_LANGUAGES = Set.of(
+            "zh", "en", "ja", "ru", "id", "pt", "pt-BR", "vi");
+
     private final ConfigManager configManager;
+    private final ProviderManager providerManager;
     private final ApprovalService approvalService;
     private final MultiAgentManager multiAgentManager;
     private final CronExecutor cronExecutor;
@@ -53,12 +61,16 @@ public class FrontendCompatController {
     private final BuiltinSkillService builtinSkillService;
     private final SkillService skillService;
     private final EnterpriseAgentAccessService agentAccessService;
+    private final EnterpriseIdentityStore identityStore;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3))
             .build();
     private final Map<String, Object> localModelDownload = new ConcurrentHashMap<>();
+    private final AtomicReference<CompletableFuture<?>> localModelDownloadFuture = new AtomicReference<>();
+    private final AtomicLong localModelDownloadGeneration = new AtomicLong();
 
-    public FrontendCompatController(ConfigManager configManager, ApprovalService approvalService,
+    public FrontendCompatController(ConfigManager configManager, ProviderManager providerManager,
+                                    ApprovalService approvalService,
                                     MultiAgentManager multiAgentManager,
                                     CronExecutor cronExecutor,
                                     AgentStatsService agentStatsService,
@@ -66,8 +78,10 @@ public class FrontendCompatController {
                                     AuditLogService auditLogService,
                                     BuiltinSkillService builtinSkillService,
                                     SkillService skillService,
-                                    EnterpriseAgentAccessService agentAccessService) {
+                                    EnterpriseAgentAccessService agentAccessService,
+                                    EnterpriseIdentityStore identityStore) {
         this.configManager = configManager;
+        this.providerManager = providerManager;
         this.approvalService = approvalService;
         this.multiAgentManager = multiAgentManager;
         this.cronExecutor = cronExecutor;
@@ -77,6 +91,7 @@ public class FrontendCompatController {
         this.builtinSkillService = builtinSkillService;
         this.skillService = skillService;
         this.agentAccessService = agentAccessService;
+        this.identityStore = identityStore;
     }
 
     @GetMapping("/version")
@@ -85,13 +100,30 @@ public class FrontendCompatController {
     }
 
     @GetMapping("/settings/language")
-    public Mono<ResponseEntity<?>> getLanguage() {
-        return Mono.just(ResponseEntity.ok(Map.of("language", "zh")));
+    public Mono<ResponseEntity<?>> getLanguage(
+            @org.springframework.security.core.annotation.AuthenticationPrincipal EnterprisePrincipal principal) {
+        Optional<String> preference = principal == null ? Optional.empty()
+                : identityStore.getUserPreference(principal.id(), LANGUAGE_PREFERENCE);
+        return Mono.just(ResponseEntity.ok(Map.of(
+                "language", preference.orElse("zh"),
+                "configured", preference.isPresent()
+        )));
     }
 
     @PutMapping("/settings/language")
-    public Mono<ResponseEntity<?>> setLanguage(@RequestBody Map<String, Object> body) {
-        return Mono.just(ResponseEntity.ok(Map.of("language", stringValue(body.get("language"), "zh"))));
+    public Mono<ResponseEntity<?>> setLanguage(
+            @RequestBody Map<String, Object> body,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal EnterprisePrincipal principal) {
+        if (principal == null) {
+            return Mono.error(new SecurityException("Authentication is required"));
+        }
+        String language = stringValue(body != null ? body.get("language") : null, "zh");
+        if (!SUPPORTED_LANGUAGES.contains(language)) {
+            return Mono.just(ResponseEntity.badRequest().body(Map.of(
+                    "detail", "Unsupported language: " + language)));
+        }
+        identityStore.setUserPreference(principal.id(), LANGUAGE_PREFERENCE, language);
+        return Mono.just(ResponseEntity.ok(Map.of("language", language)));
     }
 
     @GetMapping("/settings/upload-limit")
@@ -353,67 +385,51 @@ public class FrontendCompatController {
             Map<String, Object> config = ollamaConfig();
             if (body != null) {
                 if (body.containsKey("port")) config.put("port", body.get("port"));
-                if (body.containsKey("max_context_length")) config.put("max_context_length", body.get("max_context_length"));
                 if (body.containsKey("generate_kwargs")) config.put("generate_kwargs", body.get("generate_kwargs"));
             }
             saveOllamaConfig(config);
+            reloadAgentsUsingProvider("ollama");
             return ResponseEntity.ok(localModelConfigPayload());
         });
     }
 
     @GetMapping("/local-models/server")
-    public Mono<ResponseEntity<?>> localModelServer() {
-        return Mono.<ResponseEntity<?>>fromCallable(() -> ResponseEntity.ok(localServerStatus())).subscribeOn(Schedulers.boundedElastic());
+    public Mono<ResponseEntity<?>> localModelServer(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
+        return Mono.<ResponseEntity<?>>fromCallable(() -> ResponseEntity.ok(localServerStatus(agentId)))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     @PostMapping("/local-models/server")
-    public Mono<ResponseEntity<?>> startLocalModelServer(@RequestBody(required = false) Map<String, Object> body) {
+    public Mono<ResponseEntity<?>> selectLocalModel(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @RequestBody(required = false) Map<String, Object> body) {
         return Mono.<ResponseEntity<?>>fromCallable(() -> {
-            Map<String, Object> status = localServerStatus();
+            String id = AgentRequestSupport.agentId(agentId);
+            Map<String, Object> status = localServerStatus(id);
             if (!Boolean.TRUE.equals(status.get("available"))) {
                 return ResponseEntity.badRequest().body(Map.of("status", "error", "message", status.get("message")));
             }
             String modelId = body != null ? stringValue(body.get("model_id"), "") : "";
-            Map<String, Object> config = ollamaConfig();
-            if (!modelId.isBlank()) {
-                config.put("model_name", modelId);
-                saveOllamaConfig(config);
+            if (modelId.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("status", "error", "message", "model_id is required"));
             }
+            if (installedOllamaModel(ollamaModels(), modelId) == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "status", "error", "message", "Ollama model is not installed: " + modelId));
+            }
+            AgentConfig agentConfig = configManager.getConfig().getAgent(id);
+            if (agentConfig == null) {
+                return ResponseEntity.notFound().build();
+            }
+            agentConfig.setActiveModel("ollama:" + modelId);
+            configManager.save();
+            multiAgentManager.reload(id);
             return ResponseEntity.ok(Map.of(
-                    "port", integerValue(config.get("port"), 11434),
+                    "port", integerValue(ollamaConfig().get("port"), 11434),
                     "model_name", modelId
             ));
         }).subscribeOn(Schedulers.boundedElastic());
-    }
-
-    @DeleteMapping("/local-models/server")
-    public Mono<ResponseEntity<?>> stopLocalModelServer() {
-        return Mono.fromCallable(() -> {
-            Map<String, Object> config = ollamaConfig();
-            config.remove("model_name");
-            saveOllamaConfig(config);
-            return ResponseEntity.ok(Map.of("status", "ok", "message", "Local model selection cleared"));
-        });
-    }
-
-    @GetMapping("/local-models/server/update")
-    public Mono<ResponseEntity<?>> localModelServerUpdateStatus() {
-        return Mono.just(ResponseEntity.ok(Map.of("has_update", false)));
-    }
-
-    @GetMapping("/local-models/server/download")
-    public Mono<ResponseEntity<?>> localModelServerDownloadStatus() {
-        return Mono.just(ResponseEntity.ok(idleDownload(null)));
-    }
-
-    @PostMapping("/local-models/server/download")
-    public Mono<ResponseEntity<?>> localModelServerDownload(@RequestBody(required = false) Map<String, Object> body) {
-        return Mono.just(ResponseEntity.ok(Map.of("status", "skipped", "message", "Ollama is managed outside Java")));
-    }
-
-    @DeleteMapping("/local-models/server/download")
-    public Mono<ResponseEntity<?>> cancelLocalModelServerDownload() {
-        return Mono.just(ResponseEntity.ok(Map.of("status", "cancelled", "message", "No server download is running")));
     }
 
     @GetMapping("/local-models/models")
@@ -425,35 +441,61 @@ public class FrontendCompatController {
     public Mono<ResponseEntity<?>> localModelDownload(@RequestBody(required = false) Map<String, Object> body) {
         return Mono.fromCallable(() -> {
             String modelName = body != null ? stringValue(body.get("model_name"), "") : "";
-            String source = body != null ? stringValue(body.get("source"), "auto") : "auto";
             if (modelName.isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of("status", "error", "message", "model_name is required"));
             }
-            if (isDownloadActive(localModelDownload)) {
-                return ResponseEntity.badRequest().body(Map.of("status", "error", "message", "Another model download is already running"));
+            synchronized (localModelDownload) {
+                CompletableFuture<?> active = localModelDownloadFuture.get();
+                if ((active != null && !active.isDone()) || isDownloadActive(localModelDownload)) {
+                    return ResponseEntity.badRequest().body(Map.of("status", "error", "message", "Another model download is already running"));
+                }
+                setLocalModelDownloadStatus(downloadStatus(
+                        "pending", modelName, 0L, null, "ollama", null));
+                startOllamaModelPull(modelName);
             }
-            localModelDownload.clear();
-            localModelDownload.putAll(downloadStatus("pending", modelName, 0L, null, source, null));
-            CompletableFuture.runAsync(() -> pullOllamaModel(modelName, source));
             return ResponseEntity.ok(Map.of("status", "started", "message", "Model download started"));
         });
     }
 
     @GetMapping("/local-models/models/download")
     public Mono<ResponseEntity<?>> localModelDownloadStatus() {
-        return Mono.just(ResponseEntity.ok(localModelDownload.isEmpty() ? idleDownload(null) : new LinkedHashMap<>(localModelDownload)));
+        return Mono.just(ResponseEntity.ok(localModelDownloadSnapshot()));
     }
 
     @DeleteMapping("/local-models/models/download")
     public Mono<ResponseEntity<?>> cancelLocalModelDownload() {
-        localModelDownload.clear();
-        localModelDownload.putAll(downloadStatus("cancelled", null, 0L, null, null, null));
-        return Mono.just(ResponseEntity.ok(Map.of("status", "cancelled", "message", "Download cancellation requested")));
+        synchronized (localModelDownload) {
+            CompletableFuture<?> future = localModelDownloadFuture.getAndSet(null);
+            boolean cancelled = future != null && !future.isDone() && future.cancel(true);
+            if (!cancelled) {
+                return Mono.just(ResponseEntity.ok(Map.of(
+                        "status", stringValue(localModelDownload.get("status"), "idle"),
+                        "cancelled", false,
+                        "message", "No active model download")));
+            }
+            localModelDownloadGeneration.incrementAndGet();
+            String modelName = stringValue(localModelDownload.get("model_name"), "");
+            String source = stringValue(localModelDownload.get("source"), "");
+            setLocalModelDownloadStatus(downloadStatus("cancelled",
+                    modelName.isBlank() ? null : modelName, 0L, null,
+                    source.isBlank() ? null : source, null));
+            return Mono.just(ResponseEntity.ok(Map.of(
+                    "status", "cancelled",
+                    "cancelled", true,
+                    "message", "Model download cancelled")));
+        }
     }
 
     @DeleteMapping("/local-models/models/{modelId}")
     public Mono<ResponseEntity<?>> deleteLocalModel(@PathVariable String modelId) {
         return Mono.<ResponseEntity<?>>fromCallable(() -> {
+            String activeModel = "ollama:" + modelId;
+            boolean inUse = configManager.getConfig().getAgents().values().stream()
+                    .anyMatch(agent -> activeModel.equals(agent.getActiveModel()));
+            if (inUse) {
+                return ResponseEntity.status(409).body(Map.of(
+                        "status", "error", "message", "Ollama model is active for at least one agent"));
+            }
             HttpRequest request = HttpRequest.newBuilder(URI.create(ollamaBaseUrl() + "/api/delete"))
                     .timeout(Duration.ofSeconds(20))
                     .header("Content-Type", "application/json")
@@ -461,6 +503,7 @@ public class FrontendCompatController {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                unregisterOllamaModel(modelId);
                 return ResponseEntity.ok(Map.of("status", "deleted", "message", "Model deleted"));
             }
             return ResponseEntity.badRequest().body(Map.of("status", "error", "message", response.body()));
@@ -470,34 +513,48 @@ public class FrontendCompatController {
     private Map<String, Object> localModelConfigPayload() {
         Map<String, Object> config = ollamaConfig();
         return Map.of(
-                "max_context_length", integerValue(config.get("max_context_length"), 8192),
                 "port", integerValue(config.get("port"), 11434)
         );
     }
 
-    private Map<String, Object> localServerStatus() {
+    private Map<String, Object> localServerStatus(String agentId) {
         boolean available = ollamaAvailable();
         Map<String, Object> config = ollamaConfig();
-        return Map.of(
-                "available", available,
-                "installable", false,
-                "installed", available,
-                "port", integerValue(config.get("port"), 11434),
-                "model_name", stringOrNull(config.get("model_name")),
-                "message", available ? "Ollama is reachable" : "Ollama is not reachable at " + ollamaBaseUrl()
-        );
+        AgentConfig agent = configManager.getConfig().getAgent(AgentRequestSupport.agentId(agentId));
+        String activeModel = agent != null ? stringValue(agent.getActiveModel(), "") : "";
+        String selectedOllamaModel = activeModel.startsWith("ollama:")
+                ? activeModel.substring("ollama:".length()) : null;
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("available", available);
+        status.put("installable", false);
+        status.put("installed", available);
+        status.put("port", integerValue(config.get("port"), 11434));
+        status.put("model_name", selectedOllamaModel);
+        status.put("message", available
+                ? "Ollama is reachable" : "Ollama is not reachable at " + ollamaBaseUrl());
+        return status;
     }
 
     private List<Map<String, Object>> localModelList() {
-        Set<String> downloaded = ollamaTags();
+        Map<String, Long> downloaded = ollamaModels();
         LinkedHashMap<String, Map<String, Object>> models = new LinkedHashMap<>();
         for (String id : List.of("llama3.1", "qwen2.5", "deepseek-r1", "mistral", "phi3")) {
-            models.put(id, localModelInfo(id, id, 0L, downloaded.contains(id)));
+            Map.Entry<String, Long> installed = installedOllamaModel(downloaded, id);
+            String effectiveId = installed != null ? installed.getKey() : id;
+            models.put(effectiveId, localModelInfo(effectiveId, effectiveId,
+                    installed != null ? installed.getValue() : 0L, installed != null));
         }
-        for (String id : downloaded) {
-            models.put(id, localModelInfo(id, id, 0L, true));
+        for (Map.Entry<String, Long> installed : downloaded.entrySet()) {
+            models.put(installed.getKey(), localModelInfo(
+                    installed.getKey(), installed.getKey(), installed.getValue(), true));
         }
         return new ArrayList<>(models.values());
+    }
+
+    private Map.Entry<String, Long> installedOllamaModel(Map<String, Long> installed, String id) {
+        if (installed.containsKey(id)) return Map.entry(id, installed.get(id));
+        String latest = id + ":latest";
+        return installed.containsKey(latest) ? Map.entry(latest, installed.get(latest)) : null;
     }
 
     private Map<String, Object> localModelInfo(String id, String name, long sizeBytes, boolean downloaded) {
@@ -506,11 +563,11 @@ public class FrontendCompatController {
         model.put("name", name);
         model.put("size_bytes", sizeBytes);
         model.put("downloaded", downloaded);
-        model.put("source", "auto");
+        model.put("source", "ollama");
         return model;
     }
 
-    private Set<String> ollamaTags() {
+    private Map<String, Long> ollamaModels() {
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(ollamaBaseUrl() + "/api/tags"))
                     .timeout(Duration.ofSeconds(5))
@@ -519,23 +576,23 @@ public class FrontendCompatController {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                return Set.of();
+                return Map.of();
             }
             Object parsed = JsonUtils.getMapper().readValue(response.body(), Object.class);
             Object rawModels = parsed instanceof Map<?, ?> map ? map.get("models") : null;
             if (!(rawModels instanceof List<?> list)) {
-                return Set.of();
+                return Map.of();
             }
-            LinkedHashSet<String> result = new LinkedHashSet<>();
+            Map<String, Long> result = new LinkedHashMap<>();
             for (Object raw : list) {
                 if (raw instanceof Map<?, ?> model) {
                     String name = stringValue(model.get("name"), "");
-                    if (!name.isBlank()) result.add(name);
+                    if (!name.isBlank()) result.put(name, longValue(model.get("size"), 0L));
                 }
             }
             return result;
         } catch (Exception ignored) {
-            return Set.of();
+            return Map.of();
         }
     }
 
@@ -552,26 +609,55 @@ public class FrontendCompatController {
         }
     }
 
-    private void pullOllamaModel(String modelName, String source) {
-        try {
-            localModelDownload.clear();
-            localModelDownload.putAll(downloadStatus("downloading", modelName, 0L, null, source, null));
-            HttpRequest request = HttpRequest.newBuilder(URI.create(ollamaBaseUrl() + "/api/pull"))
-                    .timeout(Duration.ofHours(2))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(JsonUtils.toJson(Map.of("model", modelName, "stream", false))))
-                    .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                localModelDownload.clear();
-                localModelDownload.putAll(downloadStatus("completed", modelName, 0L, null, source, null));
-            } else {
-                localModelDownload.clear();
-                localModelDownload.putAll(downloadStatus("failed", modelName, 0L, null, source, response.body()));
+    private void startOllamaModelPull(String modelName) {
+        String source = "ollama";
+        long generation = localModelDownloadGeneration.incrementAndGet();
+        setLocalModelDownloadStatus(downloadStatus(
+                "downloading", modelName, 0L, null, source, null));
+        HttpRequest request = HttpRequest.newBuilder(URI.create(ollamaBaseUrl() + "/api/pull"))
+                .timeout(Duration.ofHours(2))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        JsonUtils.toJson(Map.of("model", modelName, "stream", false))))
+                .build();
+        CompletableFuture<HttpResponse<String>> future =
+                httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+        localModelDownloadFuture.set(future);
+        future.whenComplete((response, error) -> {
+            if (generation != localModelDownloadGeneration.get()) {
+                return;
             }
-        } catch (Exception e) {
+            localModelDownloadFuture.compareAndSet(future, null);
+            if (error != null) {
+                setLocalModelDownloadStatus(downloadStatus("failed", modelName, 0L, null, source,
+                        error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage()));
+            } else if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                try {
+                    registerOllamaModel(modelName);
+                    setLocalModelDownloadStatus(downloadStatus(
+                            "completed", modelName, 0L, null, source, null));
+                } catch (Exception e) {
+                    setLocalModelDownloadStatus(downloadStatus(
+                            "failed", modelName, 0L, null, source, e.getMessage()));
+                }
+            } else {
+                setLocalModelDownloadStatus(downloadStatus(
+                        "failed", modelName, 0L, null, source, response.body()));
+            }
+        });
+    }
+
+    private void setLocalModelDownloadStatus(Map<String, Object> status) {
+        synchronized (localModelDownload) {
             localModelDownload.clear();
-            localModelDownload.putAll(downloadStatus("failed", modelName, 0L, null, source, e.getMessage()));
+            localModelDownload.putAll(status);
+        }
+    }
+
+    private Map<String, Object> localModelDownloadSnapshot() {
+        synchronized (localModelDownload) {
+            return localModelDownload.isEmpty()
+                    ? idleDownload(null) : new LinkedHashMap<>(localModelDownload);
         }
     }
 
@@ -610,22 +696,65 @@ public class FrontendCompatController {
             config.put("base_url", "http://127.0.0.1:" + integerValue(config.get("port"), 11434));
         }
         config.putIfAbsent("port", portFromBaseUrl(stringValue(config.get("base_url"), "")));
-        config.putIfAbsent("max_context_length", 8192);
         return config;
     }
 
-    private void saveOllamaConfig(Map<String, Object> config) {
+    private void registerOllamaModel(String modelName) {
+        Map<String, Object> config = ollamaConfig();
+        List<Object> models = new ArrayList<>();
+        Object raw = config.get("models");
+        if (raw instanceof List<?> list) models.addAll(list);
+        boolean exists = models.stream().anyMatch(item -> modelName.equals(configuredModelId(item)));
+        if (!exists) {
+            models.add(modelName);
+            config.put("models", models);
+            saveOllamaConfig(config);
+        }
+    }
+
+    private void unregisterOllamaModel(String modelName) {
+        Map<String, Object> config = ollamaConfig();
+        Object raw = config.get("models");
+        if (!(raw instanceof List<?> list)) return;
+        List<Object> models = list.stream()
+                .filter(item -> !modelName.equals(configuredModelId(item)))
+                .map(item -> (Object) item)
+                .toList();
+        config.put("models", models);
+        saveOllamaConfig(config);
+    }
+
+    private String configuredModelId(Object item) {
+        if (item instanceof Map<?, ?> model) return stringValue(model.get("id"), "");
+        return stringValue(item, "");
+    }
+
+    private synchronized void saveOllamaConfig(Map<String, Object> config) {
         int port = integerValue(config.get("port"), 11434);
         config.put("port", port);
         config.put("base_url", "http://127.0.0.1:" + port);
         config.put("enabled", true);
         Map<String, Object> providers = providerConfigs();
         providers.put("ollama", config);
-        JsonUtils.save(providerConfigFile(), providers);
+        JsonUtils.save(providerConfigFile(), configManager.protectSecrets(providers));
+        providerManager.refreshProviderConfig();
     }
 
+    private void reloadAgentsUsingProvider(String providerId) {
+        String prefix = providerId + ":";
+        configManager.getConfig().getAgents().forEach((id, agent) -> {
+            if (stringValue(agent.getActiveModel(), "").startsWith(prefix)) {
+                multiAgentManager.reload(id);
+            }
+        });
+    }
+
+    @SuppressWarnings("unchecked")
     private Map<String, Object> providerConfigs() {
-        return new LinkedHashMap<>(JsonUtils.loadAsMap(providerConfigFile()));
+        Map<String, Object> stored = JsonUtils.loadAsMap(providerConfigFile());
+        Object runtime = configManager.unprotectSecrets(stored);
+        return runtime instanceof Map<?, ?> map
+                ? new LinkedHashMap<>((Map<String, Object>) map) : new LinkedHashMap<>();
     }
 
     private Path providerConfigFile() {
@@ -654,9 +783,14 @@ public class FrontendCompatController {
         }
     }
 
-    private String stringOrNull(Object value) {
-        String text = stringValue(value, "");
-        return text.isBlank() ? null : text;
+    private long longValue(Object value, long fallback) {
+        if (value instanceof Number number) return number.longValue();
+        try {
+            return value == null || String.valueOf(value).isBlank()
+                    ? fallback : Long.parseLong(String.valueOf(value));
+        } catch (Exception ignored) {
+            return fallback;
+        }
     }
 
     @GetMapping("/market/providers")
@@ -747,11 +881,6 @@ public class FrontendCompatController {
         return 1;
     }
 
-    @GetMapping("/debug/logs")
-    public Mono<ResponseEntity<?>> debugLogs() {
-        return Mono.just(ResponseEntity.ok(Map.of("logs", List.of(), "enabled", false)));
-    }
-
     @GetMapping("/agent-stats")
     public Mono<ResponseEntity<Object>> agentStats(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
                                                    @RequestParam(value = "start_date", required = false) String startDate,
@@ -797,24 +926,9 @@ public class FrontendCompatController {
         return Mono.just(ResponseEntity.ok(Map.of("success", accepted, "message", accepted ? "denied" : "approval not found")));
     }
 
-    @GetMapping("/agent/")
-    public Mono<ResponseEntity<?>> agentRoot() {
-        return Mono.just(ResponseEntity.ok(Map.of("ok", true)));
-    }
-
     @GetMapping("/agent/health")
     public Mono<ResponseEntity<?>> agentHealth() {
         return Mono.just(ResponseEntity.ok(Map.of("status", "ok")));
-    }
-
-    @GetMapping("/agent/admin/status")
-    public Mono<ResponseEntity<?>> agentAdminStatus() {
-        return Mono.just(ResponseEntity.ok(Map.of("running", true, "status", "ok")));
-    }
-
-    @PostMapping({"/agent/shutdown", "/agent/admin/shutdown"})
-    public Mono<ResponseEntity<?>> shutdownDisabled() {
-        return Mono.just(ResponseEntity.ok(Map.of("accepted", false, "detail", "Shutdown is disabled in Java compatibility mode")));
     }
 
     private String normalizeApprovalLevel(String value) {

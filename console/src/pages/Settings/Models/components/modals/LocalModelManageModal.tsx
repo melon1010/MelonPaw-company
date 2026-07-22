@@ -4,7 +4,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Select,
   Tooltip,
 } from "@agentscope-ai/design";
 import { useAppMessage } from "../../../../../hooks/useAppMessage.ts";
@@ -19,10 +18,8 @@ import type {
   LocalModelConfig,
   ProviderInfo,
   LocalDownloadProgress,
-  LocalDownloadSource,
   LocalModelInfo,
   LocalServerStatus,
-  LocalServerUpdateStatus,
 } from "../../../../../api/types";
 import api from "../../../../../api";
 import { useTranslation } from "react-i18next";
@@ -37,24 +34,15 @@ import {
 } from "./local-models/shared";
 
 const POLL_INTERVAL_MS = 3000;
-const DEFAULT_LOCAL_MAX_CONTEXT_LENGTH = 65536;
-const MIN_LOCAL_MAX_CONTEXT_LENGTH = 32768;
 const MIN_LOCAL_SERVER_PORT = 1;
 const MAX_LOCAL_SERVER_PORT = 65535;
 
 type LocalDownloadStatus = LocalDownloadProgress["status"];
 
 function getInitialLocalModelConfig(config?: LocalModelConfig | null): {
-  maxContextLength: number;
   port: number | null;
 } {
   return {
-    maxContextLength:
-      typeof config?.max_context_length === "number" &&
-      Number.isInteger(config.max_context_length) &&
-      config.max_context_length >= MIN_LOCAL_MAX_CONTEXT_LENGTH
-        ? config.max_context_length
-        : DEFAULT_LOCAL_MAX_CONTEXT_LENGTH,
     port:
       typeof config?.port === "number" &&
       Number.isInteger(config.port) &&
@@ -79,13 +67,6 @@ function isSameServerStatus(
   );
 }
 
-function isSameServerUpdateStatus(
-  left: LocalServerUpdateStatus | null,
-  right: LocalServerUpdateStatus | null,
-): boolean {
-  return left?.has_update === right?.has_update;
-}
-
 function isSameDownloadProgress(
   left: LocalDownloadProgress | null,
   right: LocalDownloadProgress | null,
@@ -103,7 +84,6 @@ function isSameDownloadProgress(
 
 interface LocalStatusSnapshot {
   server: LocalServerStatus;
-  llamacpp: LocalDownloadProgress;
   model: LocalDownloadProgress;
 }
 
@@ -129,17 +109,11 @@ export function LocalModelManageModal({
   const { t } = useTranslation();
   const [localModels, setLocalModels] = useState<LocalModelInfo[]>([]);
   const [customModelRepoId, setCustomModelRepoId] = useState("");
-  const [customModelSource, setCustomModelSource] =
-    useState<LocalDownloadSource>("huggingface");
   const [loadingLocal, setLoadingLocal] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [serverStatus, setServerStatus] = useState<LocalServerStatus | null>(
     null,
   );
-  const [serverUpdateStatus, setServerUpdateStatus] =
-    useState<LocalServerUpdateStatus | null>(null);
-  const [llamacppDownload, setLlamacppDownload] =
-    useState<LocalDownloadProgress | null>(null);
   const [modelDownload, setModelDownload] =
     useState<LocalDownloadProgress | null>(null);
   const [startingModelName, setStartingModelName] = useState<string | null>(
@@ -148,23 +122,15 @@ export function LocalModelManageModal({
   const [deletingModelName, setDeletingModelName] = useState<string | null>(
     null,
   );
-  const [stoppingServer, setStoppingServer] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedSaving, setAdvancedSaving] = useState(false);
   const [loadingLocalConfig, setLoadingLocalConfig] = useState(false);
-  const [maxContextLength, setMaxContextLength] = useState<number>(
-    DEFAULT_LOCAL_MAX_CONTEXT_LENGTH,
-  );
-  const [savedMaxContextLength, setSavedMaxContextLength] = useState<number>(
-    DEFAULT_LOCAL_MAX_CONTEXT_LENGTH,
-  );
   const [serverPort, setServerPort] = useState<number | null>(null);
   const [savedServerPort, setSavedServerPort] = useState<number | null>(null);
   const [generateKwargsText, setGenerateKwargsText] = useState("");
   const [savedGenerateKwargsText, setSavedGenerateKwargsText] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const modelDownloadRef = useRef<LocalDownloadProgress | null>(null);
-  const previousLlamacppStatusRef = useRef<string | null>(null);
   const previousModelStatusRef = useRef<string | null>(null);
   const onSavedRef = useRef(onSaved);
   const initializedOpenRef = useRef(false);
@@ -250,15 +216,11 @@ export function LocalModelManageModal({
     try {
       const config = await api.getLocalModelConfig();
       const normalizedConfig = getInitialLocalModelConfig(config);
-      setMaxContextLength(normalizedConfig.maxContextLength);
-      setSavedMaxContextLength(normalizedConfig.maxContextLength);
       setServerPort(normalizedConfig.port);
       setSavedServerPort(normalizedConfig.port);
       return normalizedConfig;
     } catch {
       const fallbackConfig = getInitialLocalModelConfig();
-      setMaxContextLength(fallbackConfig.maxContextLength);
-      setSavedMaxContextLength(fallbackConfig.maxContextLength);
       setServerPort(fallbackConfig.port);
       setSavedServerPort(fallbackConfig.port);
       return fallbackConfig;
@@ -285,85 +247,25 @@ export function LocalModelManageModal({
     [],
   );
 
-  const refreshUpdateStatus = useCallback(
-    async (nextServerStatus?: LocalServerStatus | null) => {
-      const effectiveServerStatus = nextServerStatus ?? serverStatus;
-
-      if (
-        !effectiveServerStatus?.installable ||
-        !effectiveServerStatus.installed
-      ) {
-        const fallbackStatus = { has_update: false };
-        setServerUpdateStatus((prev) =>
-          isSameServerUpdateStatus(prev, fallbackStatus)
-            ? prev
-            : fallbackStatus,
-        );
-        return fallbackStatus;
-      }
-
-      try {
-        const nextUpdateStatus = await api.getLocalServerUpdateStatus();
-        setServerUpdateStatus((prev) =>
-          isSameServerUpdateStatus(prev, nextUpdateStatus)
-            ? prev
-            : nextUpdateStatus,
-        );
-        return nextUpdateStatus;
-      } catch {
-        return null;
-      }
-    },
-    [serverStatus],
-  );
-
   const refreshStatus = useCallback(
     async (showLoading = false) => {
       if (showLoading) {
         setLoadingStatus(true);
       }
       try {
-        const [nextServerStatus, nextLlamacppDownload, nextModelDownload] =
-          await Promise.all([
-            api.getLocalServerStatus(),
-            api.getLlamacppDownloadProgress(),
-            api.getLocalModelDownloadProgress(),
-          ]);
+        const [nextServerStatus, nextModelDownload] = await Promise.all([
+          api.getLocalServerStatus(),
+          api.getLocalModelDownloadProgress(),
+        ]);
 
         setServerStatus((prev) =>
           isSameServerStatus(prev, nextServerStatus) ? prev : nextServerStatus,
-        );
-        if (!nextServerStatus.installable || !nextServerStatus.installed) {
-          setServerUpdateStatus((prev) =>
-            isSameServerUpdateStatus(prev, { has_update: false })
-              ? prev
-              : { has_update: false },
-          );
-        }
-        setLlamacppDownload((prev) =>
-          isSameDownloadProgress(prev, nextLlamacppDownload)
-            ? prev
-            : nextLlamacppDownload,
         );
         setModelDownloadState((prev) =>
           isSameDownloadProgress(prev, nextModelDownload)
             ? prev
             : nextModelDownload,
         );
-
-        if (
-          (previousLlamacppStatusRef.current === "pending" ||
-            previousLlamacppStatusRef.current === "downloading") &&
-          nextLlamacppDownload.status === "completed"
-        ) {
-          message.success(t("models.localLlamacppInstallSuccess"));
-          setServerUpdateStatus((prev) =>
-            isSameServerUpdateStatus(prev, { has_update: false })
-              ? prev
-              : { has_update: false },
-          );
-          void refreshUpdateStatus(nextServerStatus);
-        }
 
         if (
           (previousModelStatusRef.current === "pending" ||
@@ -376,13 +278,6 @@ export function LocalModelManageModal({
         }
 
         if (
-          previousLlamacppStatusRef.current !== "failed" &&
-          nextLlamacppDownload.status === "failed" &&
-          nextLlamacppDownload.error
-        ) {
-          message.error(nextLlamacppDownload.error);
-        }
-        if (
           previousModelStatusRef.current !== "failed" &&
           nextModelDownload.status === "failed" &&
           nextModelDownload.error
@@ -390,19 +285,14 @@ export function LocalModelManageModal({
           message.error(nextModelDownload.error);
         }
 
-        previousLlamacppStatusRef.current = nextLlamacppDownload.status;
         previousModelStatusRef.current = nextModelDownload.status;
 
-        if (
-          !isBusyDownloadStatus(nextLlamacppDownload.status) &&
-          !isBusyDownloadStatus(nextModelDownload.status)
-        ) {
+        if (!isBusyDownloadStatus(nextModelDownload.status)) {
           stopPolling();
         }
 
         return {
           server: nextServerStatus,
-          llamacpp: nextLlamacppDownload,
           model: nextModelDownload,
         } satisfies LocalStatusSnapshot;
       } catch {
@@ -413,7 +303,7 @@ export function LocalModelManageModal({
         }
       }
     },
-    [fetchLocalModels, refreshUpdateStatus, stopPolling, t],
+    [fetchLocalModels, setModelDownloadState, stopPolling, t],
   );
 
   const startPolling = useCallback(() => {
@@ -435,8 +325,6 @@ export function LocalModelManageModal({
     initializedOpenRef.current = true;
 
     setAdvancedOpen(false);
-    setMaxContextLength(DEFAULT_LOCAL_MAX_CONTEXT_LENGTH);
-    setSavedMaxContextLength(DEFAULT_LOCAL_MAX_CONTEXT_LENGTH);
     setServerPort(null);
     setSavedServerPort(null);
     setGenerateKwargsText(initialLocalConfig.generateKwargsText);
@@ -447,12 +335,7 @@ export function LocalModelManageModal({
       fetchLocalModels(),
       refreshStatus(true),
     ]).then(([, , statuses]) => {
-      void refreshUpdateStatus(statuses?.server ?? null);
-      if (
-        statuses &&
-        (isBusyDownloadStatus(statuses.llamacpp.status) ||
-          isBusyDownloadStatus(statuses.model.status))
-      ) {
+      if (statuses && isBusyDownloadStatus(statuses.model.status)) {
         startPolling();
       }
     });
@@ -463,45 +346,10 @@ export function LocalModelManageModal({
     fetchLocalModels,
     open,
     refreshStatus,
-    refreshUpdateStatus,
     startPolling,
     stopPolling,
     initialLocalConfig,
   ]);
-
-  const handleSaveMaxContextLength = useCallback(async () => {
-    if (!Number.isInteger(maxContextLength)) {
-      message.error(t("models.localMaxContextLengthRequired"));
-      return;
-    }
-
-    if (maxContextLength < MIN_LOCAL_MAX_CONTEXT_LENGTH) {
-      message.error(
-        t("models.localMaxContextLengthMin", {
-          min: MIN_LOCAL_MAX_CONTEXT_LENGTH,
-        }),
-      );
-      return;
-    }
-
-    setAdvancedSaving(true);
-    try {
-      await api.configureLocalModelSettings({
-        max_context_length: maxContextLength,
-      });
-      setSavedMaxContextLength(maxContextLength);
-      message.success(t("models.localAdvancedConfigSaved"));
-      await onSavedRef.current();
-    } catch (error) {
-      const errMsg =
-        error instanceof Error
-          ? error.message
-          : t("models.localAdvancedConfigSaveFailed");
-      message.error(errMsg);
-    } finally {
-      setAdvancedSaving(false);
-    }
-  }, [maxContextLength, message, t]);
 
   const handleSaveServerPort = useCallback(async () => {
     if (
@@ -575,75 +423,6 @@ export function LocalModelManageModal({
     }
   }, [generateKwargsText, message, parseGenerateConfig, t]);
 
-  const handleStartLlamacppDownload = useCallback(async () => {
-    const previousLlamacppDownload = llamacppDownload;
-    const previousLlamacppStatus = previousLlamacppStatusRef.current;
-
-    setLlamacppDownload({
-      status: "pending",
-      model_name: t("models.localLlamacppName"),
-      downloaded_bytes: 0,
-      total_bytes: null,
-      speed_bytes_per_sec: 0,
-      source: null,
-      error: null,
-      local_path: null,
-    });
-    previousLlamacppStatusRef.current = "pending";
-
-    try {
-      await api.startLlamacppDownload();
-      message.success(t("models.localLlamacppInstallStarted"));
-      setServerUpdateStatus({ has_update: false });
-      await refreshStatus();
-      startPolling();
-    } catch (error) {
-      setLlamacppDownload(previousLlamacppDownload);
-      previousLlamacppStatusRef.current = previousLlamacppStatus;
-      await refreshStatus();
-      startPolling();
-      const errMsg =
-        error instanceof Error
-          ? error.message
-          : t("models.localLlamacppInstallFailed");
-      message.error(errMsg);
-    }
-  }, [llamacppDownload, refreshStatus, startPolling, t]);
-
-  const handleCancelLlamacppDownload = useCallback(() => {
-    Modal.confirm({
-      title: t("models.localCancelDownloadTitle"),
-      content: t("models.localCancelDownloadConfirm", {
-        repo: t("models.localLlamacppName"),
-      }),
-      okText: t("models.localCancelDownloadAction"),
-      okButtonProps: { danger: true },
-      cancelText: t("common.close"),
-      onOk: async () => {
-        try {
-          setLlamacppDownload((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  status: "canceling",
-                }
-              : prev,
-          );
-          await api.cancelLlamacppDownload();
-          message.success(t("models.localDownloadCancelled"));
-          await refreshStatus();
-          startPolling();
-        } catch (error) {
-          const errMsg =
-            error instanceof Error
-              ? error.message
-              : t("models.localCancelDownloadFailed");
-          message.error(errMsg);
-        }
-      },
-    });
-  }, [refreshStatus, startPolling, t]);
-
   const handleStartModelDownload = useCallback(
     async (model: LocalModelInfo) => {
       const previousModelDownload = modelDownloadRef.current;
@@ -662,7 +441,7 @@ export function LocalModelManageModal({
       previousModelStatusRef.current = "pending";
 
       try {
-        await api.startLocalModelDownload(model.id, model.source);
+        await api.startLocalModelDownload(model.id);
         await refreshStatus();
         startPolling();
       } catch (error) {
@@ -691,9 +470,9 @@ export function LocalModelManageModal({
       name: trimmedRepoId,
       size_bytes: 0,
       downloaded: false,
-      source: customModelSource,
+      source: "ollama",
     });
-  }, [customModelRepoId, customModelSource, handleStartModelDownload, t]);
+  }, [customModelRepoId, handleStartModelDownload, t]);
 
   const handleCancelModelDownload = useCallback(
     (modelName: string) => {
@@ -730,12 +509,12 @@ export function LocalModelManageModal({
     [refreshStatus, setModelDownloadState, startPolling, t],
   );
 
-  const handleStartServer = useCallback(
+  const handleSelectModel = useCallback(
     async (model: LocalModelInfo) => {
       const run = async () => {
         setStartingModelName(model.id);
         try {
-          await api.startLocalServer({
+          await api.selectLocalModel({
             model_id: model.id,
           });
           await refreshStatus();
@@ -773,23 +552,6 @@ export function LocalModelManageModal({
     },
     [localModels, onSaved, refreshStatus, serverStatus, t],
   );
-
-  const handleStopServer = useCallback(async () => {
-    setStoppingServer(true);
-    try {
-      await api.stopLocalServer();
-      await refreshStatus();
-      onSaved();
-    } catch (error) {
-      const errMsg =
-        error instanceof Error
-          ? error.message
-          : t("models.localServerStopFailed");
-      message.error(errMsg);
-    } finally {
-      setStoppingServer(false);
-    }
-  }, [onSaved, refreshStatus, t]);
 
   const handleDeleteModel = useCallback(
     (model: LocalModelInfo) => {
@@ -829,13 +591,10 @@ export function LocalModelManageModal({
 
   const isModelDownloading = isDownloadActive(modelDownload);
   const isServerBusy =
-    stoppingServer || startingModelName !== null || deletingModelName !== null;
-  const isRuntimeInstallable = serverStatus?.installable ?? true;
+    startingModelName !== null || deletingModelName !== null;
   const isRuntimeInstalled = Boolean(serverStatus?.installed);
   const runtimeLockedMessage =
-    !isRuntimeInstallable && serverStatus?.message
-      ? serverStatus.message
-      : t("models.localModelsLockedHint");
+    serverStatus?.message || t("models.localModelsLockedHint");
   const isCustomDownloadDisabled =
     customModelRepoId.trim().length === 0 || isModelDownloading || isServerBusy;
   const downloadedModelCount = localModels.filter(
@@ -868,27 +627,15 @@ export function LocalModelManageModal({
       ) : null}
 
       <section className={styles.localSection}>
-        <LocalRuntimePanel
-          serverStatus={serverStatus}
-          hasUpdate={Boolean(serverUpdateStatus?.has_update)}
-          progress={llamacppDownload}
-          onStart={handleStartLlamacppDownload}
-          onCancel={handleCancelLlamacppDownload}
-          onStop={handleStopServer}
-          stopping={stoppingServer}
-        />
+        <LocalRuntimePanel serverStatus={serverStatus} />
         {!isRuntimeInstalled ? (
           <div className={styles.localLockedPanel}>
             <div className={styles.localLockedPanelTitle}>
-              {isRuntimeInstallable
-                ? t("models.localRuntimeMissing")
-                : t("models.localRuntimeUnsupported")}
+              {t("models.localRuntimeUnsupported")}
             </div>
             <div className={styles.localLockedPanelDescription}>
               <div>{runtimeLockedMessage}</div>
-              {!isRuntimeInstallable ? (
-                <div>{t("models.localAlternativeRuntimeHint")}</div>
-              ) : null}
+              <div>{t("models.localAlternativeRuntimeHint")}</div>
             </div>
           </div>
         ) : null}
@@ -979,11 +726,9 @@ export function LocalModelManageModal({
                     isModelDownloading={isModelDownloading}
                     isServerBusy={isServerBusy}
                     startingModelName={startingModelName}
-                    stoppingServer={stoppingServer}
                     deletingModelName={deletingModelName}
                     onStartDownload={handleStartModelDownload}
-                    onStartServer={handleStartServer}
-                    onStopServer={handleStopServer}
+                    onSelectModel={handleSelectModel}
                     onDeleteModel={handleDeleteModel}
                   />
                 ))
@@ -1024,23 +769,6 @@ export function LocalModelManageModal({
                     placeholder={t("models.localRepoIdPlaceholder")}
                     className={styles.customModelRepoInput}
                   />
-                  <Select
-                    value={customModelSource}
-                    onChange={(value) =>
-                      setCustomModelSource(value as LocalDownloadSource)
-                    }
-                    className={styles.customModelSourceSelect}
-                    options={[
-                      {
-                        value: "huggingface",
-                        label: t("models.localSourceHuggingFace"),
-                      },
-                      {
-                        value: "modelscope",
-                        label: t("models.localSourceModelScope"),
-                      },
-                    ]}
-                  />
                 </div>
               </div>
             ) : null}
@@ -1070,48 +798,6 @@ export function LocalModelManageModal({
 
         {advancedOpen ? (
           <div className={styles.localAdvancedConfigFields}>
-            <div
-              className={`${styles.localAdvancedConfigField} ${styles.localAdvancedConfigFieldRow}`}
-            >
-              <div
-                className={`${styles.localAdvancedConfigLabel} ${styles.localAdvancedConfigLabelRow}`}
-              >
-                <span>{t("models.localMaxContextLengthLabel")}</span>
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<SaveOutlined />}
-                  loading={advancedSaving}
-                  disabled={maxContextLength === savedMaxContextLength}
-                  onClick={() => {
-                    if (maxContextLength !== savedMaxContextLength) {
-                      void handleSaveMaxContextLength();
-                    }
-                  }}
-                >
-                  {t("models.save")}
-                </Button>
-              </div>
-              <InputNumber
-                min={MIN_LOCAL_MAX_CONTEXT_LENGTH}
-                step={1024}
-                precision={0}
-                value={maxContextLength}
-                onChange={(value) =>
-                  setMaxContextLength(
-                    typeof value === "number"
-                      ? Math.trunc(value)
-                      : DEFAULT_LOCAL_MAX_CONTEXT_LENGTH,
-                  )
-                }
-                className={styles.localAdvancedConfigInput}
-                placeholder={t("models.localMaxContextLengthPlaceholder")}
-              />
-              <div className={styles.localAdvancedConfigHint}>
-                {t("models.localMaxContextLengthHint")}
-              </div>
-            </div>
-
             <div
               className={`${styles.localAdvancedConfigField} ${styles.localAdvancedConfigFieldRow}`}
             >

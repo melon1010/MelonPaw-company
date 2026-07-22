@@ -3,6 +3,7 @@ import { PanelLeftClose, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Slot } from "../plugins/registry/Slot";
 import { AccountControl } from "./AccountControls";
+import AgentScopeSwitcher from "../components/AgentScopeSwitcher";
 import styles from "./index.module.less";
 
 interface SidebarBrandProps {
@@ -77,17 +78,18 @@ export function SidebarAccount({
   return (
     <div
       className={`${styles.sidebarAccountDock} ${
-        collapsed ? styles.sidebarAccountDockCollapsed : ""
-      }`}
+        styles.sidebarAccountDockWithScope
+      } ${collapsed ? styles.sidebarAccountDockCollapsed : ""}`}
     >
       <AccountControl
         variant="sidebar"
-        collapsed={collapsed}
+        collapsed
         placement="topLeft"
         navigationItems={navigationItems}
         onNavigationClick={onNavigationClick}
         onOpenSettings={onOpenSettings}
       />
+      <AgentScopeSwitcher variant="sidebar" collapsed={collapsed} />
     </div>
   );
 }

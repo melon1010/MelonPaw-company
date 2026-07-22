@@ -14,11 +14,7 @@ export interface ContextCompactConfig {
 
 export interface ToolResultPruningConfig {
   enabled: boolean;
-  pruning_recent_n: number;
   pruning_old_msg_max_bytes: number;
-  pruning_recent_msg_max_bytes: number;
-  offload_retention_days: number;
-  exempt_file_extensions: string[];
   exempt_tool_names: string[];
 }
 
@@ -26,52 +22,13 @@ export type ContextStrategy = "native" | "scroll";
 
 export interface LightContextConfig {
   strategy: ContextStrategy;
-  dialog_path: string;
   token_count_estimate_divisor: number;
   context_compact_config: ContextCompactConfig;
   tool_result_pruning_config: ToolResultPruningConfig;
 }
 
-export interface AutoMemorySearchConfig {
-  enabled: boolean;
-  max_results: number;
-  persist_to_context: boolean;
-}
-
-export interface EmbeddingModelConfig {
-  backend: string;
-  api_key: string;
-  base_url: string;
-  model_name: string;
-  dimensions: number;
-  enable_cache: boolean;
-  use_dimensions: boolean;
-  max_cache_size: number;
-  max_input_length: number;
-  max_batch_size: number;
-}
-
-export interface ReMeLightMemoryConfig {
-  summarize_when_compact: boolean;
-  auto_memory_interval: number | null;
-  dream_cron: string;
-  auto_memory_search_config: AutoMemorySearchConfig;
-  embedding_model_config: EmbeddingModelConfig;
-  rebuild_memory_index_on_start: boolean;
-  enable_search_raw_log: boolean;
-}
-
 export interface AutoTitleConfig {
   enabled: boolean;
-  timeout_seconds: number;
-}
-
-export interface ADBPGMemoryConfig {
-  rest_base_url: string;
-  rest_api_key: string;
-  memory_isolation: boolean;
-  search_timeout: number;
-  auto_memory_search_config: AutoMemorySearchConfig;
 }
 
 export interface DoomLoopStageConfig {
@@ -109,8 +66,6 @@ export interface AgentsRunningConfig {
   max_iters: number;
   loop: LoopConfig;
   shell_command_timeout: number;
-  /** Legacy field retained for older servers; it is not configurable in the Java runtime. */
-  shell_command_executable?: string;
   llm_retry_enabled: boolean;
   llm_max_retries: number;
   llm_backoff_base: number;
@@ -120,13 +75,9 @@ export interface AgentsRunningConfig {
   llm_rate_limit_pause: number;
   llm_rate_limit_jitter: number;
   llm_acquire_timeout: number;
-  /** Legacy Python setting; Java history retention lives in light_context_config.scroll_config. */
-  history_max_length?: number;
   context_manager_backend: string;
   light_context_config: LightContextConfig;
   memory_manager_backend: string;
-  adbpg_memory_config?: ADBPGMemoryConfig | null;
-  reme_light_memory_config?: ReMeLightMemoryConfig;
   approval_level?: string;
   auto_title_config: AutoTitleConfig;
 }

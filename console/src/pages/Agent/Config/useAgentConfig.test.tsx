@@ -17,10 +17,8 @@ const hoisted = vi.hoisted(() => {
   };
   const apiMocks = {
     getAgentRunningConfig: vi.fn(),
-    getAgentLanguage: vi.fn(),
     getUserTimezone: vi.fn(),
     updateAgentRunningConfig: vi.fn(),
-    updateAgentLanguage: vi.fn(),
     updateUserTimezone: vi.fn(),
   };
   // A stable translation function so useCallback dependencies don't change on
@@ -87,27 +85,22 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
       },
     },
     shell_command_timeout: 60,
-    shell_command_executable: "",
     llm_retry_enabled: true,
     llm_max_retries: 3,
     llm_backoff_base: 1,
     llm_backoff_cap: 10,
-    llm_max_concurrent: 5,
+    llm_max_concurrent: 4,
     llm_max_qpm: 60,
-    llm_rate_limit_pause: 1,
-    llm_rate_limit_jitter: 0,
-    llm_acquire_timeout: 30,
-    history_max_length: 100,
+    llm_rate_limit_pause: 30,
+    llm_rate_limit_jitter: 2,
+    llm_acquire_timeout: 60,
     context_manager_backend: "light",
     light_context_config: {
       max_input_length: 1000,
     } as unknown as Config["light_context_config"],
     memory_manager_backend: "file",
-    adbpg_memory_config: null,
-    reme_light_memory_config:
-      {} as unknown as Config["reme_light_memory_config"],
     approval_level: "AUTO",
-    auto_title_config: { enabled: true, timeout_seconds: 30 },
+    auto_title_config: { enabled: true },
     ...overrides,
   };
 }
@@ -122,16 +115,13 @@ describe("useAgentConfig", () => {
     mockSetFieldsValue.mockReset();
     mockValidateFields.mockReset();
     apiMocks.getAgentRunningConfig.mockReset();
-    apiMocks.getAgentLanguage.mockReset();
     apiMocks.getUserTimezone.mockReset();
     apiMocks.updateAgentRunningConfig.mockReset();
-    apiMocks.updateAgentLanguage.mockReset();
     apiMocks.updateUserTimezone.mockReset();
     messageMock.success.mockReset();
     messageMock.error.mockReset();
 
     apiMocks.getAgentRunningConfig.mockResolvedValue(makeConfig());
-    apiMocks.getAgentLanguage.mockResolvedValue({ language: "en" });
     apiMocks.getUserTimezone.mockResolvedValue({ timezone: "UTC" });
     mockValidateFields.mockResolvedValue(makeConfig());
   });
@@ -208,7 +198,7 @@ describe("useAgentConfig", () => {
     expect(messageMock.success).toHaveBeenCalledWith("agentConfig.saveSuccess");
   });
 
-  it("handleSave excludes legacy memory and approval fields", async () => {
+  it("handleSave excludes the separately managed approval field", async () => {
     apiMocks.updateAgentRunningConfig.mockResolvedValue(makeConfig());
     const { result } = renderConfigHook();
     await waitFor(() => {
@@ -221,8 +211,6 @@ describe("useAgentConfig", () => {
 
     const saved = apiMocks.updateAgentRunningConfig.mock.calls[0][0] as Config;
     expect(saved.approval_level).toBeUndefined();
-    expect(saved.reme_light_memory_config).toBeUndefined();
-    expect(saved.adbpg_memory_config).toBeUndefined();
   });
 
   it("handleSave calls message.error when update fails", async () => {

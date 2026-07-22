@@ -131,6 +131,7 @@ export type {
   EnterpriseTaskResult,
   EnterpriseTaskRun,
   EnterpriseTaskStatus,
+  CreateEnterpriseTaskInput,
 } from "./modules/tasks";
 export type {
   EnterpriseRole,

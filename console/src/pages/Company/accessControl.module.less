@@ -1,0 +1,232 @@
+.accessPage {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--mp-text);
+  background: var(--mp-surface);
+}
+
+.accessBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+  background: var(--mp-surface);
+}
+
+.noticeBar {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  color: var(--mp-text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  background: var(--mp-surface-subtle);
+  border: 1px solid var(--mp-border);
+  border-radius: 6px;
+
+  svg {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: var(--mp-text-tertiary);
+  }
+}
+
+.accessToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.filterGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.searchInput {
+  width: 300px;
+  max-width: 100%;
+}
+
+.typeSelect {
+  width: 136px;
+}
+
+.resultCount {
+  color: var(--mp-text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.accessTable {
+  :global(.ant-table),
+  :global(.qwenpaw-table) {
+    color: var(--mp-text);
+    background: var(--mp-surface);
+  }
+
+  :global(.ant-table-container),
+  :global(.qwenpaw-table-container) {
+    border: 1px solid var(--mp-border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+}
+
+.nameCell {
+  min-width: 0;
+}
+
+.primaryText {
+  color: var(--mp-text);
+  font-weight: 600;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.secondaryText {
+  margin-top: 2px;
+  color: var(--mp-text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.codeTag {
+  margin-inline-end: 0;
+  color: var(--mp-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--mp-surface-subtle);
+  border-color: var(--mp-border);
+}
+
+.systemTag,
+.roleTag {
+  margin-inline-end: 0;
+  color: var(--mp-text-secondary);
+  background: var(--mp-surface-subtle);
+  border-color: var(--mp-border);
+}
+
+.systemTag {
+  color: var(--mp-primary);
+  background: var(--mp-primary-soft);
+}
+
+.permissionSummary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mp-text-secondary);
+  font-size: 13px;
+}
+
+.permissionTreeShell {
+  border: 1px solid var(--mp-border);
+  border-radius: 6px;
+  background: var(--mp-surface-subtle);
+  overflow: hidden;
+}
+
+.permissionTreeHeader {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 11px;
+  color: var(--mp-text-secondary);
+  font-size: 12px;
+  border-bottom: 1px solid var(--mp-border);
+}
+
+.permissionTree {
+  max-height: 330px;
+  overflow: auto;
+  padding: 6px 8px 10px;
+  color: var(--mp-text);
+  background: var(--mp-surface);
+
+  :global(.ant-tree),
+  :global(.qwenpaw-tree) {
+    color: var(--mp-text);
+    background: transparent;
+  }
+
+  :global(.ant-tree-node-content-wrapper),
+  :global(.qwenpaw-tree-node-content-wrapper) {
+    min-height: 30px;
+    line-height: 30px;
+    border-radius: 4px;
+  }
+
+  :global(.ant-tree-node-content-wrapper:hover),
+  :global(.qwenpaw-tree-node-content-wrapper:hover) {
+    background: var(--mp-surface-subtle);
+  }
+}
+
+.treeGroupTitle {
+  color: var(--mp-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.treeGroupCount {
+  margin-left: 6px;
+  color: var(--mp-text-tertiary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.permissionTitle {
+  color: var(--mp-text-secondary);
+  font-size: 13px;
+}
+
+.readOnlyNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  color: var(--mp-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  background: var(--mp-surface-subtle);
+  border: 1px solid var(--mp-border);
+  border-radius: 5px;
+
+  svg {
+    flex: 0 0 auto;
+    margin-top: 1px;
+  }
+}
+
+@media (max-width: 768px) {
+  .accessBody {
+    padding: 12px;
+  }
+
+  .filterGroup,
+  .searchInput {
+    width: 100%;
+  }
+
+  .typeSelect {
+    flex: 1;
+  }
+
+  .resultCount {
+    display: none;
+  }
+}

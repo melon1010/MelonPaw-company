@@ -56,12 +56,16 @@ export const MCPClientCard = React.memo(function MCPClientCard({
   const [editedJson, setEditedJson] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [oauthModalOpen, setOauthModalOpen] = useState(false);
-  const [oauthClientId, setOauthClientId] = useState("");
+  const [oauthClientId, setOauthClientId] = useState(
+    client.oauth_status?.client_id || "",
+  );
+  const [oauthClientSecret, setOauthClientSecret] = useState("");
   const [oauthScope, setOauthScope] = useState(
     client.oauth_status?.scope || "",
   );
-  const [oauthAuthEndpoint, setOauthAuthEndpoint] = useState("");
-  const [oauthTokenEndpoint, setOauthTokenEndpoint] = useState("");
+  const [oauthTokenEndpoint, setOauthTokenEndpoint] = useState(
+    client.oauth_status?.token_url || "",
+  );
 
   // Determine if MCP client is remote or local based on command
   const isRemote =
@@ -385,17 +389,15 @@ export const MCPClientCard = React.memo(function MCPClientCard({
         width={560}
       >
         <MCPOAuthSection
-          url={client.url}
           clientKey={client.key}
-          oauthEnabled
           currentOAuthStatus={oauthStatus}
           clientId={oauthClientId}
+          clientSecret={oauthClientSecret}
           scope={oauthScope}
-          authEndpoint={oauthAuthEndpoint}
           tokenEndpoint={oauthTokenEndpoint}
           onClientIdChange={setOauthClientId}
+          onClientSecretChange={setOauthClientSecret}
           onScopeChange={setOauthScope}
-          onAuthEndpointChange={setOauthAuthEndpoint}
           onTokenEndpointChange={setOauthTokenEndpoint}
           onAuthChanged={() => {
             onRefresh?.();

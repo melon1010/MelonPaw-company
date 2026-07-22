@@ -233,8 +233,11 @@ public class McpController {
                         accessPolicyService.save(scope(resolvedAgentId), resolvedClientKey, body))));
     }
 
-    @PostMapping({"/oauth/start/{clientKey}", "/client/oauth/start"})
-    public Mono<ResponseEntity<?>> startOAuth(
+    @PostMapping({
+            "/oauth/configure/{clientKey}", "/client/oauth/configure",
+            "/oauth/start/{clientKey}", "/client/oauth/start"
+    })
+    public Mono<ResponseEntity<?>> configureOAuth(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
             @PathVariable(required = false) String clientKey,
             @RequestParam(value = "client_key", required = false) String queryClientKey,
@@ -246,9 +249,6 @@ public class McpController {
             try {
                 Map<String, Object> status = new LinkedHashMap<>(
                         manager(resolvedAgentId).configureOAuth(resolvedClientKey, body));
-                status.put("auth_url", "");
-                status.put("session_id", resolvedClientKey);
-                status.put("authorization_url", "");
                 return ResponseEntity.ok(status);
             } catch (Exception e) {
                 return ResponseEntity.badRequest().body(Map.of("detail", e.getMessage()));
@@ -677,7 +677,6 @@ public class McpController {
         if (oauth == null) return null;
         Map<String, Object> map = new LinkedHashMap<>(oauth.toMap());
         if (map.get("client_secret") != null) map.put("client_secret", "***");
-        if (map.get("refresh_token") != null) map.put("refresh_token", "***");
         return map;
     }
 

@@ -13,7 +13,8 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 - 支持直接运行 JAR 或使用常规进程服务部署；当前不提供 Kubernetes 部署方案。
 - 企业身份、角色、项目关系和个人资源映射保存在内嵌 SQLite 中，不要求安装 PostgreSQL。
 - 渠道只保留控制台、钉钉、飞书、QQ、微信、企业微信、元宝、小艺和 OneBot；渠道配置归属具体用户。
-- 自定义跨 Agent 调用和 AgentScope 官方 Subagent 当前均不对 Web 用户开放。企业级委派、审批和审计闭环完成前不会启用。
+- 本地模型只接入部署环境独立运行的 Ollama；应用不内嵌、不安装也不更新 Ollama 或 llama.cpp。
+- `/mission` 可使用固定的 `researcher`、`executor`、`reviewer` 原生 Subagent；动态 Subagent、跨项目委派、嵌套委派和能力提升保持关闭。
 
 ## 当前能力
 
@@ -23,8 +24,13 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 - 基于 SSE 的流式对话，工具调用和执行结果沿用 `tool/result` 事件展示。
 - Agent、模型、工具、MCP、审计、备份和系统设置等管理能力按权限展示。
 - 工具审批、文件路径约束、技能扫描、密钥掩码和操作审计等安全边界。
+- 独立任务中心可直接创建 Agent、Goal、Mission 任务，不要求先进入聊天；任务沿用统一的配额、结果、取消和重试链路。
+- 项目 Agent 的技能、MCP、文档、会话和任务按项目空间隔离；个人 Agent 与项目 Agent 可在内容标题栏切换。
+- Agent 级 LLM 并发、QPM 和 429 暂停控制覆盖主对话、压缩、Rubric 与 Subagent 模型调用；它不替代企业 `/quotas` 的任务和 Token 配额。
+- 长期记忆当前支持 AgentScope 文件记忆和完全关闭两种模式；ReMeLight、ADBPG 未接入 Java 运行时，控制台不提供这些选项。
+- 远程 MCP 可显式配置 OAuth 2.0 Client Credentials；服务端会先向 Token Endpoint 验证凭据，成功后才替换旧配置，Client Secret 加密落盘且不回显。
 
-项目共享 Agent 的执行入口仍保持关闭。它只有在任务所有权、委派范围、额度、审批人和审计链完整后才应开放。
+项目 Agent 只向项目成员开放，且任务记录项目范围、执行用户和 Agent 版本。当前 Subagent 只在同一 Agent 工作区内单层运行，不是任意 Agent 之间的互调。
 
 ## 文件分屏预览
 
@@ -52,10 +58,10 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 | 会话上下文 | 使用 `RuntimeContext(userId, sessionId)` 传递用户和会话身份 |
 | 状态持久化 | 全应用注入统一的 `AgentStateStore`，每个 Agent 通过命名空间包装器隔离状态，默认底层使用官方 `JsonFileAgentStateStore` |
 | 工作区 | 使用 Harness Workspace，`AGENTS.md` 和 `MEMORY.md` 由 Harness 管理，其他上下文文件通过 `additionalContextFile` 注入 |
-| 文件与命令工具 | 使用 Harness 官方文件工具和官方 `execute`；生产默认采用 `DockerFilesystemSpec`、`IsolationScope.USER`，只挂载已授权的个人工作区 |
+| 文件与命令工具 | 使用 Harness 官方文件工具和官方 `execute`；生产默认采用 `DockerFilesystemSpec`、`IsolationScope.USER`，只挂载当前已授权 Agent 的工作区 |
 | 技能 | 使用 Harness 动态技能与官方 `SkillManageTool`；创建前要求审批，审批后经官方安全扫描进入用户正式技能目录 |
 | 工具审批 | 使用 `PermissionContextState`/`PermissionEngine` 规则和 `RequireUserConfirmEvent`，再接入企业审批记录 |
-| Subagent | 构建 Agent 时显式禁用，等待企业级委派、RBAC、审批、额度和审计能力完成 |
+| Subagent | 注册固定角色的原生 Subagent Factory，Worker 使用受限工具集和独立上下文；禁用动态、嵌套及跨项目委派 |
 
 详细设计、代码落点及后续约束见 [docs/AGENTSCOPE_2_ALIGNMENT.md](docs/AGENTSCOPE_2_ALIGNMENT.md)。
 
@@ -93,8 +99,8 @@ melon-app 聚合其他四个 Java 模块，并打包 console/dist。
 | --- | --- |
 | JDK | 17 或更高 |
 | Maven | 3.8 或更高 |
-| Node.js | 18 或更高 |
-| Docker | 运行 Agent 文件/命令工具时必需；Web 管理页本身可在无 Docker 时启动 |
+| Node.js | 20.19 或更高；推荐 22 LTS |
+| Docker | 生产默认运行 Agent 文件/命令工具时必需；受信开发环境可用 `local` profile 在宿主机执行 |
 
 ## 构建
 
@@ -129,7 +135,7 @@ Linux 和 macOS 可执行等价命令：
 docker build -t melonpaw-company-sandbox:latest docker/sandbox
 ```
 
-默认使用 Docker `bridge` 网络，使 `execute_shell_command` 能获取公开链接和技能依赖。生产环境应通过 `MELON_SANDBOX_NETWORK` 指定受限出口网络；禁止外网时可设为 `none`。每个执行上下文采用 AgentScope `USER` 隔离，只把受控工作区根目录下当前用户的工作区挂载到容器。
+默认使用 Docker `bridge` 网络，使 `execute_shell_command` 能获取公开链接和技能依赖。生产环境应通过 `MELON_SANDBOX_NETWORK` 指定受限出口网络；禁止外网时可设为 `none`。每个执行上下文采用 AgentScope `USER` 隔离，只把受控工作区根目录下当前授权 Agent 的工作区挂载到容器，个人与项目 Agent 使用不同目录。
 
 `web_search` 和 `web_fetch` 由 Java 服务直接执行只读公网访问，不经过 Shell。`web_fetch` 会拒绝本机、私网、云元数据地址、非标准端口和跨域重定向，并限制下载及上下文大小。macOS TUN 代理常用 `198.18.0.0/15` 假 IP DNS，运行时会自动兼容域名解析；需要强制关闭时设置 `MELON_WEB_ALLOW_FAKE_IP_DNS=false`。
 
@@ -139,7 +145,7 @@ Windows 可使用仓库内脚本，默认监听 `127.0.0.1:8088`：
 .\scripts\start-company.ps1
 ```
 
-也可直接启动 JAR。`application.yaml` 的原始默认端口是 `8089`，建议部署时显式指定端口：
+也可直接启动 JAR。`application.yaml` 默认监听 `127.0.0.1:8088`，生产部署仍建议显式指定地址和端口：
 
 ```powershell
 $env:SERVER_ADDRESS = "127.0.0.1"
@@ -156,7 +162,7 @@ SERVER_ADDRESS=127.0.0.1 SERVER_PORT=8088 \
   java -jar melon-app/target/melonpaw-company-web.jar
 ```
 
-首次打开 Web 控制台时创建初始管理员。默认数据目录为 `${MELON_HOME}`；未设置时使用用户目录下的 `.melonAI`。企业数据库默认位于：
+首次打开 Web 控制台时创建初始管理员。默认数据目录为 `${MELON_HOME}`；未设置时使用用户目录下的 `.melonPaw-CompanyAI`。企业数据库默认位于：
 
 ```text
 ${MELON_HOME}/enterprise.db
@@ -188,6 +194,12 @@ export DEEPSEEK_API_KEY=sk-xxxx
 
 API Key 和渠道密钥不得提交到仓库、工作区文档或日志中。Ollama 为本地模型接入，通常不需要 API Key。
 
+本地模型管理页会探测配置端口上的 Ollama，读取 `/api/tags` 的真实模型列表，通过 `/api/pull` 拉取或取消模型，通过 `/api/delete` 删除未被 Agent 使用的模型，并把所选 `ollama:<model>` 保存到当前 Agent。Ollama 必须由部署环境提前安装并启动；页面不负责安装、更新或停止外部服务，也不支持 Hugging Face/ModelScope 文件下载或 GGUF 运行时管理。默认连接 `http://127.0.0.1:11434`，可在页面修改端口。外部 Ollama 的完整端到端验收仍取决于部署环境。
+
+模型供应商 OAuth 当前不受支持，接口会明确返回 `501`；请使用 API Key。远程 MCP 的 OAuth 是独立能力，当前只支持 OAuth 2.0 Client Credentials：需要显式填写 Token Endpoint、Client ID、Client Secret 和可选 Scope。交互式 Authorization Code、PKCE 和 Dynamic Client Registration 尚未实现，控制台不会伪造授权弹窗或返回假成功。
+
+外部技能 URL 导入只接受可直接下载的 HTTPS ZIP，ZIP 内必须包含 `SKILL.md`。Skills.sh、ClawHub、SkillsMP、LobeHub、ModelScope 等详情页不是 ZIP 下载地址，不会显示为受支持来源。插件同样只接受浏览器上传的 ZIP/文件夹、已安装目录中的 `plugin://` 项，或经过公网地址校验的 HTTP(S) ZIP；服务端任意本地路径安装被禁止。
+
 模型、渠道和 MCP 凭据使用 AES-256-GCM 加密落盘。未设置 `MELON_MASTER_KEY` 时，系统会自动生成
 `${MELON_HOME}/master.key` 并在支持 POSIX 权限的平台设为 `0600`；生产环境也可以注入 Base64 或
 64 位十六进制的 256-bit `MELON_MASTER_KEY`。轮换时使用新 `MELON_MASTER_KEY` 启动，并通过
@@ -206,7 +218,7 @@ mvn -pl melon-app spring-boot:run -Dspring-boot.run.profiles=local
 在 IntelliJ IDEA 的 Spring Boot Run/Debug Configuration 中把 Active profiles
 设置为 `local`，会加载 `application-local.yaml` 并使用 AgentScope
 `LocalFilesystemSpec` 的跨平台适配层。Windows 使用 `cmd.exe`，Linux 和 macOS
-使用 `sh`；文件工具和命令工具共享同一个个人工作区，并统一使用 UTF-8 输出。
+使用 `sh`；文件工具和命令工具共享当前授权 Agent 的工作区，并统一使用 UTF-8 输出。
 该模式允许在宿主机执行命令，仅用于可信的本地开发；
 不启用 `local` profile 时，`application.yaml` 默认使用 Docker 沙箱。
 
@@ -249,4 +261,4 @@ npm run build
 
 ## 许可证
 
-本项目使用 [Apache License 2.0](LICENSE)。公开源码仓库或二进制发布前，仍需核对 `NOTICE`、上游版本、第三方资源许可证和前端素材的再分发条件。
+本项目代码拟使用 [Apache License 2.0](LICENSE)，但当前 Git 历史仍包含已从工作树删除、禁止第三方分发的 Anthropic 技能材料，因此当前仓库不能直接视为合规的开源发布物。公开源码或二进制发布前必须按 [开源发布检查清单](docs/OPEN_SOURCE_CHECKLIST.md) 清理历史，并核对 `NOTICE`、上游版本、剩余第三方资源许可证和前端素材的再分发条件。

@@ -8,4 +8,6 @@ MelonPaw-Company 是独立维护的企业私有部署项目。当前代码与前
 
 本项目继续使用 Apache License 2.0，并保留上游许可证与归属信息。MelonPaw-Company 的名称、企业功能、Java 后端实现及后续维护由本项目贡献者独立负责；本项目不是 QwenPaw 或 AgentScope 的官方发行版，也不主张其商标或官方身份。
 
-在能够确定所使用上游版本后，应在本文件补充准确的 tag 或 commit，以及主要改动目录。任何公开源码仓库或二进制发布都必须同时携带 `LICENSE`、`NOTICE` 和适用的第三方许可证。
+当前仓库没有保存最初导入时对应的 QwenPaw tag/commit，不能据现有 Git 历史可靠推断，禁止编造版本号。可确认的本地导入基线是 MelonPaw-Company 初始提交 `33a9bd89f9b0d10f3c739d0d8a4e5f6ce6693e1c`。公开发布前，维护者必须从原始导入记录确定上游 commit；无法确定时，应以文件级来源清单和干净重建仓库完成溯源。
+
+主要演进目录包括 `console/`（Web 交互基础及企业页面重构）、`melon-core/`（Java Agent 运行时）、`melon-app/`（认证、企业数据、任务和 HTTP API）、`melon-channels/`、`melon-tools/` 与 `melon-plugin-api/`。任何公开源码仓库或二进制发布都必须同时携带 `LICENSE`、`NOTICE` 和适用的第三方许可证。

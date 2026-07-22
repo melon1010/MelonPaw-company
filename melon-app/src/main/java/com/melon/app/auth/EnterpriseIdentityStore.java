@@ -44,7 +44,7 @@ public class EnterpriseIdentityStore {
     @Autowired
     public EnterpriseIdentityStore(
             @Value("${melon.enterprise.database-path:}") String configuredPath,
-            @Value("${melon.home_dir:~/.melonAI}") String homeDir) {
+            @Value("${melon.home_dir:~/.melonPaw-CompanyAI}") String homeDir) {
         this(resolveDatabasePath(configuredPath, homeDir));
     }
 
@@ -337,7 +337,10 @@ public class EnterpriseIdentityStore {
     }
 
     public synchronized List<RoleRecord> listRoles() {
-        String sql = "SELECT code, name, description, system_role FROM enterprise_roles ORDER BY system_role DESC, code";
+        String sql = "SELECT r.code, r.name, r.description, r.system_role, COUNT(ur.user_id) AS user_count "
+                + "FROM enterprise_roles r LEFT JOIN enterprise_user_roles ur ON ur.role_code = r.code "
+                + "GROUP BY r.code, r.name, r.description, r.system_role "
+                + "ORDER BY r.system_role DESC, r.code";
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(sql)) {
             List<RoleRecord> roles = new ArrayList<>();
             try (ResultSet result = statement.executeQuery()) {
@@ -348,7 +351,8 @@ public class EnterpriseIdentityStore {
                             result.getString("name"),
                             result.getString("description"),
                             result.getInt("system_role") == 1,
-                            permissionsForRole(connection, code)
+                            permissionsForRole(connection, code),
+                            result.getLong("user_count")
                     ));
                 }
             }
@@ -396,6 +400,80 @@ public class EnterpriseIdentityStore {
             }
         } catch (SQLException e) {
             throw databaseFailure("save custom role", e);
+        }
+    }
+
+    /** Deletes an unused custom role without weakening the built-in RBAC catalogue. */
+    public synchronized void deleteCustomRole(String code) {
+        String normalized = normalizeRoleCode(code);
+        try (Connection connection = open()) {
+            connection.setAutoCommit(false);
+            try {
+                RoleRecord role = findRole(connection, normalized)
+                        .orElseThrow(() -> new IllegalArgumentException("Role not found: " + normalized));
+                if (role.systemRole()) {
+                    throw new IllegalArgumentException("Built-in roles cannot be deleted");
+                }
+                if (role.userCount() > 0) {
+                    throw new RoleInUseException(normalized, role.userCount());
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM enterprise_roles WHERE code = ? AND system_role = 0")) {
+                    statement.setString(1, normalized);
+                    if (statement.executeUpdate() != 1) {
+                        throw new IllegalStateException("Role changed while it was being deleted");
+                    }
+                }
+                connection.commit();
+            } catch (RuntimeException | SQLException e) {
+                rollback(connection);
+                throw e;
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("delete custom role", e);
+        }
+    }
+
+    public synchronized Optional<String> getUserPreference(String userId, String key) {
+        String user = requiredPreferencePart(userId, "user id");
+        String preferenceKey = requiredPreferencePart(key, "preference key");
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(
+                "SELECT preference_value FROM enterprise_user_preferences WHERE user_id = ? AND preference_key = ?")) {
+            statement.setString(1, user);
+            statement.setString(2, preferenceKey);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(result.getString(1)) : Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("read user preference", e);
+        }
+    }
+
+    public synchronized void setUserPreference(String userId, String key, String value) {
+        String user = requiredPreferencePart(userId, "user id");
+        String preferenceKey = requiredPreferencePart(key, "preference key");
+        String preferenceValue = value == null ? "" : value;
+        if (preferenceValue.length() > 16_384) {
+            throw new IllegalArgumentException("Preference value is too large");
+        }
+        try (Connection connection = open()) {
+            requireUser(connection, user);
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    INSERT INTO enterprise_user_preferences
+                        (user_id, preference_key, preference_value, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(user_id, preference_key) DO UPDATE SET
+                        preference_value = excluded.preference_value,
+                        updated_at = excluded.updated_at
+                    """)) {
+                statement.setString(1, user);
+                statement.setString(2, preferenceKey);
+                statement.setString(3, preferenceValue);
+                statement.setString(4, Instant.now().toString());
+                statement.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("save user preference", e);
         }
     }
 
@@ -842,6 +920,16 @@ public class EnterpriseIdentityStore {
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auth_session_expiry "
                     + "ON enterprise_auth_sessions(expires_at)");
             statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS enterprise_user_preferences (
+                        user_id TEXT NOT NULL,
+                        preference_key TEXT NOT NULL,
+                        preference_value TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        PRIMARY KEY (user_id, preference_key),
+                        FOREIGN KEY (user_id) REFERENCES enterprise_users(id) ON DELETE CASCADE
+                    )
+                    """);
+            statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS enterprise_project_spaces (
                         id TEXT PRIMARY KEY,
                         code TEXT NOT NULL COLLATE NOCASE UNIQUE,
@@ -1082,7 +1170,9 @@ public class EnterpriseIdentityStore {
 
     private Optional<RoleRecord> findRole(Connection connection, String code) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT code, name, description, system_role FROM enterprise_roles WHERE code = ?")) {
+                "SELECT r.code, r.name, r.description, r.system_role, COUNT(ur.user_id) AS user_count "
+                        + "FROM enterprise_roles r LEFT JOIN enterprise_user_roles ur ON ur.role_code = r.code "
+                        + "WHERE r.code = ? GROUP BY r.code, r.name, r.description, r.system_role")) {
             statement.setString(1, code);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
@@ -1093,7 +1183,8 @@ public class EnterpriseIdentityStore {
                         result.getString("name"),
                         result.getString("description"),
                         result.getInt("system_role") == 1,
-                        permissionsForRole(connection, code)
+                        permissionsForRole(connection, code),
+                        result.getLong("user_count")
                 ));
             }
         }
@@ -1326,6 +1417,17 @@ public class EnterpriseIdentityStore {
         }
     }
 
+    private static String requiredPreferencePart(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(name + " is required");
+        }
+        String normalized = value.trim();
+        if (normalized.length() > 128) {
+            throw new IllegalArgumentException(name + " is too long");
+        }
+        return normalized;
+    }
+
     private static IllegalStateException databaseFailure(String operation, SQLException exception) {
         return new IllegalStateException("Failed to " + operation + ": " + exception.getMessage(), exception);
     }
@@ -1348,16 +1450,32 @@ public class EnterpriseIdentityStore {
     }
 
     public record RoleRecord(
-            String code, String name, String description, boolean systemRole, Set<String> permissions) {
+            String code, String name, String description, boolean systemRole, Set<String> permissions,
+            long userCount) {
         public Map<String, Object> toMap() {
             return Map.of(
                     "code", code,
                     "name", name,
                     "description", description,
                     "system_role", systemRole,
-                    "permissions", permissions.stream().sorted().toList()
+                    "permissions", permissions.stream().sorted().toList(),
+                    "user_count", userCount
             );
         }
+    }
+
+    public static final class RoleInUseException extends IllegalStateException {
+        private final String roleCode;
+        private final long userCount;
+
+        public RoleInUseException(String roleCode, long userCount) {
+            super("Role " + roleCode + " is assigned to " + userCount + " user(s)");
+            this.roleCode = roleCode;
+            this.userCount = userCount;
+        }
+
+        public String roleCode() { return roleCode; }
+        public long userCount() { return userCount; }
     }
 
     public record ProjectSpaceRecord(

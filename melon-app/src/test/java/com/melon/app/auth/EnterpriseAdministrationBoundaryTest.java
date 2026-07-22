@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class EnterpriseAdministrationBoundaryTest {
@@ -77,5 +78,38 @@ class EnterpriseAdministrationBoundaryTest {
                 "permissions", List.of("projects:read", "audit:read")
         ), organizationAdministrator).block();
         assertEquals(201, response.getStatusCode().value());
+    }
+
+    @Test
+    void userPreferencesAreIsolatedAndPersisted() {
+        store.setUserPreference(systemAdministrator.id(), "ui.language", "zh");
+        store.setUserPreference(organizationAdministrator.id(), "ui.language", "en");
+
+        assertEquals("zh", store.getUserPreference(
+                systemAdministrator.id(), "ui.language").orElseThrow());
+        assertEquals("en", store.getUserPreference(
+                organizationAdministrator.id(), "ui.language").orElseThrow());
+        assertTrue(store.getUserPreference(
+                organizationAdministrator.id(), "unknown").isEmpty());
+    }
+
+    @Test
+    void customRoleCanOnlyBeDeletedWhenItHasNoUsers() {
+        store.saveCustomRole("PROJECT_READER", "Project Reader", "", Set.of("projects:read"));
+        EnterprisePrincipal user = authService.createUser(
+                "project-reader", "Project Reader", "ProjectReaderPassword123", true,
+                Set.of("PROJECT_READER"));
+
+        EnterpriseIdentityStore.RoleRecord role = store.listRoles().stream()
+                .filter(item -> item.code().equals("PROJECT_READER"))
+                .findFirst().orElseThrow();
+        assertEquals(1, role.userCount());
+        assertThrows(EnterpriseIdentityStore.RoleInUseException.class,
+                () -> store.deleteCustomRole("PROJECT_READER"));
+
+        store.replaceUserRoles(user.id(), Set.of("EMPLOYEE"));
+        store.deleteCustomRole("PROJECT_READER");
+        assertTrue(store.listRoles().stream()
+                .noneMatch(item -> item.code().equals("PROJECT_READER")));
     }
 }

@@ -6,8 +6,8 @@ import type {
   MCPToolInfo,
   MCPAccessPrincipalOption,
   MCPAccessPolicy,
-  MCPOAuthStartRequest,
-  MCPOAuthStartResponse,
+  MCPOAuthConfigureRequest,
+  MCPOAuthConfigureResponse,
   MCPOAuthStatusResponse,
 } from "../types";
 
@@ -96,13 +96,10 @@ export const mcpApi = {
       body: JSON.stringify({ tools }),
     }),
 
-  /**
-   * Start an OAuth 2.1 PKCE flow for a remote MCP client.
-   * Returns the authorization URL to open in a popup.
-   */
-  startOAuth: (clientKey: string, body: MCPOAuthStartRequest) =>
-    request<MCPOAuthStartResponse>(
-      clientEndpoint("/oauth/start", clientKey),
+  /** Configure and verify OAuth 2.0 client-credentials for a remote MCP client. */
+  configureOAuth: (clientKey: string, body: MCPOAuthConfigureRequest) =>
+    request<MCPOAuthConfigureResponse>(
+      clientEndpoint("/oauth/configure", clientKey),
       {
         method: "POST",
         body: JSON.stringify(body),

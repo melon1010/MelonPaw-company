@@ -668,41 +668,6 @@ export function AgentLoopCard() {
       ),
       children: <MissionModeTab />,
     },
-    {
-      key: "add",
-      label: (
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-            color: "var(--text-quaternary, rgba(0,0,0,0.25))",
-          }}
-        >
-          <Plus size={13} />
-        </span>
-      ),
-      children: (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "40px 0",
-            color: "var(--text-secondary, rgba(0,0,0,0.45))",
-          }}
-        >
-          <Plus size={32} style={{ opacity: 0.3, marginBottom: 12 }} />
-          <p style={{ fontSize: 14, fontWeight: 500 }}>
-            {t("agentConfig.customLoopTitle", "Custom Loop Modes")}
-          </p>
-          <p style={{ fontSize: 12 }}>
-            {t(
-              "agentConfig.customLoopDesc",
-              "Create your own loop modes with custom gate combinations. Coming soon.",
-            )}
-          </p>
-        </div>
-      ),
-    },
   ];
 
   return (

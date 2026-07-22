@@ -1,7 +1,8 @@
 import { request } from "../request";
 
 export const settingsApi = {
-  getLanguage: () => request<{ language: string }>("/settings/language"),
+  getLanguage: () =>
+    request<{ language: string; configured: boolean }>("/settings/language"),
 
   updateLanguage: (language: string) =>
     request<{ language: string }>("/settings/language", {

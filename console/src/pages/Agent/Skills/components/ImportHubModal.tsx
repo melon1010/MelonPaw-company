@@ -9,6 +9,7 @@ import {
   CloseCircleOutlined,
 } from "@ant-design/icons";
 import { skillMarkets, type SkillMarket } from "./index";
+import { isSupportedSkillUrl } from "@/constants/skill";
 import styles from "./ImportHubModal.module.less";
 
 interface ImportHubModalProps {
@@ -40,7 +41,7 @@ function validateUrl(url: string): ValidationResult {
   } catch {
     return { ok: false, messageKey: "skills.invalidUrl" };
   }
-  if (parsedInput.protocol !== "https:" && parsedInput.protocol !== "http:") {
+  if (!isSupportedSkillUrl(trimmed)) {
     return { ok: false, messageKey: "skills.invalidUrl" };
   }
 

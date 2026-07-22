@@ -247,7 +247,7 @@ public class WorkspaceController {
             result.put("memory_manager_backend", normalizeMemoryBackend(agentConfig.getMemoryManagerBackend()));
             result.put("approval_level", agentConfig.getApproval().getLevel());
             result.put("light_context_config", lightContextPayload(agentConfig));
-            result.putIfAbsent("auto_title_config", Map.of("enabled", true, "timeout_seconds", 30));
+            result.putIfAbsent("auto_title_config", Map.of("enabled", true));
             return ResponseEntity.ok(result);
         });
     }
@@ -484,29 +484,6 @@ public class WorkspaceController {
         Map<String, Object> result = new LinkedHashMap<>();
         raw.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
-    }
-
-    @GetMapping("/language")
-    public Mono<ResponseEntity<?>> getLanguage(@RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
-        AgentConfig config = configManager.getConfig().getAgent(AgentRequestSupport.agentId(agentId));
-        return Mono.just(ResponseEntity.ok(Map.of("language", config != null ? config.getLanguage() : "zh")));
-    }
-
-    @PutMapping("/language")
-    public Mono<ResponseEntity<?>> updateLanguage(@RequestHeader(value = "X-Agent-Id", required = false) String agentId,
-                                                  @RequestBody Map<String, Object> body) {
-        String id = AgentRequestSupport.agentId(agentId);
-        AgentConfig config = configManager.getConfig().getAgent(id);
-        String language = body != null ? String.valueOf(body.getOrDefault("language", "zh")) : "zh";
-        if (config != null) {
-            config.setLanguage(language);
-            configManager.save();
-            multiAgentManager.reload(id);
-        }
-        return Mono.just(ResponseEntity.ok(Map.of(
-                "language", language,
-                "copied_files", List.of()
-        )));
     }
 
     @GetMapping("/audio-mode")

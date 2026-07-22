@@ -22,9 +22,11 @@ import { hasPermission } from "../../../auth/authorization";
 import { PageHeader } from "../../../components/PageHeader";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useAppMessage } from "../../../hooks/useAppMessage";
-import styles from "../company.module.less";
+import accessStyles from "../accessControl.module.less";
+import { getRoleName } from "../rolePresentation";
 
 type UserFormValues = EnterpriseUserInput;
+type StatusFilter = "all" | "enabled" | "disabled";
 
 function formatTime(value?: string | null): string {
   if (!value) return "-";
@@ -42,7 +44,9 @@ export default function EnterpriseMembers() {
   const [roleOptions, setRoleOptions] = useState<
     Array<{ label: string; value: string }>
   >([]);
+  const [roleLabels, setRoleLabels] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
@@ -68,11 +72,15 @@ export default function EnterpriseMembers() {
         poolSkillsPromise,
       ]);
       setUsers(userList);
-      setRoleOptions(
-        catalogue.roles.map((role) => ({
-          value: role.code,
-          label: `${role.name} (${role.code})`,
-        })),
+      const nextRoleOptions = catalogue.roles.map((role) => ({
+        value: role.code,
+        label: getRoleName(role.code, role.name, t),
+      }));
+      setRoleOptions(nextRoleOptions);
+      setRoleLabels(
+        Object.fromEntries(
+          nextRoleOptions.map((option) => [option.value, option.label]),
+        ),
       );
       setSkillOptions(
         poolSkills
@@ -100,13 +108,20 @@ export default function EnterpriseMembers() {
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return users;
-    return users.filter((entry) =>
-      [entry.username, entry.display_name, ...entry.roles]
+    return users.filter((entry) => {
+      if (statusFilter === "enabled" && !entry.enabled) return false;
+      if (statusFilter === "disabled" && entry.enabled) return false;
+      if (!normalized) return true;
+      return [
+        entry.username,
+        entry.display_name,
+        ...entry.roles,
+        ...entry.roles.map((role) => roleLabels[role] || role),
+      ]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalized)),
-    );
-  }, [query, users]);
+        .some((value) => String(value).toLowerCase().includes(normalized));
+    });
+  }, [query, roleLabels, statusFilter, users]);
 
   const openCreate = () => {
     setEditing(null);
@@ -203,11 +218,11 @@ export default function EnterpriseMembers() {
       title: t("enterprise.members.account"),
       dataIndex: "username",
       render: (username: string, entry) => (
-        <div className={styles.nameCell}>
-          <div className={styles.primaryText}>
+        <div className={accessStyles.nameCell}>
+          <div className={accessStyles.primaryText}>
             {entry.display_name || username}
           </div>
-          <div className={styles.secondaryText}>{username}</div>
+          <div className={accessStyles.secondaryText}>{username}</div>
         </div>
       ),
     },
@@ -217,7 +232,9 @@ export default function EnterpriseMembers() {
       render: (roles: string[]) => (
         <Space size={[4, 4]} wrap>
           {roles.map((role) => (
-            <Tag key={role}>{role}</Tag>
+            <Tag className={accessStyles.roleTag} key={role} title={role}>
+              {roleLabels[role] || getRoleName(role, role, t)}
+            </Tag>
           ))}
         </Space>
       ),
@@ -278,10 +295,13 @@ export default function EnterpriseMembers() {
   ];
 
   return (
-    <div className={styles.page}>
+    <div className={accessStyles.accessPage}>
       {modalContextHolder}
       <PageHeader
-        current={t("enterprise.members.title")}
+        items={[
+          { title: t("enterprise.nav.administration") },
+          { title: t("enterprise.members.title") },
+        ]}
         afterBreadcrumb={
           <Tag>{t("common.total", { count: filtered.length })}</Tag>
         }
@@ -302,18 +322,37 @@ export default function EnterpriseMembers() {
           </Space>
         }
       />
-      <div className={styles.body}>
-        <div className={styles.toolbar}>
-          <Input
-            allowClear
-            prefix={<Search size={15} />}
-            placeholder={t("enterprise.members.search")}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            style={{ width: 340, maxWidth: "100%" }}
-          />
+      <div className={accessStyles.accessBody}>
+        <div className={accessStyles.accessToolbar}>
+          <div className={accessStyles.filterGroup}>
+            <Input
+              className={accessStyles.searchInput}
+              allowClear
+              prefix={<Search size={15} />}
+              placeholder={t("enterprise.members.search")}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <Select<StatusFilter>
+              className={accessStyles.typeSelect}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: "all", label: t("enterprise.members.allStatuses") },
+                { value: "enabled", label: t("common.enabled") },
+                { value: "disabled", label: t("common.disabled") },
+              ]}
+            />
+          </div>
+          <span className={accessStyles.resultCount}>
+            {t("enterprise.members.filteredCount", {
+              visible: filtered.length,
+              total: users.length,
+            })}
+          </span>
         </div>
         <Table
+          className={accessStyles.accessTable}
           rowKey="id"
           loading={loading}
           columns={columns}
@@ -321,7 +360,11 @@ export default function EnterpriseMembers() {
           locale={{
             emptyText: <Empty description={t("enterprise.members.empty")} />,
           }}
-          pagination={{ pageSize: 20, showSizeChanger: true }}
+          pagination={{
+            pageSize: 20,
+            showSizeChanger: true,
+            hideOnSinglePage: true,
+          }}
           scroll={{ x: 820 }}
         />
       </div>

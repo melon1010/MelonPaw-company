@@ -54,7 +54,7 @@ export async function fetchPlugins(): Promise<PluginInfo[]> {
   return response.json();
 }
 
-/** Install a plugin from a local path or HTTP(S) URL via hot-reload. */
+/** Install a plugin from an HTTP(S) ZIP URL or the installed plugin catalogue. */
 export async function installPlugin(
   source: string,
   options?: { force?: boolean },

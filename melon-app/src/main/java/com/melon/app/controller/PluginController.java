@@ -2,6 +2,7 @@ package com.melon.app.controller;
 
 import com.melon.core.plugin.PluginManager;
 import com.melon.core.plugin.PluginDescriptor;
+import com.melon.core.util.OutboundNetworkPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -9,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -42,9 +44,10 @@ public class PluginController {
     private static final Logger log = LoggerFactory.getLogger(PluginController.class);
     private static final int MAX_ZIP_ENTRIES = 2_000;
     private static final long MAX_ZIP_BYTES = 200L * 1024L * 1024L;
+    private static final int MAX_REMOTE_REDIRECTS = 5;
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
-            .followRedirects(HttpClient.Redirect.NORMAL)
+            .followRedirects(HttpClient.Redirect.NEVER)
             .build();
 
     private final PluginManager pluginManager;
@@ -74,17 +77,26 @@ public class PluginController {
     }
 
     @GetMapping("/market/search")
-    public Mono<ResponseEntity<?>> marketSearch() {
+    public Mono<ResponseEntity<?>> marketSearch(
+            @RequestParam(required = false, name = "q") String query) {
+        String needle = stringValue(query).toLowerCase(java.util.Locale.ROOT);
+        List<Map<String, Object>> plugins = pluginManager.discoverPlugins().stream()
+                .map(this::catalogEntry)
+                .filter(item -> needle.isBlank()
+                        || stringValue(item.get("name")).toLowerCase(java.util.Locale.ROOT).contains(needle)
+                        || stringValue(item.get("description")).toLowerCase(java.util.Locale.ROOT).contains(needle))
+                .toList();
         return Mono.just(ResponseEntity.ok(Map.of(
                 "success", true,
                 "message", "ok",
-                "data", Map.of("total", 0, "plugins", List.of())
+                "data", Map.of("total", plugins.size(), "plugins", plugins)
         )));
     }
 
     @PostMapping("/install")
     public Mono<ResponseEntity<?>> installPlugin(@RequestBody(required = false) Map<String, Object> body) {
         return Mono.<ResponseEntity<?>>fromCallable(() -> ResponseEntity.ok(installFromSource(body)))
+                .subscribeOn(Schedulers.boundedElastic())
                 .onErrorResume(e -> Mono.just(badRequest(e)));
     }
 
@@ -98,7 +110,8 @@ public class PluginController {
                 return Mono.error(e);
             }
             return filePart.transferTo(path)
-                    .then(Mono.fromCallable(() -> (ResponseEntity<?>) ResponseEntity.ok(installZip(path, true))))
+                    .then(Mono.fromCallable(() -> (ResponseEntity<?>) ResponseEntity.ok(installZip(path, true)))
+                            .subscribeOn(Schedulers.boundedElastic()))
                     .doFinally(signal -> {
                         try {
                             Files.deleteIfExists(path);
@@ -170,23 +183,13 @@ public class PluginController {
         if (source.startsWith("plugin://")) {
             return installExisting(source.substring("plugin://".length()));
         }
-        Path path = Path.of(source).toAbsolutePath().normalize();
-        if (Files.isDirectory(path)) {
-            return installDirectory(path, force);
-        }
-        if (Files.isRegularFile(path)) {
-            return installZip(path, force);
-        }
-        throw new java.nio.file.NoSuchFileException("Plugin source not found: " + source);
+        throw new IllegalArgumentException(
+                "Local server paths are not accepted; upload a ZIP or folder from the browser");
     }
 
     private Path downloadRemoteZip(String source) throws Exception {
-        URI uri = URI.create(source);
-        HttpRequest request = HttpRequest.newBuilder(uri)
-                .timeout(Duration.ofSeconds(60))
-                .GET()
-                .build();
-        HttpResponse<InputStream> response = HTTP.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        HttpResponse<InputStream> response = openRemoteZip(
+                requirePublicPluginUri(source));
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalArgumentException("Plugin download failed: HTTP " + response.statusCode());
         }
@@ -214,6 +217,62 @@ public class PluginController {
                 Files.deleteIfExists(zip);
             }
         }
+    }
+
+    private HttpResponse<InputStream> openRemoteZip(URI initial) throws Exception {
+        URI current = initial;
+        java.util.Set<String> visited = new java.util.LinkedHashSet<>();
+        for (int redirects = 0; ; redirects++) {
+            current = requirePublicPluginUri(current.toString());
+            if (!visited.add(current.normalize().toString())) {
+                throw new IllegalArgumentException("Plugin download redirect loop detected");
+            }
+            HttpRequest request = HttpRequest.newBuilder(current)
+                    .timeout(Duration.ofSeconds(60))
+                    .GET()
+                    .build();
+            HttpResponse<InputStream> response = HTTP.send(
+                    request, HttpResponse.BodyHandlers.ofInputStream());
+            if (!isRedirect(response.statusCode())) {
+                return response;
+            }
+            try (InputStream ignored = response.body()) {
+                if (redirects >= MAX_REMOTE_REDIRECTS) {
+                    throw new IllegalArgumentException("Plugin download exceeded redirect limit");
+                }
+                String location = response.headers().firstValue("location")
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Plugin download redirect is missing Location"));
+                current = resolvePublicPluginRedirect(current, location);
+            }
+        }
+    }
+
+    static URI requirePublicPluginUri(String source) {
+        return OutboundNetworkPolicy.requirePublicHttpUri(source);
+    }
+
+    static URI resolvePublicPluginRedirect(URI current, String location) {
+        if (current == null || location == null || location.isBlank()) {
+            throw new IllegalArgumentException("Plugin download redirect is invalid");
+        }
+        URI next;
+        try {
+            next = requirePublicPluginUri(
+                    current.resolve(URI.create(location.trim())).toString());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Plugin download redirect is invalid", e);
+        }
+        if ("https".equalsIgnoreCase(current.getScheme())
+                && !"https".equalsIgnoreCase(next.getScheme())) {
+            throw new SecurityException("HTTPS plugin downloads cannot redirect to HTTP");
+        }
+        return next;
+    }
+
+    private boolean isRedirect(int statusCode) {
+        return statusCode == 301 || statusCode == 302 || statusCode == 303
+                || statusCode == 307 || statusCode == 308;
     }
 
     private Map<String, Object> installExisting(String pluginId) throws Exception {

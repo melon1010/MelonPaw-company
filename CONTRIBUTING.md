@@ -6,7 +6,7 @@
 
 - JDK 17+
 - Maven 3.8+
-- Node.js 18+（仅开发 `console/` 前端时需要）
+- Node.js 20.19+（仅开发 `console/` 前端时需要，推荐 22 LTS）
 
 ## 本地检查
 
@@ -26,9 +26,10 @@ mvn -Pquality checkstyle:check
 
 ```bash
 cd console
-npm install
+npm ci
 npm run lint
 npm run test:run
+npm run build
 ```
 
 ## Java 代码规范

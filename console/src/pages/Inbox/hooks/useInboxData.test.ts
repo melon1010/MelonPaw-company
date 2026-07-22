@@ -236,27 +236,40 @@ describe("useInboxData", () => {
       returnedCount = await result.current.deleteMessages(["m1", "m3"]);
     });
 
-    // Source computes the return count inside a setPushMessages functional
-    // updater (see useInboxData.ts line ~234). Under React 18 act(), that
-    // updater runs after the await resolves, so the synchronous return value
-    // is not reliable in tests. We assert observable effects instead and only
-    // sanity-check that a number was returned.
-    expect(typeof returnedCount).toBe("number");
-    expect(returnedCount).toBeGreaterThanOrEqual(0);
-
-    // Each requested id issues one deleteInboxEvent call → effective count of 2
+    expect(returnedCount).toBe(2);
     expect(mockDeleteInboxEvent).toHaveBeenCalledTimes(2);
     expect(mockDeleteInboxEvent).toHaveBeenCalledWith("m1");
     expect(mockDeleteInboxEvent).toHaveBeenCalledWith("m3");
     expect(result.current.pushMessages.map((m) => m.id)).toEqual(["m2"]);
-    // Summary counts in the source are derived from the same functional-updater
-    // counter (deleted/unreadDeleted). Because that counter is not yet updated
-    // when setSummary reads it under React 18 act(), the summary is not
-    // recomputed to reflect the deletion in this test environment. We assert
-    // only the pushMessages list here (states pushMessages is the source of
-    // truth for actual removal); summary accounting is exercised indirectly via
-    // the markAll* tests which use a pre-computed length.
-    expect(result.current.pushMessages).toHaveLength(1);
+    expect(result.current.summary.pushMessages.total).toBe(1);
+    expect(result.current.summary.pushMessages.unread).toBe(0);
+  });
+
+  it("keeps messages whose delete request fails", async () => {
+    const events = [
+      makeEvent({ id: "m1", read: false }),
+      makeEvent({ id: "m2", read: true }),
+      makeEvent({ id: "m3", read: false }),
+    ];
+    mockGetInboxEvents.mockResolvedValue(makeResolvedEvents(events));
+    mockDeleteInboxEvent.mockImplementation((id: string) =>
+      id === "m1"
+        ? Promise.reject(new Error("network error"))
+        : Promise.resolve({ deleted: id === "m3" }),
+    );
+
+    const { result } = renderHook(() => useInboxData());
+    await waitFor(() => expect(result.current.pushMessages).toHaveLength(3));
+
+    let returnedCount = -1;
+    await act(async () => {
+      returnedCount = await result.current.deleteMessages(["m1", "m2", "m3"]);
+    });
+
+    expect(returnedCount).toBe(1);
+    expect(result.current.pushMessages.map((m) => m.id)).toEqual(["m1", "m2"]);
+    expect(result.current.summary.pushMessages.total).toBe(2);
+    expect(result.current.summary.pushMessages.unread).toBe(1);
   });
 
   it("deleteMessages trims/dedupes empty ids and deletes nothing when only empty", async () => {

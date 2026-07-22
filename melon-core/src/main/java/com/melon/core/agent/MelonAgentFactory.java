@@ -132,7 +132,7 @@ public class MelonAgentFactory {
         ToolResultEvictionConfig toolResultEviction = buildToolResultEvictionConfig(agentConfig);
 
         // 3. 构建记忆配置
-        MemoryConfig memoryConfig = buildMemoryConfig(agentConfig);
+        MemoryConfig memoryConfig = memoryConfig(agentConfig);
 
         // 4. 注册 melonPaw 命名工具，避免 Harness 默认 execute/grep_files/glob_files 名称进入前端历史。
         Toolkit toolkit = buildToolkit(agentId, agentConfig, workspaceDir);
@@ -154,11 +154,13 @@ public class MelonAgentFactory {
             throw new IllegalStateException("Unsupported execution sandbox mode '" + sandboxMode
                     + "'. Supported modes: local, docker");
         }
+        if (memoryConfig != null) {
+            builder.memory(memoryConfig);
+        }
         builder
                 .toolsConfig(buildHarnessToolsConfig(agentConfig))
                 .middlewares(middlewares)
                 .toolResultEviction(toolResultEviction)
-                .memory(memoryConfig)
                 .stateStore(stateStore)
                 .maxIters(effectiveMaxIters(agentConfig))
                 .maxRetries(agentConfig.getRunning().isLlmRetryEnabled() ? agentConfig.getRunning().getLlmMaxRetries() : 0)
@@ -722,7 +724,10 @@ public class MelonAgentFactory {
     /**
      * 构建记忆配置.
      */
-    private MemoryConfig buildMemoryConfig(AgentConfig config) {
+    static MemoryConfig memoryConfig(AgentConfig config) {
+        if (config != null && "none".equalsIgnoreCase(config.getMemoryManagerBackend())) {
+            return null;
+        }
         return MemoryConfig.builder()
                 .flushTrigger(MemoryConfig.FlushTrigger.always())
                 .consolidationMaxTokens(4000)

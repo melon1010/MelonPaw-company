@@ -11,6 +11,8 @@ export interface MCPClientOAuthStatus {
   scope: string;
   /** OAuth client_id used */
   client_id: string;
+  /** OAuth token endpoint used for client-credentials authentication */
+  token_url: string;
 }
 
 export type MCPAccessEffect = "allow" | "ask" | "deny";
@@ -72,31 +74,18 @@ export interface MCPClientInfo {
   access_summary: MCPAccessSummary;
 }
 
-export interface MCPOAuthStartRequest {
-  /** MCP server URL */
-  url: string;
+export interface MCPOAuthConfigureRequest {
+  grant_type: "client_credentials";
+  token_url: string;
+  client_id: string;
+  client_secret: string;
   /** OAuth scope(s) to request */
   scope?: string;
-  /** Pre-registered client_id (leave empty to use Dynamic Client Registration) */
-  client_id?: string;
-  /** Override authorization endpoint (skips auto-discovery) */
-  auth_endpoint?: string;
-  /** Override token endpoint (skips auto-discovery) */
-  token_endpoint?: string;
 }
 
-export interface MCPOAuthStartResponse {
-  /** Full authorization URL to open in a popup */
-  auth_url: string;
-  /** State token / session ID for polling */
-  session_id: string;
-}
+export type MCPOAuthConfigureResponse = MCPClientOAuthStatus;
 
-export interface MCPOAuthStatusResponse {
-  authorized: boolean;
-  expires_at: number;
-  scope: string;
-}
+export type MCPOAuthStatusResponse = MCPClientOAuthStatus;
 
 export interface MCPClientCreateRequest {
   /** Unique client key identifier */

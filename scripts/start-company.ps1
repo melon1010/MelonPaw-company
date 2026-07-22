@@ -23,7 +23,7 @@ if ([string]::IsNullOrWhiteSpace($StateDir)) {
     $StateDir = $env:MELON_HOME
 }
 if ([string]::IsNullOrWhiteSpace($StateDir)) {
-    $StateDir = Join-Path $HOME ".melonAI"
+    $StateDir = Join-Path $HOME ".melonPaw-CompanyAI"
 }
 $StateDir = [System.IO.Path]::GetFullPath($StateDir)
 New-Item -ItemType Directory -Force -Path $StateDir | Out-Null

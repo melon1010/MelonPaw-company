@@ -88,6 +88,7 @@ export interface EnterpriseRole {
   description: string;
   system_role: boolean;
   permissions: string[];
+  user_count: number;
 }
 
 export interface RoleCatalogue {
@@ -226,4 +227,6 @@ export const companyApi = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+  deleteRole: (code: string) =>
+    request<void>(`/roles/${encodeURIComponent(code)}`, { method: "DELETE" }),
 };

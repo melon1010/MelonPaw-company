@@ -1,6 +1,7 @@
 package com.melon.app.task;
 
 import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.runner.AgentRunner;
 import com.melon.app.service.ApprovalService;
 import com.melon.core.agent.MultiAgentManager;
@@ -11,6 +12,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
@@ -30,15 +33,37 @@ public class EnterpriseTaskController {
     private final AgentRunner agentRunner;
     private final ApprovalService approvalService;
     private final MultiAgentManager multiAgentManager;
+    private final EnterpriseAgentAccessService agentAccessService;
 
     public EnterpriseTaskController(EnterpriseTaskService tasks, EnterpriseTaskRetryCoordinator retryCoordinator,
                                     AgentRunner agentRunner,
-                                    ApprovalService approvalService, MultiAgentManager multiAgentManager) {
+                                    ApprovalService approvalService, MultiAgentManager multiAgentManager,
+                                    EnterpriseAgentAccessService agentAccessService) {
         this.tasks = tasks;
         this.retryCoordinator = retryCoordinator;
         this.agentRunner = agentRunner;
         this.approvalService = approvalService;
         this.multiAgentManager = multiAgentManager;
+        this.agentAccessService = agentAccessService;
+    }
+
+    @PostMapping
+    public Mono<ResponseEntity<?>> create(
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyHeader,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return blocking(() -> {
+            Map<String, Object> request = body == null ? Map.of() : body;
+            String requestedAgentId = text(request.get("agent_id"), "default");
+            String agentId = agentAccessService.resolveExecution(principal, requestedAgentId);
+            String prompt = text(request.get("prompt"), "");
+            String idempotencyKey = text(idempotencyHeader,
+                    text(request.get("idempotency_key"), ""));
+            EnterpriseTaskService.TaskRun task = retryCoordinator.submit(
+                    principal.id(), agentId, text(request.get("title"), ""), prompt,
+                    text(request.get("mode"), "agent"), idempotencyKey);
+            return ResponseEntity.accepted().body(tasks.get(task.taskId()));
+        });
     }
 
     @GetMapping
@@ -167,6 +192,11 @@ public class EnterpriseTaskController {
 
     private boolean canReadAll(EnterprisePrincipal principal) {
         return principal.hasAnyPermission("audit:read", "agents:manage", "system:manage");
+    }
+
+    private String text(Object value, String fallback) {
+        String result = value == null ? "" : String.valueOf(value).trim();
+        return result.isBlank() ? fallback : result;
     }
 
     private <T> Mono<T> blocking(Callable<T> task) {

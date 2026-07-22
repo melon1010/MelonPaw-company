@@ -1,6 +1,7 @@
 package com.melon.app.controller;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import jakarta.annotation.PreDestroy;
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.auth.ProjectAgentService;
@@ -35,6 +36,13 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 
@@ -61,6 +69,13 @@ public class SkillController {
     private final EnterpriseAgentAccessService agentAccessService;
     private final ProjectAgentService projectAgentService;
     private final Map<String, Map<String, Object>> hubInstallTasks = new ConcurrentHashMap<>();
+    private final Map<String, Future<?>> hubInstallFutures = new ConcurrentHashMap<>();
+    private final ExecutorService hubInstallExecutor = new ThreadPoolExecutor(
+            2, 2, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(20), runnable -> {
+                Thread thread = new Thread(runnable, "skill-hub-install");
+                thread.setDaemon(true);
+                return thread;
+            }, new ThreadPoolExecutor.AbortPolicy());
 
     public SkillController(SkillService skillService, BuiltinSkillService builtinSkillService,
                            SecuritySettingsService securitySettingsService,
@@ -83,6 +98,11 @@ public class SkillController {
         this.agentAccessService = agentAccessService;
         this.projectAgentService = projectAgentService;
         this.skillScanner = new SkillScanner();
+    }
+
+    @PreDestroy
+    void shutdownHubInstallExecutor() {
+        hubInstallExecutor.shutdownNow();
     }
 
     /**
@@ -178,16 +198,34 @@ public class SkillController {
             request.put("workspace_id", workspaceId);
             Map<String, Object> task = installTask(taskId, request, "importing", null, null);
             hubInstallTasks.put(taskId, task);
+            FutureTask<Void> future = new FutureTask<>(() -> {
+                try {
+                    Map<String, Object> result = versionedMutation(
+                            workspaceId, principal, "Project skill installed from hub",
+                            () -> installLocalHubSkill(workspaceId, request, true));
+                    updateInstallTaskUnlessCancelled(taskId,
+                            installTask(taskId, request, "completed", null, result));
+                } catch (Exception e) {
+                    updateInstallTaskUnlessCancelled(taskId,
+                            installTask(taskId, request, "failed", safeInstallError(e), null));
+                }
+                return null;
+            }) {
+                @Override
+                protected void done() {
+                    hubInstallFutures.remove(taskId, this);
+                }
+            };
+            hubInstallFutures.put(taskId, future);
             try {
-                Map<String, Object> result = versionedMutation(
-                        workspaceId, principal, "Project skill installed from hub",
-                        () -> installLocalHubSkill(workspaceId, request, true));
-                task = installTask(taskId, request, "completed", null, result);
-            } catch (Exception e) {
-                task = installTask(taskId, request, "failed", e.getMessage(), null);
+                hubInstallExecutor.execute(future);
+            } catch (RejectedExecutionException e) {
+                hubInstallFutures.remove(taskId, future);
+                hubInstallTasks.remove(taskId);
+                return ResponseEntity.status(429).body(Map.of(
+                        "detail", "Too many skill imports are queued; retry later"));
             }
-            hubInstallTasks.put(taskId, task);
-            return ResponseEntity.ok(task);
+            return ResponseEntity.accepted().body(task);
         });
     }
 
@@ -207,10 +245,29 @@ public class SkillController {
             if ("failed".equals(task.get("status")) || "completed".equals(task.get("status"))) {
                 return ResponseEntity.ok(Map.of("task_id", taskId, "status", task.get("status")));
             }
+            Future<?> future = hubInstallFutures.remove(taskId);
+            if (future == null || !future.cancel(true)) {
+                Map<String, Object> current = hubInstallTaskForWorkspace(taskId, safeAgentId(agentId));
+                return ResponseEntity.ok(Map.of("task_id", taskId, "status", current.get("status")));
+            }
             Map<String, Object> cancelled = installTask(taskId, task, "cancelled", null, null);
             hubInstallTasks.put(taskId, cancelled);
             return ResponseEntity.ok(cancelled);
         });
+    }
+
+    private void updateInstallTaskUnlessCancelled(String taskId, Map<String, Object> replacement) {
+        hubInstallTasks.computeIfPresent(taskId, (ignored, current) ->
+                "cancelled".equals(current.get("status")) ? current : replacement);
+    }
+
+    private String safeInstallError(Exception error) {
+        if (error instanceof InterruptedException || Thread.currentThread().isInterrupted()) {
+            Thread.currentThread().interrupt();
+            return "Skill import was interrupted";
+        }
+        String message = error.getMessage();
+        return message == null || message.isBlank() ? error.getClass().getSimpleName() : message;
     }
 
     @PostMapping("/pool/import")
@@ -892,7 +949,7 @@ public class SkillController {
             return requireKnownSource("pool", raw.substring("pool:".length()), raw);
         }
         if (raw.startsWith("http://") || raw.startsWith("https://")) {
-            throw new IllegalArgumentException("Remote skill hub import is not implemented");
+            throw new IllegalArgumentException("Remote skill imports must use a direct public HTTPS ZIP URL");
         }
         if (builtinSource(raw).isPresent()) {
             return new HubSource("builtin", raw, "builtin://" + raw);
@@ -972,6 +1029,7 @@ public class SkillController {
     }
 
     Path downloadRemoteZip(String sourceUrl) throws Exception {
+        ensureInstallNotInterrupted();
         URI initial = requirePublicSkillUri(sourceUrl);
         HttpResponse<InputStream> response = openRemoteSkill(initial);
         Path zip = null;
@@ -989,7 +1047,8 @@ public class SkillController {
                 byte[] buffer = new byte[64 * 1024];
                 long total = 0L;
                 int read;
-                while ((read = input.read(buffer)) != -1) {
+            while ((read = input.read(buffer)) != -1) {
+                    ensureInstallNotInterrupted();
                     total += read;
                     if (total > MAX_REMOTE_SKILL_ZIP_BYTES) {
                         throw new IllegalArgumentException("Skill archive is too large");
@@ -1010,6 +1069,7 @@ public class SkillController {
         URI current = initial;
         Set<String> visited = new LinkedHashSet<>();
         for (int redirects = 0; ; redirects++) {
+            ensureInstallNotInterrupted();
             current = requirePublicSkillUri(current.toString());
             if (!visited.add(current.normalize().toString())) {
                 throw new IllegalArgumentException("Skill download redirect loop detected");
@@ -1033,6 +1093,12 @@ public class SkillController {
                                 "Skill download redirect is missing Location"));
                 current = resolvePublicSkillRedirect(current, location);
             }
+        }
+    }
+
+    private void ensureInstallNotInterrupted() throws InterruptedException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException("Skill import was cancelled");
         }
     }
 

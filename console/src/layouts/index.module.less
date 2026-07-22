@@ -1755,6 +1755,19 @@
   background: var(--mp-sidebar);
 }
 
+.webuiSider .sidebarAccountDockWithScope {
+  gap: 4px;
+
+  .sidebarAccount {
+    width: 40px;
+    min-width: 40px;
+    flex: 0 0 40px;
+    grid-template-columns: 28px;
+    justify-content: center;
+    padding: 4px 6px;
+  }
+}
+
 .webuiSider .sidebarAccount {
   min-height: 40px;
   border-radius: 10px;
@@ -1916,6 +1929,13 @@
   grid-template-columns: 28px;
   justify-content: center;
   padding: 0;
+}
+
+.webuiSider .sidebarAccountDockCollapsed.sidebarAccountDockWithScope {
+  flex: 0 0 96px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
 }
 
 @media (max-width: 768px) {

@@ -1,34 +1,35 @@
 package com.melon.app.controller;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
-import java.util.UUID;
 
 /**
- * Frontend compatibility for provider OAuth endpoints.
- *
- * <p>Provider/model CRUD lives under /api/models. The copied frontend still
- * calls these /api/providers OAuth URLs, so keep stable disabled responses.</p>
+ * Explicit capability response for provider OAuth, which is not implemented by the Java runtime.
+ * MCP OAuth is a separate, supported feature.
  */
 @RestController
 @RequestMapping("/api/providers")
 public class ProviderController {
 
     @PostMapping("/{providerId}/oauth/start")
-    public Mono<Map<String, Object>> startOAuth(@PathVariable String providerId) {
-        return Mono.just(Map.of(
-                "authorize_url", "",
-                "state", UUID.randomUUID().toString(),
-                "flow_type", "disabled",
-                "provider_id", providerId
-        ));
+    public Mono<ResponseEntity<?>> startOAuth(@PathVariable String providerId) {
+        return Mono.just(unsupported(providerId));
     }
 
     @GetMapping("/{providerId}/oauth/status")
-    public Mono<Map<String, Object>> oauthStatus(@PathVariable String providerId,
-                                                 @RequestParam(required = false) String state) {
-        return Mono.just(Map.of("status", "disabled", "provider_id", providerId));
+    public Mono<ResponseEntity<?>> oauthStatus(@PathVariable String providerId,
+                                               @RequestParam(required = false) String state) {
+        return Mono.just(unsupported(providerId));
+    }
+
+    private ResponseEntity<?> unsupported(String providerId) {
+        return ResponseEntity.status(501).body(Map.of(
+                "detail", "Provider OAuth is not supported; configure an API key instead",
+                "status", "unsupported",
+                "provider_id", providerId
+        ));
     }
 }

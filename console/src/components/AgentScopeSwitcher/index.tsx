@@ -41,7 +41,15 @@ function ScopeIcon({ scope, size = 16 }: { scope: AgentScope; size?: number }) {
   return <Bot size={size} aria-hidden="true" />;
 }
 
-export default function AgentScopeSwitcher() {
+interface AgentScopeSwitcherProps {
+  variant?: "header" | "sidebar";
+  collapsed?: boolean;
+}
+
+export default function AgentScopeSwitcher({
+  variant = "header",
+  collapsed = false,
+}: AgentScopeSwitcherProps) {
   const { t } = useTranslation();
   const selectedAgent = useAgentStore((state) => state.selectedAgent);
   const agents = useAgentStore((state) => state.agents);
@@ -155,7 +163,9 @@ export default function AgentScopeSwitcher() {
   const trigger = (
     <button
       type="button"
-      className={`${styles.trigger} ${styles.headerTrigger} ${
+      className={`${styles.trigger} ${
+        variant === "sidebar" ? styles.sidebarTrigger : styles.headerTrigger
+      } ${collapsed ? styles.collapsedTrigger : ""} ${
         styles[selectedScope.toLowerCase()]
       }`}
       aria-label={`${t("chat.switchScope")}: ${scopeLabel(
@@ -166,17 +176,21 @@ export default function AgentScopeSwitcher() {
       <span className={styles.triggerIcon}>
         <ScopeIcon scope={selectedScope} size={14} />
       </span>
-      <span className={styles.triggerCopy}>
-        <strong title={selectedName}>{selectedName}</strong>
-      </span>
-      <ChevronDown className={styles.chevron} size={14} aria-hidden />
+      {!collapsed ? (
+        <>
+          <span className={styles.triggerCopy}>
+            <strong title={selectedName}>{selectedName}</strong>
+          </span>
+          <ChevronDown className={styles.chevron} size={14} aria-hidden />
+        </>
+      ) : null}
     </button>
   );
 
   return (
     <Dropdown
       trigger={["click"]}
-      placement="bottomLeft"
+      placement={variant === "sidebar" ? "topLeft" : "bottomLeft"}
       overlayClassName={styles.scopeMenuPopup}
       menu={{
         items: menuItems,

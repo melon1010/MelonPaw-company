@@ -141,12 +141,10 @@ export interface ModelConfigRequest {
 }
 
 export interface LocalModelConfig {
-  max_context_length: number;
   port: number | null;
 }
 
 export interface LocalModelConfigRequest {
-  max_context_length?: number;
   port?: number | null;
   generate_kwargs?: Record<string, unknown>;
 }
@@ -161,7 +159,7 @@ export interface LocalModelInfo {
   source: LocalDownloadSource;
 }
 
-export type LocalDownloadSource = "huggingface" | "modelscope" | "auto";
+export type LocalDownloadSource = "ollama";
 
 export interface LocalServerStatus {
   available: boolean;
@@ -170,10 +168,6 @@ export interface LocalServerStatus {
   port: number | null;
   model_name: string | null;
   message: string | null;
-}
-
-export interface LocalServerUpdateStatus {
-  has_update: boolean;
 }
 
 export interface LocalDownloadProgress {

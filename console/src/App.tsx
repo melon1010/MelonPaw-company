@@ -169,6 +169,7 @@ function getRouterBasename(pathname: string): string | undefined {
 function AppInner() {
   const basename = getRouterBasename(window.location.pathname);
   const { i18n } = useTranslation();
+  const { user } = useAuth();
   const { isDark } = useTheme();
   const selectedTheme = isDark ? bailianDarkTheme : bailianTheme;
   const companyTokens = isDark
@@ -232,12 +233,21 @@ function AppInner() {
   );
 
   useEffect(() => {
-    if (!localStorage.getItem("language")) {
+    if (user) {
       languageApi
         .getLanguage()
-        .then(({ language }) => {
+        .then(async ({ language, configured }) => {
+          const localLanguage = localStorage.getItem("language");
+          if (
+            !configured &&
+            localLanguage &&
+            Object.prototype.hasOwnProperty.call(antdLocaleMap, localLanguage)
+          ) {
+            const saved = await languageApi.updateLanguage(localLanguage);
+            language = saved.language;
+          }
           if (language && language !== i18n.language) {
-            i18n.changeLanguage(language);
+            await i18n.changeLanguage(language);
             localStorage.setItem("language", language);
           }
         })
@@ -246,7 +256,7 @@ function AppInner() {
         );
     }
     useUploadLimitStore.getState().fetch();
-  }, [i18n]);
+  }, [i18n, user]);
 
   useEffect(() => {
     const handleLanguageChanged = (lng: string) => {

@@ -4,7 +4,7 @@
 
 ## P0：生产安全与核心闭环
 
-当前已落地的运行基线：Web 请求按用户解析 PERSONAL Agent；AgentScope `IsolationScope.USER` + DockerFilesystemSpec 隔离技能、文件和命令；官方 execute 是唯一 Shell 实现；普通用户工具页可见但不能切换到他人 Agent；个人模型从全局 ProviderManager 继承；定时任务记录执行者身份；请求上下文不能覆盖认证用户、Agent、会话或工作目录；工具审批按 Agent、用户、会话三层归属隔离。工作区上传、转写、渠道附件和技能远程下载已有大小上限、临时文件清理和公网 URL 策略；MCP 工具默认允许低风险调用、对高风险操作审批，并在每次调用时优先执行 Agent、用户、渠道和工具显式策略；OneBot 反向 WebSocket 使用个人 Agent token 绑定。
+当前已落地的运行基线：Web 请求按用户解析 PERSONAL Agent；AgentScope `IsolationScope.USER` + DockerFilesystemSpec 隔离技能、文件和命令；官方 execute 是唯一 Shell 实现；普通用户工具页可见但不能切换到他人 Agent；个人模型从全局 ProviderManager 继承；定时任务记录执行者身份；请求上下文不能覆盖认证用户、Agent、会话或工作目录；工具审批按 Agent、用户、会话三层归属隔离。工作区上传、转写、渠道附件和技能远程下载已有大小上限、临时文件清理和公网 URL 策略；MCP 工具默认允许低风险调用、对高风险操作审批，并在每次调用时优先执行 Agent、用户、渠道和工具显式策略；远程 MCP OAuth 只开放 Client Credentials，凭据会先验证再以加密配置替换旧授权；OneBot 反向 WebSocket 使用个人 Agent token 绑定。
 
 ### 1. 首次初始化部署验收
 
@@ -48,23 +48,29 @@
 
 验收：部署流程调用预检并阻断未就绪节点；`sleep` 长命令在停止接口的 SLA 内退出；跨用户容器、挂载和快照不能互相读取。
 
+### 7. 外部 Ollama 运行验收
+
+现状：本地模型功能只连接部署环境独立管理的 Ollama。控制台会真实探测服务、读取模型列表、拉取或取消模型、删除未被 Agent 使用的模型，并为当前 Agent 选择 `ollama:<model>`；应用不提供 Ollama/llama.cpp 安装、更新、启动或停止能力。长期记忆只开放 AgentScope 文件记忆与关闭两种模式，ReMeLight/ADBPG 未接入 Java 运行时。
+
+验收：在实际 Ollama 实例覆盖拉取、取消、删除冲突、Agent 切换、服务重启和大模型超时；确认生产网络边界、磁盘容量、模型许可证以及 Ollama 进程自身的 CPU/GPU 和访问控制配置。
+
 ## P1：企业运营能力
 
 ### 1. 统一非对话任务中心
 
-现状：Chat、Cron、Heartbeat 和 Channel 已统一写入 SQLite Task/Run/Event，审批、用量、结果、取消和重试使用同一 task_id/run_id；失败、超时和中断任务会在原 Task 下创建新 Run，保留旧 Run 与事件。任务中心和工作台已改用正式 Task API，Inbox trace 和审批 Audit 也能关联 task_id/run_id；项目任务会记录 PROJECT scope、项目、执行用户和 Agent 版本，当前项目成员可读取结果。
+现状：Chat、Cron、Heartbeat 和 Channel 已统一写入 SQLite Task/Run/Event，审批、用量、结果、取消和重试使用同一 task_id/run_id；失败、超时和中断任务会在原 Task 下创建新 Run，保留旧 Run 与事件。任务中心和工作台已改用正式 Task API，Inbox trace 和审批 Audit 也能关联 task_id/run_id；项目任务会记录 PROJECT scope、项目、执行用户和 Agent 版本，当前项目成员可读取结果。任务中心可直接创建不进入聊天列表的 Agent、Goal、Mission 任务，并沿用 Agent 权限、配额、结果、取消和重试链路。
 
-验收：补齐不可抵赖的管理审计；任务可以完全不进入聊天页面完成创建、查看和重试。
+验收：补齐不可抵赖的管理审计；在部署环境覆盖独立任务创建、重启后查看、取消和重试。
 
 ### 2. 角色管理页面
 
-现状：后端支持自定义角色和权限；控制台已提供独立角色设计页、权限矩阵、系统角色只读标识和危险权限提示，成员页继续负责用户绑定。
+现状：后端支持自定义角色和权限；控制台已提供独立角色设计页、权限矩阵、系统角色只读标识、引用用户数和安全删除。系统角色不可删除，被用户引用的自定义角色返回冲突并保留数据。
 
-验收：补充被引用用户数和角色删除/归档策略；系统角色不可修改。
+验收：在多人并发调整角色时覆盖引用计数与删除冲突；如业务需要保留历史角色，再单独设计归档语义。
 
 ### 3. 配额、并发与成本治理
 
-现状：支持企业、用户、项目、Agent 四层并发、每日任务、每日 Token、单任务 Token 和运行时限；管理员控制台提供配额策略编辑、角色权限矩阵和管理审计链校验。
+现状：支持企业、用户、项目、Agent 四层并发、每日任务、每日 Token、单任务 Token 和运行时限；管理员控制台提供配额策略编辑、角色权限矩阵和管理审计链校验。Agent 配置中的 LLM 并发、QPM、429 暂停和槽位等待超时已进入主对话、压缩、Rubric 和 Subagent 的模型调用链；这是模型请求准入控制，不等同于 `/quotas` 的任务与 Token 配额。
 
 验收：继续在多用户并发和重启场景验证额度归因；自动化频率细化仍待单独配置需求。
 
@@ -82,7 +88,8 @@
 
 ## P2：去上游耦合与体验收尾
 
-- Provider OAuth 当前返回 disabled；插件市场搜索返回空结果，应隐藏无效入口或完成真实实现。
+- Provider OAuth 未实现并明确返回 `501`，前端仅在 Provider 声明支持时展示。MCP OAuth 独立提供 OAuth 2.0 Client Credentials，并要求显式配置 Token Endpoint、Client ID、Client Secret 和可选 Scope；Authorization Code、PKCE 与 Dynamic Client Registration 未实现，如未来需要必须新增完整回调、状态校验和客户端注册链路。插件市场搜索返回本地已发现插件，不再伪造空市场。接入外部插件市场前仍需明确签名、来源和升级策略。
+- 外部技能导入只声明 HTTPS ZIP 能力，不再把第三方 HTML 详情页列为可安装来源；如需恢复第三方市场，应实现稳定的官方 API/解析器并补许可证校验。
 - 旧前端插件下载器、`window.QwenPaw` SDK 和动态模块猴子补丁已删除；`@agentscope-ai/design` 的固定 `qwenpaw` CSS 前缀及少量兼容存储键仍需随依赖升级分阶段迁移。
 - 多个 `*CompatController` 仍承担上游接口兼容，应在接口稳定后按领域重命名并建立正式 API 版本。
 - 继续清理不可见乱码、旧注释和不再使用的国际化文案。

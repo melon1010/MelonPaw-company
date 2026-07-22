@@ -16,40 +16,12 @@ describe("agentApi", () => {
     vi.clearAllMocks();
   });
 
-  it("agentRoot calls GET /agent/", async () => {
-    vi.mocked(request).mockResolvedValue({ status: "ok" });
-    const result = await agentApi.agentRoot();
-    expect(request).toHaveBeenCalledWith("/agent/");
-    expect(result).toEqual({ status: "ok" });
-  });
-
-  it("healthCheck calls GET /agent/health", async () => {
-    vi.mocked(request).mockResolvedValue({ healthy: true });
-    const result = await agentApi.healthCheck();
-    expect(request).toHaveBeenCalledWith("/agent/health");
-    expect(result).toEqual({ healthy: true });
-  });
-
   it("agentApi sends POST to /agent/process with body", async () => {
     const body = { message: "hello", session_id: "s1" };
     await agentApi.agentApi(body as any);
     expect(request).toHaveBeenCalledWith("/console/chat", {
       method: "POST",
       body: JSON.stringify(body),
-    });
-  });
-
-  it("getProcessStatus calls GET /agent/admin/status", async () => {
-    vi.mocked(request).mockResolvedValue({ running: true });
-    const result = await agentApi.getProcessStatus();
-    expect(request).toHaveBeenCalledWith("/agent/admin/status");
-    expect(result).toEqual({ running: true });
-  });
-
-  it("shutdown sends POST to /agent/admin/shutdown", async () => {
-    await agentApi.shutdown();
-    expect(request).toHaveBeenCalledWith("/agent/admin/shutdown", {
-      method: "POST",
     });
   });
 
@@ -70,19 +42,6 @@ describe("agentApi", () => {
       body: JSON.stringify(config),
     });
     expect(result).toEqual(config);
-  });
-
-  it("updateAgentLanguage sends PUT with language in body", async () => {
-    vi.mocked(request).mockResolvedValue({
-      language: "zh",
-      copied_files: ["a.txt"],
-    });
-    const result = await agentApi.updateAgentLanguage("zh");
-    expect(request).toHaveBeenCalledWith("/workspace/language", {
-      method: "PUT",
-      body: JSON.stringify({ language: "zh" }),
-    });
-    expect(result).toEqual({ language: "zh", copied_files: ["a.txt"] });
   });
 
   it("updateAudioMode sends PUT with audio_mode in body", async () => {

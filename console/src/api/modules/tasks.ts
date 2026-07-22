@@ -81,7 +81,20 @@ export interface EnterpriseTaskResult {
   events: EnterpriseTaskEvent[];
 }
 
+export interface CreateEnterpriseTaskInput {
+  title?: string;
+  prompt: string;
+  agent_id: string;
+  mode: "agent" | "goal" | "mission";
+  idempotency_key?: string;
+}
+
 export const taskApi = {
+  createTask: (body: CreateEnterpriseTaskInput) =>
+    request<EnterpriseTask>("/tasks", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   listTasks: (
     params: {
       status?: string;

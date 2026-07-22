@@ -2874,7 +2874,9 @@ export default function ChatPage() {
               onLoadingChange={setChatLoading}
             />
             <div className={styles.chatHeaderLeading}>
-              <AgentScopeSwitcher />
+              <span className={styles.mobileScopeSwitcher}>
+                <AgentScopeSwitcher />
+              </span>
               {chatId ? (
                 <span className={styles.chatConversationTitle}>
                   <ChatHeaderTitle />

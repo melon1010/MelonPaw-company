@@ -28,12 +28,11 @@ describe("SUPPORTED_SKILL_URL_PREFIXES", () => {
 
 describe("isSupportedSkillUrl", () => {
   it.each([
-    ["skills.sh URL", "https://skills.sh/my-skill", true],
-    ["clawhub URL", "https://clawhub.ai/skill", true],
-    ["github URL", "https://github.com/user/repo", true],
-    ["modelscope URL", "https://modelscope.cn/skills/my-skill", true],
-    ["unsupported domain", "https://example.com/skill", false],
-    ["http (not https)", "http://skills.sh/my-skill", false],
+    ["HTTPS ZIP", "https://example.com/my-skill.zip", true],
+    ["GitHub archive ZIP", "https://github.com/user/repo/archive/main.zip", true],
+    ["HTML detail page", "https://skills.sh/my-skill", false],
+    ["repository page", "https://github.com/user/repo", false],
+    ["http (not https)", "http://example.com/my-skill.zip", false],
     ["empty string", "", false],
     ["partial prefix match", "https://skills.sh.other.com/skill", false],
   ])("returns %s for %s → %s", (_, url, expected) => {

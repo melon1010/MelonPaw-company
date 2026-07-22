@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Empty, Input, Popconfirm, Space, Table, Tag } from "antd";
+import { Button, Empty, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   Bot,
@@ -14,6 +14,8 @@ import { useTranslation } from "react-i18next";
 import api, {
   type EnterpriseTask,
   type EnterpriseTaskStatus,
+  type AgentSummary,
+  type CreateEnterpriseTaskInput,
 } from "../../../api";
 import { PageHeader } from "../../../components/PageHeader";
 import { useAppMessage } from "../../../hooks/useAppMessage";
@@ -34,11 +36,23 @@ export default function TaskCenter() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm] = Form.useForm<CreateEnterpriseTaskInput>();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setTasks(await api.listTasks({ limit: 200 }));
+      const [taskResult, agentResult] = await Promise.allSettled([
+        api.listTasks({ limit: 200 }),
+        api.listAgents(),
+      ]);
+      if (taskResult.status === "rejected") throw taskResult.reason;
+      setTasks(taskResult.value);
+      setAgents(agentResult.status === "fulfilled"
+        ? (agentResult.value.agents || []).filter((agent) => agent.enabled)
+        : []);
     } catch (error) {
       message.error(
         error instanceof Error
@@ -112,6 +126,33 @@ export default function TaskCenter() {
     },
     [load, message, t],
   );
+
+  const openCreate = useCallback(() => {
+    createForm.resetFields();
+    createForm.setFieldsValue({
+      mode: "agent",
+      agent_id: agents[0]?.id,
+    });
+    setCreateOpen(true);
+  }, [agents, createForm]);
+
+  const createTask = useCallback(async (values: CreateEnterpriseTaskInput) => {
+    setCreating(true);
+    try {
+      await api.createTask({
+        ...values,
+        idempotency_key: globalThis.crypto?.randomUUID?.()
+          ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      });
+      message.success(t("enterprise.tasks.created", { defaultValue: "Task started" }));
+      setCreateOpen(false);
+      await load();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : t("enterprise.tasks.createFailed", { defaultValue: "Failed to start task" }));
+    } finally {
+      setCreating(false);
+    }
+  }, [load, message, t]);
 
   const columns: ColumnsType<EnterpriseTask> = [
     {
@@ -233,7 +274,8 @@ export default function TaskCenter() {
             <Button
               type="primary"
               icon={<Bot size={16} />}
-              onClick={() => navigate("/chat")}
+              onClick={openCreate}
+              disabled={agents.length === 0}
             >
               {t("enterprise.workbench.startTask")}
             </Button>
@@ -264,6 +306,52 @@ export default function TaskCenter() {
           scroll={{ x: 920 }}
         />
       </div>
+      <Modal
+        open={createOpen}
+        title={t("enterprise.workbench.startTask")}
+        okText={t("enterprise.workbench.startTask")}
+        confirmLoading={creating}
+        onCancel={() => setCreateOpen(false)}
+        onOk={() => createForm.submit()}
+        destroyOnClose
+      >
+        <Form form={createForm} layout="vertical" onFinish={createTask}>
+          <Form.Item
+            name="agent_id"
+            label={t("enterprise.tasks.agent", { defaultValue: "Agent" })}
+            rules={[{ required: true }]}
+          >
+            <Select options={agents.map((agent) => ({
+              value: agent.id,
+              label: `${agent.name || agent.id} · ${agent.scope || "SERVICE"}`,
+            }))} />
+          </Form.Item>
+          <Form.Item
+            name="mode"
+            label={t("enterprise.tasks.mode", { defaultValue: "Execution mode" })}
+            rules={[{ required: true }]}
+          >
+            <Select options={[
+              { value: "agent", label: t("enterprise.tasks.modes.agent", { defaultValue: "Agent" }) },
+              { value: "goal", label: t("enterprise.tasks.modes.goal", { defaultValue: "Goal" }) },
+              { value: "mission", label: t("enterprise.tasks.modes.mission", { defaultValue: "Mission" }) },
+            ]} />
+          </Form.Item>
+          <Form.Item
+            name="title"
+            label={t("enterprise.tasks.taskTitle", { defaultValue: "Task title" })}
+          >
+            <Input maxLength={200} />
+          </Form.Item>
+          <Form.Item
+            name="prompt"
+            label={t("enterprise.tasks.prompt", { defaultValue: "Task requirements" })}
+            rules={[{ required: true, whitespace: true }]}
+          >
+            <Input.TextArea rows={8} maxLength={100000} showCount />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

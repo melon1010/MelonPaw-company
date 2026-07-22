@@ -5,6 +5,11 @@ import Header from "./Header";
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string) => fallback ?? key,
+    i18n: {
+      language: "zh",
+      resolvedLanguage: "zh",
+      changeLanguage: vi.fn(),
+    },
   }),
 }));
 

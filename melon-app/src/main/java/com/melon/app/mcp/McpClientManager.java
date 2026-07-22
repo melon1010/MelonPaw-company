@@ -380,14 +380,31 @@ public class McpClientManager {
         if (config == null) {
             throw new IOException("MCP server not found: " + id);
         }
-        OAuthConfig oauth = OAuthConfig.fromMap(body == null ? Map.of() : body);
-        if (oauth.getTokenUrl() == null || oauth.getTokenUrl().isBlank()) {
+        OAuthConfig candidate = OAuthConfig.fromMap(body == null ? Map.of() : body);
+        if (candidate.getTokenUrl() == null || candidate.getTokenUrl().isBlank()) {
             throw new IOException("OAuth token_url is required");
         }
-        config.setOAuth(oauth);
-        oauthTokens.remove(id);
-        authorizationHeader(config);
-        persist();
+        if (!"client_credentials".equals(candidate.getGrantType())) {
+            throw new IOException("MCP OAuth configuration supports only client_credentials");
+        }
+
+        // Validate the replacement before touching a working configuration. A bad endpoint or
+        // credential must not destroy the token currently used by a connected MCP client.
+        OAuthToken fresh = fetchOAuthToken(candidate);
+        synchronized (oauthTokens) {
+            OAuthConfig previousConfig = config.getOAuth();
+            OAuthToken previousToken = oauthTokens.get(id);
+            try {
+                config.setOAuth(candidate);
+                oauthTokens.put(id, fresh);
+                persist();
+            } catch (RuntimeException e) {
+                config.setOAuth(previousConfig);
+                if (previousToken == null) oauthTokens.remove(id);
+                else oauthTokens.put(id, previousToken);
+                throw e;
+            }
+        }
         if (config.isEnabled() && getConnectionState(id).connected()) {
             disconnect(id);
             connectAsync(id);
@@ -398,14 +415,20 @@ public class McpClientManager {
     public Map<String, Object> oauthStatus(String id) {
         McpServerConfig config = servers.get(id);
         if (config == null || config.getOAuth() == null || !config.getOAuth().isEnabled()) {
-            return Map.of("authorized", false, "expires_at", 0, "scope", "", "client_id", "");
+            return Map.of(
+                    "authorized", false,
+                    "expires_at", 0,
+                    "scope", "",
+                    "client_id", "",
+                    "token_url", "");
         }
         OAuthToken token = oauthTokens.get(id);
         return Map.of(
-                "authorized", token != null && !token.isExpiring(config.getOAuth()),
+                "authorized", token != null && !token.isExpired(),
                 "expires_at", token == null ? 0 : token.expiresAt().getEpochSecond(),
                 "scope", config.getOAuth().getScope() == null ? "" : config.getOAuth().getScope(),
-                "client_id", config.getOAuth().getClientId() == null ? "" : config.getOAuth().getClientId()
+                "client_id", config.getOAuth().getClientId() == null ? "" : config.getOAuth().getClientId(),
+                "token_url", config.getOAuth().getTokenUrl() == null ? "" : config.getOAuth().getTokenUrl()
         );
     }
 
@@ -740,28 +763,22 @@ public class McpClientManager {
 
     private OAuthToken fetchOAuthToken(OAuthConfig oauth) throws IOException {
         Map<String, String> form = new LinkedHashMap<>();
-        form.put("grant_type", firstNonBlank(oauth.getGrantType(), "client_credentials"));
         form.putAll(oauth.getExtraTokenParams());
+        String grantType = firstNonBlank(oauth.getGrantType(), "client_credentials");
+        if (!"client_credentials".equals(grantType)) {
+            throw new IOException("Unsupported OAuth grant type: " + grantType);
+        }
+        // Reserved protocol and credential fields always come from the validated configuration.
+        form.put("grant_type", "client_credentials");
         if (notBlank(oauth.getScope())) form.put("scope", oauth.getScope());
         if (notBlank(oauth.getAudience())) form.put("audience", oauth.getAudience());
-        if ("client_credentials".equals(form.get("grant_type"))) {
-            if (!notBlank(oauth.getClientId()) || !notBlank(oauth.getClientSecret())) {
-                throw new IOException("OAuth client_credentials requires client_id and client_secret");
-            }
-            form.put("client_id", oauth.getClientId());
-            form.put("client_secret", oauth.getClientSecret());
-        } else if ("refresh_token".equals(form.get("grant_type"))) {
-            if (!notBlank(oauth.getRefreshToken())) {
-                throw new IOException("OAuth refresh_token grant requires refresh_token");
-            }
-            form.put("refresh_token", oauth.getRefreshToken());
-            if (notBlank(oauth.getClientId())) form.put("client_id", oauth.getClientId());
-            if (notBlank(oauth.getClientSecret())) form.put("client_secret", oauth.getClientSecret());
-        } else {
-            throw new IOException("Unsupported OAuth grant type: " + form.get("grant_type"));
+        if (!notBlank(oauth.getClientId()) || !notBlank(oauth.getClientSecret())) {
+            throw new IOException("OAuth client_credentials requires client_id and client_secret");
         }
+        form.put("client_id", oauth.getClientId());
+        form.put("client_secret", oauth.getClientSecret());
 
-        HttpRequest request = HttpRequest.newBuilder(URI.create(oauth.getTokenUrl()))
+        HttpRequest request = HttpRequest.newBuilder(oauthTokenUri(oauth.getTokenUrl()))
                 .timeout(Duration.ofSeconds(15))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(formEncode(form)))
@@ -802,6 +819,21 @@ public class McpClientManager {
         form.forEach((key, value) -> pairs.add(URLEncoder.encode(key, StandardCharsets.UTF_8) + "="
                 + URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8)));
         return String.join("&", pairs);
+    }
+
+    private URI oauthTokenUri(String value) throws IOException {
+        try {
+            URI uri = URI.create(value == null ? "" : value.trim());
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            if (!("http".equals(scheme) || "https".equals(scheme))
+                    || uri.getHost() == null || uri.getHost().isBlank()
+                    || uri.getUserInfo() != null || uri.getFragment() != null) {
+                throw new IOException("OAuth token_url must be an absolute HTTP(S) URL without credentials or fragments");
+            }
+            return uri;
+        } catch (IllegalArgumentException e) {
+            throw new IOException("OAuth token_url is invalid", e);
+        }
     }
 
     private boolean notBlank(String value) {
@@ -1076,6 +1108,10 @@ public class McpClientManager {
     }
 
     public record OAuthToken(String accessToken, String tokenType, Instant expiresAt) {
+        boolean isExpired() {
+            return !expiresAt.isAfter(Instant.now());
+        }
+
         boolean isExpiring(OAuthConfig oauth) {
             int skew = oauth == null ? 60 : Math.max(oauth.getRefreshSkewSeconds(), 0);
             return expiresAt.isBefore(Instant.now().plusSeconds(skew));
@@ -1088,7 +1124,6 @@ public class McpClientManager {
         private String grantType = "client_credentials";
         private String clientId;
         private String clientSecret;
-        private String refreshToken;
         private String scope;
         private String audience;
         private String tokenField = "access_token";
@@ -1106,7 +1141,6 @@ public class McpClientManager {
             config.setGrantType(firstNonBlank(stringValue(body.get("grant_type")), "client_credentials"));
             config.setClientId(stringValue(body.get("client_id")));
             config.setClientSecret(stringValue(body.get("client_secret")));
-            config.setRefreshToken(stringValue(body.get("refresh_token")));
             config.setScope(stringValue(body.get("scope")));
             config.setAudience(stringValue(body.get("audience")));
             config.setTokenField(firstNonBlank(stringValue(body.get("token_field")), "access_token"));
@@ -1131,7 +1165,6 @@ public class McpClientManager {
             map.put("grant_type", grantType);
             map.put("client_id", clientId);
             map.put("client_secret", clientSecret);
-            map.put("refresh_token", refreshToken);
             map.put("scope", scope);
             map.put("audience", audience);
             map.put("token_field", tokenField);
@@ -1168,8 +1201,6 @@ public class McpClientManager {
         public void setClientId(String clientId) { this.clientId = clientId; }
         public String getClientSecret() { return clientSecret; }
         public void setClientSecret(String clientSecret) { this.clientSecret = clientSecret; }
-        public String getRefreshToken() { return refreshToken; }
-        public void setRefreshToken(String refreshToken) { this.refreshToken = refreshToken; }
         public String getScope() { return scope; }
         public void setScope(String scope) { this.scope = scope; }
         public String getAudience() { return audience; }

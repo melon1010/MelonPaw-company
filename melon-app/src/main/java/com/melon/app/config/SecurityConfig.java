@@ -156,8 +156,7 @@ public class SecurityConfig {
                         .pathMatchers("/api/envs/**", "/api/backups/**", "/api/plugins/**", "/api/models/**",
                                 "/api/providers/**", "/api/local-models/**", "/api/quotas/**",
                                 "/api/config/security/**",
-                                "/api/debug/**", "/api/console/debug/**", "/api/agent/shutdown",
-                                "/api/agent/admin/**")
+                                "/api/console/debug/**")
                                 .hasAuthority("system:manage")
 
                         // Compatibility endpoints not listed above still require an account that
