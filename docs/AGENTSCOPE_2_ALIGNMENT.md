@@ -59,6 +59,9 @@ Web 请求进入 Agent 前，由 `AgentRunner` 创建 `RuntimeContext`：
 - 容器丢弃 Linux capabilities、启用 `no-new-privileges`、限制进程数、CPU 和内存，并以镜像内非 root 用户运行。
 - 默认使用 Docker `bridge` 以支持技能脚本获取外部资料；企业可通过 `MELON_SANDBOX_NETWORK` 指向受限出口网络或设为 `none`。
 - 本地文件系统模式只允许显式设置 `MELON_EXECUTION_SANDBOX=local` 的开发环境使用，不能作为企业部署方式。
+- Java 服务容器化时，通过 `MELON_WORKSPACE_ROOT` 与 `MELON_SANDBOX_HOST_WORKSPACE_ROOT` 将应用容器内路径显式映射为 Docker daemon 可识别的宿主路径；配置不完整、非绝对路径或越界时拒绝创建沙箱。
+
+stdio MCP 与 Agent Shell 使用相同的执行边界策略。Docker 模式下，MCP 进程由 `StdioMcpProcessLauncher` 放入独立非特权容器，只挂载所属 Agent 工作区，并限制 capabilities、进程数、CPU、内存和网络；连接关闭时会强制回收容器。`MELON_MCP_STDIO_MODE=local` 只用于可信开发环境，生产环境可使用 `docker`，或用 `disabled` 完全禁止 stdio MCP。远程 HTTP MCP 不启动本地进程，继续由连接策略和 MCP 工具权限策略约束。
 
 `AGENTS.md` 与 `MEMORY.md` 由 Harness Workspace 管理。其他允许的单层上下文文件使用 `additionalContextFile` 注入，并拒绝绝对路径、父目录跳转和多层任意路径。
 

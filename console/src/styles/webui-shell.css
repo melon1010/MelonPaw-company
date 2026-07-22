@@ -126,12 +126,12 @@ html.dark-mode .webui-shell .qwenpaw-sender {
   right: 0;
   display: block;
   width: 100%;
-  height: 38px !important;
+  height: 36px !important;
   box-sizing: border-box;
-  min-height: 38px !important;
-  max-height: 38px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
   margin: 0 !important;
-  padding: 7px 92px 7px 48px !important;
+  padding: 6px 92px 6px 48px !important;
   color: var(--mp-text) !important;
   font-size: 15px !important;
   line-height: 24px !important;
@@ -162,15 +162,20 @@ html.dark-mode .webui-shell .qwenpaw-sender-content-bottom {
 
 .webui-shell .qwenpaw-sender-content-bottom {
   position: absolute !important;
-  inset: 0;
+  top: 50%;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  height: 36px;
   display: flex !important;
   align-items: center;
   justify-content: space-between;
-  min-height: 0;
+  min-height: 36px;
   margin-top: 0 !important;
   padding: 0 8px !important;
   background: transparent !important;
   border: 0 !important;
+  transform: translateY(-50%);
   pointer-events: none;
 }
 
@@ -179,10 +184,27 @@ html.dark-mode .webui-shell .qwenpaw-sender-content-bottom {
   width: 36px;
   min-width: 36px;
   height: 36px;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
   color: var(--mp-text-secondary) !important;
+  line-height: 1 !important;
   border: 0 !important;
   border-radius: 50% !important;
   background: transparent !important;
+}
+
+.webui-shell .qwenpaw-sender-actions-list button .qwenpaw-btn-icon,
+.webui-shell .qwenpaw-sender-prefix button .qwenpaw-btn-icon {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+}
+
+.webui-shell .qwenpaw-sender-actions-list button svg,
+.webui-shell .qwenpaw-sender-prefix button svg {
+  display: block;
 }
 
 .webui-shell .qwenpaw-sender-prefix {
@@ -343,19 +365,6 @@ html.dark-mode
     width: calc(100% - 20px) !important;
   }
 
-  .webui-shell .qwenpaw-sender {
-    min-height: 112px;
-    border-radius: 25px !important;
-  }
-
-  .webui-shell .qwenpaw-sender-content {
-    padding: 12px 8px 8px !important;
-  }
-
-  .webui-shell .qwenpaw-sender-input {
-    min-height: 50px !important;
-  }
-
   .webui-shell .qwenpaw-sender:has([data-loop-command]) .qwenpaw-sender-input {
     padding-inline-start: 132px !important;
   }
@@ -367,7 +376,6 @@ html.dark-mode
   .webui-shell .qwenpaw-sender-prefix .qwenpaw-sender-actions-btn,
   .webui-shell .qwenpaw-sender-prefix .webui-sender-voice-button {
     right: 58px;
-    bottom: 11px;
   }
 }
 

@@ -53,4 +53,50 @@ describe("AgentScopeSwitcher", () => {
 
     expect(useAgentStore.getState().selectedAgent).toBe("personal-1");
   });
+
+  it("switches workspaces from the nested account menu", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AgentScopeSwitcher variant="menu" />);
+
+    await user.click(screen.getByText("chat.switchScope"));
+    await user.click(await screen.findByText("Personal workspace"));
+
+    expect(useAgentStore.getState().selectedAgent).toBe("personal-1");
+  });
+
+  it("never exposes the internal default template", async () => {
+    const user = userEvent.setup();
+    mockListAgents.mockResolvedValue({
+      agents: [
+        ...agents,
+        {
+          id: "default",
+          name: "Default",
+          description: "",
+          workspace_dir: "/default",
+          enabled: true,
+        },
+      ],
+    });
+    useAgentStore.setState({
+      selectedAgent: "default",
+      agents: [
+        {
+          id: "default",
+          name: "Default",
+          description: "",
+          workspace_dir: "/default",
+          enabled: true,
+        },
+      ],
+    });
+
+    renderWithProviders(<AgentScopeSwitcher variant="sidebar" />);
+    await user.click(
+      await screen.findByRole("button", { name: /chat\.switchScope/ }),
+    );
+
+    expect(screen.queryByText("Default")).not.toBeInTheDocument();
+    expect(useAgentStore.getState().selectedAgent).toBe("personal-1");
+  });
 });

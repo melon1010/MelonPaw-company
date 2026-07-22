@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Layers3,
   Languages,
   LogOut,
   Monitor,
@@ -21,6 +22,8 @@ import { languageApi } from "../api/modules/language";
 import { clearAuthToken } from "../api/config";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme, type ThemeMode } from "../contexts/ThemeContext";
+import AgentScopeSwitcher from "../components/AgentScopeSwitcher";
+import { useAgentStore } from "../stores/agentStore";
 import SidebarSettingsPanel from "./SidebarSettingsPanel";
 import styles from "./index.module.less";
 
@@ -58,8 +61,28 @@ export function AccountControl({
   const { t, i18n } = useTranslation();
   const { user, status: authStatus, clearSession } = useAuth();
   const { themeMode, setThemeMode } = useTheme();
+  const selectedAgent = useAgentStore((state) => state.selectedAgent);
+  const agents = useAgentStore((state) => state.agents);
   const role = user ? primaryRole(user) : "";
   const displayName = user?.display_name || user?.username || "";
+  const selectedAgentSummary = agents.find(
+    (agent) => agent.id === selectedAgent,
+  );
+  const selectedScope =
+    selectedAgentSummary?.scope ||
+    (selectedAgent === "default" || selectedAgent.startsWith("personal-")
+      ? "PERSONAL"
+      : selectedAgent.startsWith("project-")
+      ? "PROJECT"
+      : "SERVICE");
+  const workspaceName =
+    selectedAgentSummary?.name?.trim() ||
+    (selectedScope === "PROJECT"
+      ? t("chat.projectScope", "Project space")
+      : selectedScope === "PERSONAL"
+      ? t("chat.personalScope", "Personal space")
+      : t("chat.agentScope", "Agent space"));
+  const identityTitle = `${displayName} · ${workspaceName}`;
   const rawLanguage = i18n.resolvedLanguage || i18n.language;
   const shortLanguage = rawLanguage.split("-")[0];
   const currentLanguage = KNOWN_LANGUAGE_KEYS.has(rawLanguage)
@@ -155,10 +178,19 @@ export function AccountControl({
         ),
       },
       { type: "divider" },
-      {
+    );
+    if (onOpenSettings) {
+      accountItems.push({
         key: "open-settings",
         icon: <Settings size={15} />,
         label: t("nav.settings", "Settings"),
+      });
+    }
+    accountItems.push(
+      {
+        key: "workspace",
+        icon: <Layers3 size={15} />,
+        label: <AgentScopeSwitcher variant="menu" />,
       },
       {
         key: "theme",
@@ -194,6 +226,7 @@ export function AccountControl({
       onOpenSettings?.();
       return;
     }
+    if (actionKey === "workspace") return;
     if (actionKey.startsWith("theme:")) {
       setThemeMode(actionKey.slice("theme:".length) as ThemeMode);
       return;
@@ -247,7 +280,15 @@ export function AccountControl({
                 isHeader ? styles.headerAccountText : styles.sidebarAccountText
               }
             >
-              <strong>{displayName}</strong>
+              <strong title={identityTitle}>
+                {displayName}
+                {!isHeader && (
+                  <span className={styles.sidebarAccountWorkspace}>
+                    {" · "}
+                    {workspaceName}
+                  </span>
+                )}
+              </strong>
               <span>{role}</span>
             </span>
             <ChevronDown

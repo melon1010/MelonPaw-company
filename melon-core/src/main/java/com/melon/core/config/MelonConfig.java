@@ -12,7 +12,8 @@ public class MelonConfig {
     private ServerConfig server = new ServerConfig();
 
     @JsonProperty("agents")
-    private Map<String, AgentConfig> agents = Map.of("default", new AgentConfig());
+    private Map<String, AgentConfig> agents = Map.of(
+            ConfigManager.DEFAULT_AGENT_TEMPLATE_ID, new AgentConfig());
 
     @JsonProperty("home_dir")
     private String homeDir;

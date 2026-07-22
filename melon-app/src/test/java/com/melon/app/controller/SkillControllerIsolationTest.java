@@ -28,6 +28,8 @@ class SkillControllerIsolationTest {
         EnterprisePrincipal operator = new EnterprisePrincipal(
                 "operator-1", "operator", "Operator", true,
                 Set.of("SERVICE_OPERATOR"), Set.of("agents:manage"), "", "");
+        when(accessService.resolveConfiguration(operator, "personal-operator-1"))
+                .thenReturn("personal-operator-1");
         when(accessService.resolveSkillDistributionTargets(
                 operator, List.of("personal-user-2"), false))
                 .thenReturn(List.of("personal-user-2"));
@@ -56,7 +58,8 @@ class SkillControllerIsolationTest {
         SkillService skillService = mock(SkillService.class);
         EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
         EnterprisePrincipal principal = principal();
-        when(accessService.ensurePersonalAgent(principal)).thenReturn("personal-user-1");
+        when(accessService.resolveConfiguration(principal, "personal-user-1"))
+                .thenReturn("personal-user-1");
         when(skillService.uploadWorkspaceSkillToPool("personal-user-1", "reporting", false))
                 .thenReturn(Map.of("success", true));
 
@@ -67,7 +70,7 @@ class SkillControllerIsolationTest {
                 .block();
 
         assertEquals(200, response.getStatusCode().value());
-        verify(accessService).ensurePersonalAgent(principal);
+        verify(accessService).resolveConfiguration(principal, "personal-user-1");
         verify(skillService).uploadWorkspaceSkillToPool("personal-user-1", "reporting", false);
     }
 
@@ -76,7 +79,8 @@ class SkillControllerIsolationTest {
         SkillService skillService = mock(SkillService.class);
         EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
         EnterprisePrincipal principal = principal();
-        when(accessService.ensurePersonalAgent(principal)).thenReturn("personal-user-1");
+        when(accessService.resolveConfiguration(principal, "personal-user-1"))
+                .thenReturn("personal-user-1");
         when(skillService.downloadPoolSkillToWorkspace("personal-user-1", "reporting", true))
                 .thenReturn(Map.of("downloaded", true));
 
@@ -90,8 +94,60 @@ class SkillControllerIsolationTest {
                 .block();
 
         assertEquals(200, response.getStatusCode().value());
-        verify(accessService).ensurePersonalAgent(principal);
+        verify(accessService).resolveConfiguration(principal, "personal-user-1");
         verify(skillService).downloadPoolSkillToWorkspace("personal-user-1", "reporting", true);
+    }
+
+    @Test
+    void operatorCanImportPoolSkillIntoSelectedProjectAgent() throws Exception {
+        SkillService skillService = mock(SkillService.class);
+        EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
+        EnterprisePrincipal operator = new EnterprisePrincipal(
+                "operator-1", "operator", "Operator", true,
+                Set.of("SERVICE_OPERATOR"), Set.of("agents:manage"), "", "");
+        when(accessService.resolveConfiguration(operator, "project-agent"))
+                .thenReturn("project-agent");
+        when(skillService.downloadPoolSkillToWorkspace("project-agent", "reporting", false))
+                .thenReturn(Map.of("downloaded", true));
+
+        SkillController controller = controller(skillService, accessService);
+        var response = controller.downloadSkillPoolSkill(
+                "project-agent", operator,
+                Map.of(
+                        "skill_name", "reporting",
+                        "targets", List.of(Map.of("workspace_id", "project-agent"))))
+                .block();
+
+        assertEquals(200, response.getStatusCode().value());
+        verify(accessService).resolveConfiguration(operator, "project-agent");
+        verify(accessService, never()).resolveSkillDistributionTargets(
+                operator, List.of("project-agent"), false);
+        verify(skillService).downloadPoolSkillToWorkspace("project-agent", "reporting", false);
+    }
+
+    @Test
+    void projectManagerCanImportPoolSkillIntoAuthorizedProjectAgent() throws Exception {
+        SkillService skillService = mock(SkillService.class);
+        EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
+        EnterprisePrincipal manager = new EnterprisePrincipal(
+                "manager-1", "manager", "Manager", true,
+                Set.of("EMPLOYEE"), Set.of("skills:personal"), "", "");
+        when(accessService.resolveConfiguration(manager, "project-agent"))
+                .thenReturn("project-agent");
+        when(skillService.downloadPoolSkillToWorkspace("project-agent", "reporting", false))
+                .thenReturn(Map.of("downloaded", true));
+
+        SkillController controller = controller(skillService, accessService);
+        var response = controller.downloadSkillPoolSkill(
+                "project-agent", manager,
+                Map.of(
+                        "skill_name", "reporting",
+                        "targets", List.of(Map.of("workspace_id", "project-agent"))))
+                .block();
+
+        assertEquals(200, response.getStatusCode().value());
+        verify(accessService).resolveConfiguration(manager, "project-agent");
+        verify(skillService).downloadPoolSkillToWorkspace("project-agent", "reporting", false);
     }
 
     @Test

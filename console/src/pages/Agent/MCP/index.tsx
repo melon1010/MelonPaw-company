@@ -321,7 +321,6 @@ function MCPPage() {
                 setCreateModalOpen(false);
                 resetModal();
               }}
-              style={{ marginRight: 8 }}
             >
               {t("common.cancel")}
             </Button>
@@ -380,15 +379,13 @@ function MCPPage() {
               key: "form",
               label: t("mcp.tab.form"),
               children: (
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
-                >
+                <div className={styles.createForm}>
                   {/* Key + Name */}
-                  <div style={rowStyle}>
-                    <div style={fieldStyle}>
-                      <label style={labelStyle}>
+                  <div className={styles.formRow}>
+                    <div className={styles.formField}>
+                      <label className={styles.formLabel}>
                         {t("mcp.form.key")}
-                        <span style={{ color: "#c0392b" }}> *</span>
+                        <span className={styles.requiredMark}> *</span>
                       </label>
                       <Input
                         placeholder={t("mcp.form.keyPlaceholder")}
@@ -396,10 +393,10 @@ function MCPPage() {
                         onChange={(e) => setField("key", e.target.value)}
                       />
                     </div>
-                    <div style={fieldStyle}>
-                      <label style={labelStyle}>
+                    <div className={styles.formField}>
+                      <label className={styles.formLabel}>
                         {t("mcp.form.name")}
-                        <span style={{ color: "#c0392b" }}> *</span>
+                        <span className={styles.requiredMark}> *</span>
                       </label>
                       <Input
                         placeholder={t("mcp.form.namePlaceholder")}
@@ -410,12 +407,13 @@ function MCPPage() {
                   </div>
 
                   {/* Transport */}
-                  <div>
-                    <label style={labelStyle}>{t("mcp.form.transport")}</label>
+                  <div className={styles.formField}>
+                    <label className={styles.formLabel}>
+                      {t("mcp.form.transport")}
+                    </label>
                     <Select
                       value={form.transport}
                       onChange={(v) => setField("transport", v as MCPTransport)}
-                      style={{ width: "100%" }}
                       options={[
                         {
                           label: "Streamable HTTP",
@@ -429,10 +427,10 @@ function MCPPage() {
 
                   {/* URL (HTTP/SSE) or Command (stdio) */}
                   {isHttpTransport ? (
-                    <div>
-                      <label style={labelStyle}>
+                    <div className={styles.formField}>
+                      <label className={styles.formLabel}>
                         {t("mcp.form.url")}
-                        <span style={{ color: "#c0392b" }}> *</span>
+                        <span className={styles.requiredMark}> *</span>
                       </label>
                       <Input
                         placeholder="https://mcp.example.com/mcp"
@@ -442,10 +440,10 @@ function MCPPage() {
                     </div>
                   ) : (
                     <>
-                      <div>
-                        <label style={labelStyle}>
+                      <div className={styles.formField}>
+                        <label className={styles.formLabel}>
                           {t("mcp.form.command")}
-                          <span style={{ color: "#c0392b" }}> *</span>
+                          <span className={styles.requiredMark}> *</span>
                         </label>
                         <Input
                           placeholder="npx"
@@ -453,8 +451,10 @@ function MCPPage() {
                           onChange={(e) => setField("command", e.target.value)}
                         />
                       </div>
-                      <div>
-                        <label style={labelStyle}>{t("mcp.form.args")}</label>
+                      <div className={styles.formField}>
+                        <label className={styles.formLabel}>
+                          {t("mcp.form.args")}
+                        </label>
                         <Input
                           placeholder="-y @example/mcp-server"
                           value={form.args}
@@ -465,8 +465,8 @@ function MCPPage() {
                   )}
 
                   {/* Description */}
-                  <div>
-                    <label style={labelStyle}>
+                  <div className={styles.formField}>
+                    <label className={styles.formLabel}>
                       {t("mcp.form.description")}
                     </label>
                     <Input
@@ -478,8 +478,10 @@ function MCPPage() {
 
                   {/* Env (only for stdio) */}
                   {form.transport === "stdio" && (
-                    <div>
-                      <label style={labelStyle}>{t("mcp.form.env")}</label>
+                    <div className={styles.formField}>
+                      <label className={styles.formLabel}>
+                        {t("mcp.form.env")}
+                      </label>
                       <Input.TextArea
                         placeholder={t("mcp.form.envPlaceholder")}
                         value={form.env}
@@ -497,23 +499,5 @@ function MCPPage() {
     </div>
   );
 }
-
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 12,
-};
-
-const fieldStyle: React.CSSProperties = {
-  flex: 1,
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "#555",
-  fontWeight: 500,
-};
 
 export default MCPPage;

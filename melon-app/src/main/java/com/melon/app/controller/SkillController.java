@@ -368,7 +368,7 @@ public class SkillController {
             @AuthenticationPrincipal EnterprisePrincipal principal,
             @RequestBody(required = false) Map<String, Object> body) {
         return Mono.fromCallable(() -> {
-            String workspaceId = agentAccessService.ensurePersonalAgent(principal);
+            String workspaceId = agentAccessService.resolveConfiguration(principal, agentId);
             String skillName = stringValue(body != null ? body.get("skill_name") : null, "");
             boolean overwrite = Boolean.TRUE.equals(body != null ? body.get("overwrite") : null);
             if (skillName.isBlank()) {
@@ -390,11 +390,7 @@ public class SkillController {
             }
             boolean overwrite = Boolean.TRUE.equals(body != null ? body.get("overwrite") : null);
             boolean previewOnly = Boolean.TRUE.equals(body != null ? body.get("preview_only") : null);
-            List<String> targets = principal != null && principal.hasPermission("agents:manage")
-                    ? agentAccessService.resolveSkillDistributionTargets(
-                            principal, requestedWorkspaceIds(body),
-                            Boolean.TRUE.equals(body != null ? body.get("all_workspaces") : null))
-                    : List.of(agentAccessService.ensurePersonalAgent(principal));
+            List<String> targets = resolvePoolDownloadTargets(agentId, principal, body);
             if (targets.isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("detail", "At least one target is required"));
             }
@@ -1191,6 +1187,23 @@ public class SkillController {
                 .map(target -> stringValue(target.get("workspace_id"), ""))
                 .filter(id -> !id.isBlank())
                 .toList();
+    }
+
+    private List<String> resolvePoolDownloadTargets(
+            String agentId, EnterprisePrincipal principal, Map<String, Object> body) {
+        String currentAgentId = agentAccessService.resolveConfiguration(principal, agentId);
+        List<String> requested = requestedWorkspaceIds(body);
+        boolean allTargets = Boolean.TRUE.equals(body != null ? body.get("all_workspaces") : null);
+
+        if (principal == null || !principal.hasPermission("agents:manage")) {
+            return List.of(currentAgentId);
+        }
+        if (!allTargets && (requested.isEmpty()
+                || requested.stream().allMatch(currentAgentId::equals))) {
+            return List.of(currentAgentId);
+        }
+        return agentAccessService.resolveSkillDistributionTargets(
+                principal, requested, allTargets);
     }
 
     private String displayName(String displayName, String username) {

@@ -370,12 +370,10 @@ export default function Sidebar({
         )}
       </div>
 
-      {!settingsMode && (
-        <SidebarAccount
-          collapsed={collapsed}
-          onOpenSettings={onEnterSettings}
-        />
-      )}
+      <SidebarAccount
+        collapsed={collapsed}
+        onOpenSettings={settingsMode ? undefined : onEnterSettings}
+      />
     </Sider>
   );
 }

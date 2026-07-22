@@ -2,7 +2,6 @@ import { Card, Button, Modal, Tooltip, Input } from "@agentscope-ai/design";
 import type { MCPAccessPolicy, MCPClientInfo } from "../../../../api/types";
 import { useTranslation } from "react-i18next";
 import React, { useState } from "react";
-import { useTheme } from "../../../../contexts/ThemeContext";
 import {
   EyeOutlined,
   EyeInvisibleOutlined,
@@ -48,7 +47,6 @@ export const MCPClientCard = React.memo(function MCPClientCard({
   onRefresh,
 }: MCPClientCardProps) {
   const { t } = useTranslation();
-  const { isDark } = useTheme();
   const [isHovered, setIsHovered] = useState(false);
   const [jsonModalOpen, setJsonModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -115,7 +113,8 @@ export const MCPClientCard = React.memo(function MCPClientCard({
   const handleSaveJson = async () => {
     try {
       const parsed = JSON.parse(editedJson);
-      const { key: _key, ...updates } = parsed;
+      const updates = { ...parsed };
+      delete updates.key;
 
       // Send all updates directly to backend, let backend handle env masking check
       const success = await onUpdate(client.key, updates);
@@ -147,14 +146,7 @@ export const MCPClientCard = React.memo(function MCPClientCard({
         } ${isHovered ? styles.hover : styles.normal}`}
       >
         <div className={styles.cardHeader}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              minWidth: 0,
-            }}
-          >
+          <div className={styles.cardTitleRow}>
             <Tooltip title={client.name}>
               <h3 className={styles.mcpTitle}>{client.name}</h3>
             </Tooltip>
@@ -167,26 +159,17 @@ export const MCPClientCard = React.memo(function MCPClientCard({
             </span>
             {hasOauth && isOauthExpired && (
               <Tooltip title={t("mcp.oauth.expired")}>
-                <ShieldAlert
-                  size={13}
-                  style={{ color: "#e67e22", flexShrink: 0 }}
-                />
+                <ShieldAlert size={13} className={styles.statusIconWarning} />
               </Tooltip>
             )}
             {hasOauth && isOauthAuthorized && (
               <Tooltip title={t("mcp.oauth.authorized")}>
-                <ShieldCheck
-                  size={13}
-                  style={{ color: "#27ae60", flexShrink: 0 }}
-                />
+                <ShieldCheck size={13} className={styles.statusIconSuccess} />
               </Tooltip>
             )}
             {hasOauth && !isOauthAuthorized && !isOauthExpired && (
               <Tooltip title={t("mcp.oauth.notAuthorized")}>
-                <ShieldX
-                  size={13}
-                  style={{ color: "#7f8c8d", flexShrink: 0 }}
-                />
+                <ShieldX size={13} className={styles.statusIconMuted} />
               </Tooltip>
             )}
           </div>
@@ -230,29 +213,15 @@ export const MCPClientCard = React.memo(function MCPClientCard({
                   e.stopPropagation();
                   setOauthModalOpen(true);
                 }}
-                style={
+                data-status={
                   isOauthAuthorized
-                    ? {
-                        color: "#27ae60",
-                        borderColor: "#27ae60",
-                        background: "rgba(39,174,96,0.06)",
-                      }
+                    ? "authorized"
                     : isOauthExpired
-                    ? {
-                        color: "#e67e22",
-                        borderColor: "#e67e22",
-                        background: "rgba(230,126,34,0.06)",
-                      }
-                    : undefined
+                    ? "expired"
+                    : "idle"
                 }
               >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
+                <span className={styles.buttonContent}>
                   {isOauthAuthorized ? (
                     <ShieldCheck size={13} />
                   ) : isOauthExpired ? (
@@ -309,11 +278,8 @@ export const MCPClientCard = React.memo(function MCPClientCard({
         open={jsonModalOpen}
         onCancel={() => setJsonModalOpen(false)}
         footer={
-          <div style={{ textAlign: "right" }}>
-            <Button
-              onClick={() => setJsonModalOpen(false)}
-              style={{ marginRight: 8 }}
-            >
+          <div className={styles.modalFooter}>
+            <Button onClick={() => setJsonModalOpen(false)}>
               {t("common.cancel")}
             </Button>
             {isEditing ? (
@@ -335,24 +301,10 @@ export const MCPClientCard = React.memo(function MCPClientCard({
             value={editedJson}
             onChange={(e) => setEditedJson(e.target.value)}
             autoSize={{ minRows: 15, maxRows: 25 }}
-            style={{
-              fontFamily: "Monaco, Courier New, monospace",
-              fontSize: 13,
-            }}
+            className={styles.jsonTextArea}
           />
         ) : (
-          <pre
-            style={{
-              backgroundColor: isDark ? "#1f1f1f" : "#f5f5f5",
-              color: isDark ? "rgba(255,255,255,0.85)" : "rgba(0,0,0,0.88)",
-              padding: 16,
-              borderRadius: 8,
-              maxHeight: 400,
-              overflow: "auto",
-            }}
-          >
-            {clientJson}
-          </pre>
+          <pre className={styles.preformattedText}>{clientJson}</pre>
         )}
       </Modal>
 
@@ -366,13 +318,13 @@ export const MCPClientCard = React.memo(function MCPClientCard({
       {/* Dedicated OAuth modal — opened only via the Authorize button */}
       <Modal
         title={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div className={styles.modalTitleRow}>
             {isOauthAuthorized ? (
-              <ShieldCheck size={16} style={{ color: "#27ae60" }} />
+              <ShieldCheck size={16} className={styles.statusIconSuccess} />
             ) : isOauthExpired ? (
-              <ShieldAlert size={16} style={{ color: "#e67e22" }} />
+              <ShieldAlert size={16} className={styles.statusIconWarning} />
             ) : (
-              <ShieldX size={16} style={{ color: "#7f8c8d" }} />
+              <ShieldX size={16} className={styles.statusIconMuted} />
             )}
             {`${client.name} — ${t("mcp.oauth.manage")}`}
           </div>
@@ -380,7 +332,7 @@ export const MCPClientCard = React.memo(function MCPClientCard({
         open={oauthModalOpen}
         onCancel={() => setOauthModalOpen(false)}
         footer={
-          <div style={{ textAlign: "right" }}>
+          <div className={styles.modalFooter}>
             <Button onClick={() => setOauthModalOpen(false)}>
               {t("common.close")}
             </Button>

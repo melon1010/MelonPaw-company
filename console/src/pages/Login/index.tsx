@@ -2,8 +2,15 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Form, Input } from "antd";
+import {
+  ArrowRight,
+  KeyRound,
+  LockKeyhole,
+  Moon,
+  Sun,
+  UserRound,
+} from "lucide-react";
 import { useAppMessage } from "../../hooks/useAppMessage";
-import { KeyOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
 import { authApi } from "../../api/modules/auth";
 import { setAuthToken } from "../../api/config";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -14,7 +21,7 @@ export default function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { isDark } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
   const [loading, setLoading] = useState(false);
   const [isBootstrap, setIsBootstrap] = useState(
     searchParams.get("setup") === "1",
@@ -39,7 +46,7 @@ export default function LoginPage() {
         }
       })
       .catch(() => {});
-  }, [navigate]);
+  }, [navigate, setSession]);
 
   const onFinish = async (values: {
     username: string;
@@ -86,40 +93,38 @@ export default function LoginPage() {
 
   return (
     <div className={`${styles.page} ${isDark ? styles.pageDark : ""}`}>
-      <aside className={styles.brandPanel} aria-label="MelonPaw-Company">
-        <div className={styles.brandLockup}>
+      <button
+        type="button"
+        className={styles.themeToggle}
+        onClick={toggleTheme}
+        aria-label={isDark ? t("theme.light") : t("theme.dark")}
+        title={isDark ? t("theme.light") : t("theme.dark")}
+      >
+        {isDark ? <Sun size={17} /> : <Moon size={17} />}
+      </button>
+
+      <div className={styles.gridAxis} aria-hidden="true" />
+
+      <main className={styles.loginShell}>
+        <header className={styles.brandLockup}>
           <img className={styles.brandMark} src="/company-mark.svg" alt="" />
           <div className={styles.brandNameGroup}>
-            <span className={styles.brandShortName}>MelonPaw</span>
-            <span className={styles.brandEdition}>COMPANY OS</span>
+            <strong>MelonPaw</strong>
+            <span>Company</span>
           </div>
-        </div>
+        </header>
 
-        <div className={styles.brandStatement}>
-          <div className={styles.brandKicker}>PRIVATE AI OPERATIONS</div>
-          <h1>MelonPaw-Company</h1>
-          <p>{t("enterprise.auth.privateEdition")}</p>
-          <div className={styles.brandCoordinates} aria-hidden="true">
-            <span>MP / 01</span>
-            <span>LOCAL CONTROL PLANE</span>
-          </div>
-        </div>
-
-        <div className={styles.brandFoot}>MelonPaw Company Console</div>
-      </aside>
-
-      <main className={styles.authPanel}>
-        <section className={styles.authContent} aria-labelledby="login-title">
+        <section className={styles.authPanel} aria-labelledby="login-title">
           <div className={styles.authEyebrow}>
             <span className={styles.statusDot} aria-hidden="true" />
             <span>{t("enterprise.auth.privateEdition")}</span>
           </div>
           <div className={styles.heading}>
-            <h2 id="login-title">
+            <h1 id="login-title">
               {isBootstrap
                 ? t("enterprise.auth.bootstrapTitle")
                 : t("enterprise.auth.loginTitle")}
-            </h2>
+            </h1>
             <p>
               {isBootstrap
                 ? t("enterprise.auth.bootstrapHint")
@@ -141,6 +146,7 @@ export default function LoginPage() {
                 label={t("enterprise.auth.displayName")}
               >
                 <Input
+                  prefix={<UserRound size={17} />}
                   placeholder={t("enterprise.auth.displayName")}
                   autoComplete="name"
                 />
@@ -158,7 +164,7 @@ export default function LoginPage() {
                 ]}
               >
                 <Input.Password
-                  prefix={<KeyOutlined />}
+                  prefix={<KeyRound size={17} />}
                   placeholder={t("enterprise.auth.bootstrapToken")}
                   autoComplete="one-time-code"
                 />
@@ -170,7 +176,7 @@ export default function LoginPage() {
               rules={[{ required: true, message: t("login.usernameRequired") }]}
             >
               <Input
-                prefix={<UserOutlined />}
+                prefix={<UserRound size={17} />}
                 placeholder={t("login.usernamePlaceholder")}
                 autoComplete="username"
                 autoFocus
@@ -183,7 +189,7 @@ export default function LoginPage() {
               rules={[{ required: true, message: t("login.passwordRequired") }]}
             >
               <Input.Password
-                prefix={<LockOutlined />}
+                prefix={<LockKeyhole size={17} />}
                 placeholder={t("login.passwordPlaceholder")}
                 autoComplete={isBootstrap ? "new-password" : "current-password"}
               />
@@ -197,12 +203,20 @@ export default function LoginPage() {
                 block
                 className={styles.submit}
               >
-                {isBootstrap
-                  ? t("enterprise.auth.bootstrapAction")
-                  : t("enterprise.auth.loginAction")}
+                <span>
+                  {isBootstrap
+                    ? t("enterprise.auth.bootstrapAction")
+                    : t("enterprise.auth.loginAction")}
+                </span>
+                <ArrowRight size={17} aria-hidden="true" />
               </Button>
             </Form.Item>
           </Form>
+
+          <div className={styles.panelFooter}>
+            <span>MelonPaw Company Console</span>
+            <span aria-hidden="true">MP / 01</span>
+          </div>
         </section>
       </main>
     </div>

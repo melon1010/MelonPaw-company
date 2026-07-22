@@ -12,6 +12,7 @@
   --mp-primary-contrast: #ffffff;
   --mp-accent: #f59e0b;
   --mp-info: #52525b;
+  --mp-success: #166534;
   --mp-warning: #a16207;
   --mp-danger: #b91c1c;
   --mp-canvas: #fafafa;
@@ -39,6 +40,7 @@
   --mp-sidebar-selected-text: #18181b;
   --mp-focus-ring: rgba(24, 24, 27, 0.18);
   --mp-shadow-popover: 0 16px 36px rgba(24, 24, 27, 0.16);
+  --mp-overlay-backdrop: rgba(24, 24, 27, 0.44);
   --colorPrimary: var(--mp-primary);
   --colorPrimaryBg: var(--mp-primary-soft);
   --colorText: var(--mp-text);
@@ -57,6 +59,7 @@ html.dark-mode {
   --mp-primary-contrast: #171717;
   --mp-accent: #f59e0b;
   --mp-info: #a1a1aa;
+  --mp-success: #4ade80;
   --mp-warning: #fbbf24;
   --mp-danger: #f87171;
   --mp-canvas: #171717;
@@ -84,6 +87,7 @@ html.dark-mode {
   --mp-sidebar-selected-text: #ffffff;
   --mp-focus-ring: rgba(255, 255, 255, 0.16);
   --mp-shadow-popover: 0 16px 36px rgba(0, 0, 0, 0.45);
+  --mp-overlay-backdrop: rgba(0, 0, 0, 0.68);
 }
 
 html,
@@ -1384,6 +1388,204 @@ html.dark-mode body [class*="noSearchResults__"],
 html.dark-mode body [class*="tagSelectEmpty__"],
 html.dark-mode body [class*="cardDescription__"],
 html.dark-mode body [class*="availableItemAction__"] {
+  color: var(--mp-text-secondary) !important;
+}
+
+/* Portal overlays need an authoritative state matrix because their DOM is
+ * mounted under body and can load before or after route-scoped styles. */
+body .ant-modal-root .ant-modal-mask,
+body .qwenpaw-modal-root .qwenpaw-modal-mask,
+body .ant-drawer-root .ant-drawer-mask,
+body .qwenpaw-drawer-root .qwenpaw-drawer-mask {
+  background: var(--mp-overlay-backdrop) !important;
+}
+
+body .ant-modal-root .ant-modal-content,
+body .qwenpaw-modal-root .qwenpaw-modal-content,
+body .ant-modal-root .ant-modal-header,
+body .qwenpaw-modal-root .qwenpaw-modal-header,
+body .ant-modal-root .ant-modal-body,
+body .qwenpaw-modal-root .qwenpaw-modal-body,
+body .ant-modal-root .ant-modal-footer,
+body .qwenpaw-modal-root .qwenpaw-modal-footer,
+body .ant-drawer-root .ant-drawer-content,
+body .qwenpaw-drawer-root .qwenpaw-drawer-content,
+body .ant-drawer-root .ant-drawer-header,
+body .qwenpaw-drawer-root .qwenpaw-drawer-header,
+body .ant-drawer-root .ant-drawer-body,
+body .qwenpaw-drawer-root .qwenpaw-drawer-body,
+body .ant-drawer-root .ant-drawer-footer,
+body .qwenpaw-drawer-root .qwenpaw-drawer-footer {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-raised) !important;
+  border-color: var(--mp-border) !important;
+}
+
+body .ant-modal-root .ant-modal-title,
+body .qwenpaw-modal-root .qwenpaw-modal-title,
+body .ant-modal-root .ant-modal-confirm-title,
+body .qwenpaw-modal-root .qwenpaw-modal-confirm-title,
+body .ant-modal-root .ant-modal-confirm-content,
+body .qwenpaw-modal-root .qwenpaw-modal-confirm-content,
+body .ant-modal-root .ant-modal-confirm-paragraph,
+body .qwenpaw-modal-root .qwenpaw-modal-confirm-paragraph,
+body .ant-drawer-root .ant-drawer-title,
+body .qwenpaw-drawer-root .qwenpaw-drawer-title {
+  color: var(--mp-text) !important;
+}
+
+body .ant-modal-root .ant-form-item-label > label,
+body .qwenpaw-modal-root .qwenpaw-form-item-label > label,
+body .ant-drawer-root .ant-form-item-label > label,
+body .qwenpaw-drawer-root .qwenpaw-form-item-label > label,
+body .ant-modal-root .ant-form-item-extra,
+body .qwenpaw-modal-root .qwenpaw-form-item-extra,
+body .ant-drawer-root .ant-form-item-extra,
+body .qwenpaw-drawer-root .qwenpaw-form-item-extra {
+  color: var(--mp-text-secondary) !important;
+}
+
+body .ant-modal-root .ant-tabs-content-holder,
+body .qwenpaw-modal-root .qwenpaw-tabs-content-holder,
+body .ant-modal-root .ant-tabs-content,
+body .qwenpaw-modal-root .qwenpaw-tabs-content,
+body .ant-modal-root .ant-tabs-tabpane,
+body .qwenpaw-modal-root .qwenpaw-tabs-tabpane,
+body .ant-drawer-root .ant-tabs-content-holder,
+body .qwenpaw-drawer-root .qwenpaw-tabs-content-holder,
+body .ant-drawer-root .ant-tabs-tabpane,
+body .qwenpaw-drawer-root .qwenpaw-tabs-tabpane {
+  color: var(--mp-text) !important;
+  background: transparent !important;
+}
+
+body .ant-modal-root .ant-divider,
+body .qwenpaw-modal-root .qwenpaw-divider,
+body .ant-drawer-root .ant-divider,
+body .qwenpaw-drawer-root .qwenpaw-divider {
+  color: var(--mp-text-secondary) !important;
+  border-color: var(--mp-border) !important;
+}
+
+body .ant-modal-root .ant-radio-button-wrapper,
+body .qwenpaw-modal-root .qwenpaw-radio-button-wrapper,
+body .ant-drawer-root .ant-radio-button-wrapper,
+body .qwenpaw-drawer-root .qwenpaw-radio-button-wrapper {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-control-bg) !important;
+  border-color: var(--mp-border-strong) !important;
+  box-shadow: none !important;
+}
+
+body .ant-modal-root .ant-radio-button-wrapper-checked,
+body .qwenpaw-modal-root .qwenpaw-radio-button-wrapper-checked,
+body .ant-drawer-root .ant-radio-button-wrapper-checked,
+body .qwenpaw-drawer-root .qwenpaw-radio-button-wrapper-checked {
+  color: var(--mp-primary-contrast) !important;
+  background: var(--mp-primary) !important;
+  border-color: var(--mp-primary) !important;
+}
+
+body .ant-modal-root .ant-upload-wrapper .ant-upload-drag,
+body .qwenpaw-modal-root .qwenpaw-upload-wrapper .qwenpaw-upload-drag,
+body .ant-drawer-root .ant-upload-wrapper .ant-upload-drag,
+body .qwenpaw-drawer-root .qwenpaw-upload-wrapper .qwenpaw-upload-drag {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface-subtle) !important;
+  border-color: var(--mp-border-strong) !important;
+}
+
+body .ant-modal-root .ant-upload-wrapper .ant-upload-list-item,
+body .qwenpaw-modal-root .qwenpaw-upload-wrapper .qwenpaw-upload-list-item,
+body .ant-drawer-root .ant-upload-wrapper .ant-upload-list-item,
+body .qwenpaw-drawer-root .qwenpaw-upload-wrapper .qwenpaw-upload-list-item {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-subtle) !important;
+  border-color: var(--mp-border) !important;
+}
+
+body .ant-alert,
+body .qwenpaw-alert {
+  color: var(--mp-text-secondary) !important;
+  background: var(--mp-surface-subtle) !important;
+  border-color: var(--mp-border-strong) !important;
+}
+
+body .ant-alert-success,
+body .qwenpaw-alert-success {
+  background: color-mix(
+    in srgb,
+    var(--mp-success) 9%,
+    var(--mp-surface)
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--mp-success) 32%,
+    var(--mp-border)
+  ) !important;
+}
+
+body .ant-alert-warning,
+body .qwenpaw-alert-warning {
+  background: color-mix(
+    in srgb,
+    var(--mp-warning) 10%,
+    var(--mp-surface)
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--mp-warning) 34%,
+    var(--mp-border)
+  ) !important;
+}
+
+body .ant-alert-error,
+body .qwenpaw-alert-error {
+  background: color-mix(
+    in srgb,
+    var(--mp-danger) 9%,
+    var(--mp-surface)
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--mp-danger) 32%,
+    var(--mp-border)
+  ) !important;
+}
+
+body .ant-alert-message,
+body .qwenpaw-alert-message {
+  color: var(--mp-text) !important;
+}
+
+body .ant-alert-description,
+body .qwenpaw-alert-description,
+body .ant-alert-close-icon,
+body .qwenpaw-alert-close-icon {
+  color: var(--mp-text-secondary) !important;
+}
+
+body .ant-tooltip-inner,
+body .qwenpaw-tooltip-inner,
+body .ant-notification-notice,
+body .qwenpaw-notification-notice,
+body .ant-message-notice-content,
+body .qwenpaw-message-notice-content {
+  color: var(--mp-text) !important;
+  background: var(--mp-surface-raised) !important;
+  border: 1px solid var(--mp-border) !important;
+  box-shadow: var(--mp-shadow-popover) !important;
+}
+
+body .ant-notification-notice-message,
+body .qwenpaw-notification-notice-message {
+  color: var(--mp-text) !important;
+}
+
+body .ant-notification-notice-description,
+body .qwenpaw-notification-notice-description,
+body .ant-notification-notice-close,
+body .qwenpaw-notification-notice-close {
   color: var(--mp-text-secondary) !important;
 }
 

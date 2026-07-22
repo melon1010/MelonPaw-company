@@ -94,6 +94,7 @@ public class HeartbeatTask implements Runnable {
             return;
         }
         for (var entry : configManager.getConfig().getAgents().entrySet()) {
+            if (ConfigManager.isInternalAgentTemplate(entry.getKey())) continue;
             checkAgentHeartbeat(entry.getKey(), entry.getValue());
         }
     }

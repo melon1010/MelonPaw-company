@@ -103,6 +103,13 @@ public class EnterpriseAgentAccessService {
             throw new SecurityException("Authentication is required");
         }
         String requested = normalize(requestedAgentId);
+        if (ConfigManager.isInternalAgentTemplate(requested)) {
+            if (!canUsePersonalAgent(principal)
+                    && !principal.hasAnyPermission(AGENTS_MANAGE, SYSTEM_MANAGE)) {
+                throw new SecurityException("Agent access permission is required");
+            }
+            return ensurePersonalAgent(principal);
+        }
         if (principal.hasPermission(SYSTEM_MANAGE)) {
             requireDataBoundary(principal, requested);
             return requested;
@@ -171,6 +178,7 @@ public class EnterpriseAgentAccessService {
     public boolean canAccess(EnterprisePrincipal principal, String agentId) {
         if (principal == null) return false;
         String requested = normalize(agentId);
+        if (ConfigManager.isInternalAgentTemplate(requested)) return false;
         if (principal.hasPermission(SYSTEM_MANAGE)) {
             return !isForeignPersonalAgent(principal, requested)
                     || principal.hasPermission(DATA_BREAKGLASS);
@@ -187,13 +195,17 @@ public class EnterpriseAgentAccessService {
 
     public List<String> accessibleAgentIds(EnterprisePrincipal principal) {
         if (principal.hasPermission(SYSTEM_MANAGE)) {
+            ensurePersonalAgent(principal);
             return configManager.getConfig().getAgents().keySet().stream()
+                    .filter(agentId -> !ConfigManager.isInternalAgentTemplate(agentId))
                     .filter(agentId -> !isForeignPersonalAgent(principal, agentId)
                             || principal.hasPermission(DATA_BREAKGLASS)
                     ).toList();
         }
         if (principal.hasPermission(AGENTS_MANAGE)) {
+            ensurePersonalAgent(principal);
             return configManager.getConfig().getAgents().keySet().stream()
+                    .filter(agentId -> !ConfigManager.isInternalAgentTemplate(agentId))
                     .filter(agentId -> !isForeignPersonalAgent(principal, agentId))
                     .toList();
         }
@@ -398,7 +410,8 @@ public class EnterpriseAgentAccessService {
                 .normalize()
                 .toString());
 
-        AgentConfig defaultAgent = configManager.getConfig().getAgent("default");
+        AgentConfig defaultAgent = configManager.getConfig()
+                .getAgent(ConfigManager.DEFAULT_AGENT_TEMPLATE_ID);
         if (defaultAgent != null) {
             personal.setActiveModel(defaultAgent.getActiveModel());
             personal.setLanguage(defaultAgent.getLanguage());
@@ -501,7 +514,8 @@ public class EnterpriseAgentAccessService {
     }
 
     private String normalize(String agentId) {
-        return agentId == null || agentId.isBlank() ? "default" : agentId.trim();
+        return agentId == null || agentId.isBlank()
+                ? ConfigManager.DEFAULT_AGENT_TEMPLATE_ID : agentId.trim();
     }
 
     private Path directChild(Path root, String child, String description) {

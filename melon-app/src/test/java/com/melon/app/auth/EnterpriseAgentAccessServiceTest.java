@@ -195,12 +195,18 @@ class EnterpriseAgentAccessServiceTest {
         assertThrows(SecurityException.class, () -> access.resolve(operator, employeeAgent));
         assertFalse(access.canAccess(operator, employeeAgent));
         assertTrue(access.canAccess(operator, operatorAgent));
-        assertTrue(access.canAccess(operator, "default"));
+        assertFalse(access.canAccess(operator, "default"));
+        assertEquals(operatorAgent, access.resolve(operator, "default"));
         assertFalse(access.accessibleAgentIds(operator).contains(employeeAgent));
         assertTrue(access.accessibleAgentIds(operator).contains(operatorAgent));
+        assertFalse(access.accessibleAgentIds(operator).contains("default"));
         assertThrows(SecurityException.class,
                 () -> access.resolve(systemAdministrator, employeeAgent));
         assertFalse(access.canAccess(systemAdministrator, employeeAgent));
+        assertFalse(access.canAccess(systemAdministrator, "default"));
+        assertFalse(access.accessibleAgentIds(systemAdministrator).contains("default"));
+        assertEquals(access.ensurePersonalAgent(systemAdministrator),
+                access.resolve(systemAdministrator, "default"));
 
         EnterprisePrincipal breakGlassAdministrator = new EnterprisePrincipal(
                 systemAdministrator.id(),

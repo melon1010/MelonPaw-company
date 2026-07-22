@@ -25,6 +25,7 @@ public class ConfigManager {
     private static final Logger log = LoggerFactory.getLogger(ConfigManager.class);
     private static final String CONFIG_DIR = ".melon";
     private static final String CONFIG_FILE = "config.yaml";
+    public static final String DEFAULT_AGENT_TEMPLATE_ID = "default";
 
     private final ObjectMapper yamlMapper;
     private final ObjectMapper jsonMapper;
@@ -147,7 +148,7 @@ public class ConfigManager {
             loaded.setHomeDir(defaultHomeDir);
         }
         if (loaded.getAgents() == null) {
-            loaded.setAgents(Collections.singletonMap("default", new AgentConfig()));
+            loaded.setAgents(Collections.singletonMap(DEFAULT_AGENT_TEMPLATE_ID, new AgentConfig()));
         }
         for (var entry : loaded.getAgents().entrySet()) {
             AgentConfig ac = entry.getValue();
@@ -183,6 +184,9 @@ public class ConfigManager {
         }
         for (var entry : config.getAgents().entrySet()) {
             String agentId = entry.getKey();
+            if (isInternalAgentTemplate(agentId)) {
+                continue;
+            }
             AgentConfig agent = entry.getValue();
             Path workspaceDir = resolveWorkspaceDir(agentId);
             Files.createDirectories(workspaceDir);
@@ -196,6 +200,11 @@ public class ConfigManager {
             Path agentJson = com.melon.core.util.SafePathUtil.resolveSafe(workspaceDir, "agent.json");
             jsonMapper.writerWithDefaultPrettyPrinter().writeValue(agentJson.toFile(), data);
         }
+    }
+
+    /** The default entry supplies inherited settings and is not a runnable workspace. */
+    public static boolean isInternalAgentTemplate(String agentId) {
+        return DEFAULT_AGENT_TEMPLATE_ID.equals(agentId);
     }
 
     private Map<String, Object> globalConfigPayload() {
@@ -364,12 +373,25 @@ public class ConfigManager {
     }
 
     public Path resolveWorkspaceRootDir() {
+        String environmentRoot = externalSetting("MELON_WORKSPACE_ROOT");
+        if (environmentRoot != null) {
+            if (!environmentRoot.startsWith("~") && !Path.of(environmentRoot).isAbsolute()) {
+                throw new IllegalStateException("MELON_WORKSPACE_ROOT must be an absolute path");
+            }
+            return expandPath(environmentRoot).normalize();
+        }
         if (config.getPaths() != null
                 && config.getPaths().getWorkspaceRoot() != null
                 && !config.getPaths().getWorkspaceRoot().isBlank()) {
             return expandPath(config.getPaths().getWorkspaceRoot()).normalize();
         }
         return resolveHomeDir().resolve("workspaces").normalize();
+    }
+
+    private String externalSetting(String name) {
+        String value = System.getProperty(name);
+        if (value == null || value.isBlank()) value = System.getenv(name);
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     /**

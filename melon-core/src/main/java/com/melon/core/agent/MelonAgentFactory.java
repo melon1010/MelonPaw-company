@@ -387,7 +387,7 @@ public class MelonAgentFactory {
         WorkspaceSpec workspaceSpec = new WorkspaceSpec();
         workspaceSpec.setRoot("/workspace");
         BindMountEntry workspaceMount = new BindMountEntry();
-        workspaceMount.setHostPath(workspaceDir.toAbsolutePath().normalize().toString());
+        workspaceMount.setHostPath(SandboxWorkspacePathResolver.resolveHostPath(workspaceDir).toString());
         workspaceMount.setReadOnly(false);
         workspaceSpec.getEntries().put(".", workspaceMount);
         spec.workspaceSpec(workspaceSpec);

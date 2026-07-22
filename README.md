@@ -137,6 +137,17 @@ docker build -t melonpaw-company-sandbox:latest docker/sandbox
 
 默认使用 Docker `bridge` 网络，使 `execute_shell_command` 能获取公开链接和技能依赖。生产环境应通过 `MELON_SANDBOX_NETWORK` 指定受限出口网络；禁止外网时可设为 `none`。每个执行上下文采用 AgentScope `USER` 隔离，只把受控工作区根目录下当前授权 Agent 的工作区挂载到容器，个人与项目 Agent 使用不同目录。
 
+stdio MCP 默认跟随 `MELON_EXECUTION_SANDBOX`：Docker 模式下 MCP 进程也在独立的受限容器中运行，并且只挂载所属 Agent 的工作区。可用 `MELON_MCP_STDIO_MODE=local|docker|disabled` 单独覆盖；`local` 仅用于可信开发环境。MCP 容器默认复用沙箱镜像与网络，也可分别设置 `MELON_MCP_SANDBOX_IMAGE`、`MELON_MCP_SANDBOX_NETWORK`。
+
+当 Java 服务本身运行在容器中并通过宿主 Docker daemon 创建执行沙箱时，必须同时配置应用容器内和 Docker 宿主机上的工作区根路径。例如应用看到 `/data/workspaces`，宿主机实际目录是 `/srv/melon/workspaces`：
+
+```bash
+MELON_WORKSPACE_ROOT=/data/workspaces
+MELON_SANDBOX_HOST_WORKSPACE_ROOT=/srv/melon/workspaces
+```
+
+`MELON_WORKSPACE_ROOT` 可以单独用于指定应用工作区；配置 `MELON_SANDBOX_HOST_WORKSPACE_ROOT` 做容器路径映射时，两个变量必须同时使用绝对路径。应用只会映射其下的具体 Agent 子目录，不会挂载整个工作区根目录。
+
 `web_search` 和 `web_fetch` 由 Java 服务直接执行只读公网访问，不经过 Shell。`web_fetch` 会拒绝本机、私网、云元数据地址、非标准端口和跨域重定向，并限制下载及上下文大小。macOS TUN 代理常用 `198.18.0.0/15` 假 IP DNS，运行时会自动兼容域名解析；需要强制关闭时设置 `MELON_WEB_ALLOW_FAKE_IP_DNS=false`。
 
 Windows 可使用仓库内脚本，默认监听 `127.0.0.1:8088`：

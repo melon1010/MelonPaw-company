@@ -220,7 +220,10 @@ export default function CompanyWorkbench() {
                     type="primary"
                     icon={<Bot size={16} />}
                     onClick={() => {
-                      setSelectedAgent("default");
+                      const personalAgent = data.agents.find(
+                        (agent) => agent.enabled && agent.scope === "PERSONAL",
+                      );
+                      if (personalAgent) setSelectedAgent(personalAgent.id);
                       navigate("/chat");
                     }}
                   >

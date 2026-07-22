@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Dropdown, type MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
-import { Bot, Check, ChevronDown, FolderKanban, UserRound } from "lucide-react";
+import {
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FolderKanban,
+  UserRound,
+} from "lucide-react";
 import { agentsApi } from "../../api/modules/agents";
 import type { AgentSummary } from "../../api/types/agents";
 import { useAgentStore } from "../../stores/agentStore";
@@ -42,7 +49,7 @@ function ScopeIcon({ scope, size = 16 }: { scope: AgentScope; size?: number }) {
 }
 
 interface AgentScopeSwitcherProps {
-  variant?: "header" | "sidebar";
+  variant?: "header" | "sidebar" | "menu";
   collapsed?: boolean;
 }
 
@@ -62,7 +69,9 @@ export default function AgentScopeSwitcher({
     setLoading(true);
     setLoadFailed(false);
     try {
-      const accessibleAgents = await listAccessibleAgents();
+      const accessibleAgents = (await listAccessibleAgents()).filter(
+        (agent) => agent.id !== "default",
+      );
       const activeAgents = accessibleAgents.filter((agent) => agent.enabled);
       setAgents(accessibleAgents);
 
@@ -107,7 +116,10 @@ export default function AgentScopeSwitcher({
   const menuItems = useMemo<MenuProps["items"]>(() => {
     const groups = SCOPE_ORDER.flatMap((scope) => {
       const scopedAgents = agents.filter(
-        (agent) => agent.enabled && resolveScope(agent) === scope,
+        (agent) =>
+          agent.id !== "default" &&
+          agent.enabled &&
+          resolveScope(agent) === scope,
       );
       if (scopedAgents.length === 0) return [];
       return [
@@ -160,38 +172,50 @@ export default function AgentScopeSwitcher({
     ];
   }, [agents, loadFailed, loading, scopeLabel, selectedAgent, t]);
 
-  const trigger = (
-    <button
-      type="button"
-      className={`${styles.trigger} ${
-        variant === "sidebar" ? styles.sidebarTrigger : styles.headerTrigger
-      } ${collapsed ? styles.collapsedTrigger : ""} ${
-        styles[selectedScope.toLowerCase()]
-      }`}
-      aria-label={`${t("chat.switchScope")}: ${scopeLabel(
-        selectedScope,
-      )} ${selectedName}`}
-      aria-busy={loading}
-    >
-      <span className={styles.triggerIcon}>
-        <ScopeIcon scope={selectedScope} size={14} />
+  const trigger =
+    variant === "menu" ? (
+      <span
+        className={styles.accountMenuTrigger}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <span>{t("chat.switchScope", "Switch workspace")}</span>
+        <ChevronRight size={14} aria-hidden />
       </span>
-      {!collapsed ? (
-        <>
-          <span className={styles.triggerCopy}>
-            <strong title={selectedName}>{selectedName}</strong>
-          </span>
-          <ChevronDown className={styles.chevron} size={14} aria-hidden />
-        </>
-      ) : null}
-    </button>
-  );
+    ) : (
+      <button
+        type="button"
+        className={`${styles.trigger} ${
+          variant === "sidebar" ? styles.sidebarTrigger : styles.headerTrigger
+        } ${collapsed ? styles.collapsedTrigger : ""} ${
+          styles[selectedScope.toLowerCase()]
+        }`}
+        aria-label={`${t("chat.switchScope")}: ${scopeLabel(
+          selectedScope,
+        )} ${selectedName}`}
+        aria-busy={loading}
+      >
+        <span className={styles.triggerIcon}>
+          <ScopeIcon scope={selectedScope} size={14} />
+        </span>
+        {!collapsed ? (
+          <>
+            <span className={styles.triggerCopy}>
+              <strong title={selectedName}>{selectedName}</strong>
+            </span>
+            <ChevronDown className={styles.chevron} size={14} aria-hidden />
+          </>
+        ) : null}
+      </button>
+    );
 
   return (
     <Dropdown
-      trigger={["click"]}
+      trigger={variant === "menu" ? ["hover", "click"] : ["click"]}
       placement={variant === "sidebar" ? "topLeft" : "bottomLeft"}
-      overlayClassName={styles.scopeMenuPopup}
+      align={variant === "menu" ? { offset: [210, -30] } : undefined}
+      overlayClassName={`${styles.scopeMenuPopup} ${
+        variant === "menu" ? styles.accountScopeMenuPopup : ""
+      }`}
       menu={{
         items: menuItems,
         selectable: true,

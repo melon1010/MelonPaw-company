@@ -129,6 +129,16 @@
   }
 }
 
+.accountMenuTrigger {
+  width: 100%;
+  min-width: 174px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: inherit;
+}
+
 .menuIcon.personal,
 .menuIcon.project,
 .menuIcon.service {
@@ -178,6 +188,10 @@
     color: var(--mp-text) !important;
     background: var(--mp-surface-subtle) !important;
   }
+}
+
+.accountScopeMenuPopup {
+  width: min(244px, calc(100vw - 24px));
 }
 
 .menuIcon {

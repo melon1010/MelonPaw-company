@@ -94,9 +94,11 @@ export const MCPAccessModal: React.FC<MCPAccessModalProps> = ({
           if (!cancelled) {
             setTools(currentTools);
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (!cancelled) {
-            setToolsError(err?.message || t("mcp.toolsLoadError"));
+            setToolsError(
+              err instanceof Error ? err.message : t("mcp.toolsLoadError"),
+            );
           }
         }
       } catch {
@@ -222,10 +224,8 @@ export const MCPAccessModal: React.FC<MCPAccessModalProps> = ({
       onCancel={handleClose}
       width="min(1040px, calc(100vw - 32px))"
       footer={
-        <div style={{ textAlign: "right" }}>
-          <Button onClick={handleClose} style={{ marginRight: 8 }}>
-            {t("common.cancel")}
-          </Button>
+        <div className={styles.modalFooter}>
+          <Button onClick={handleClose}>{t("common.cancel")}</Button>
           <Button
             type="primary"
             onClick={handleSave}

@@ -95,6 +95,7 @@ public class LifecycleConfig implements ApplicationRunner {
 
     private void initAgentWorkspaces() {
         configManager.getConfig().getAgents().forEach((agentId, agentConfig) -> {
+            if (ConfigManager.isInternalAgentTemplate(agentId)) return;
             var workspaceDir = configManager.resolveWorkspaceDir(agentId);
             workspaceManager.initWorkspace(workspaceDir);
             workspaceManager.writeAgentJson(workspaceDir, agentId, agentConfig);
@@ -112,6 +113,7 @@ public class LifecycleConfig implements ApplicationRunner {
 
     private void startEnabledChannels() {
         configManager.getConfig().getAgents().forEach((agentId, agentConfig) -> {
+            if (ConfigManager.isInternalAgentTemplate(agentId)) return;
             if (agentConfig.getChannels() == null) return;
             agentConfig.getChannels().forEach((channel, cfg) -> {
                 if (!Boolean.TRUE.equals(cfg.get("enabled"))) return;

@@ -65,17 +65,30 @@ public class McpClientManager {
     });
     private final ConfigManager configManager;
     private final Path persistedConfigFile;
+    private final Path workspaceDir;
+    private final StdioMcpProcessLauncher stdioProcessLauncher;
     private volatile boolean shuttingDown;
 
     @Autowired
+    public McpClientManager(ConfigManager configManager, StdioMcpProcessLauncher stdioProcessLauncher) {
+        this(configManager, null, null, stdioProcessLauncher);
+    }
+
     public McpClientManager(ConfigManager configManager) {
-        this(configManager, null);
+        this(configManager, null, null, new StdioMcpProcessLauncher());
     }
 
     /** Creates an isolated MCP registry backed by the supplied Agent-local file. */
     public McpClientManager(ConfigManager configManager, Path persistedConfigFile) {
+        this(configManager, persistedConfigFile, null, new StdioMcpProcessLauncher());
+    }
+
+    McpClientManager(ConfigManager configManager, Path persistedConfigFile, Path workspaceDir,
+                     StdioMcpProcessLauncher stdioProcessLauncher) {
         this.configManager = configManager;
         this.persistedConfigFile = persistedConfigFile;
+        this.workspaceDir = workspaceDir == null ? null : workspaceDir.toAbsolutePath().normalize();
+        this.stdioProcessLauncher = Objects.requireNonNull(stdioProcessLauncher);
     }
 
     @PostConstruct
@@ -493,8 +506,9 @@ public class McpClientManager {
         try {
             log.info("Connecting to MCP server: id={}, transport={}", id, config.getTransport());
             if ("stdio".equals(config.getTransport())) {
-                log.info("  command: {} {}", config.getCommand(), config.getArgs());
-                StdioSession session = StdioSession.start(config);
+                log.info("  command: {}, args={}", config.getCommand(),
+                        config.getArgs() == null ? 0 : config.getArgs().size());
+                StdioSession session = StdioSession.start(config, stdioProcessLauncher, workspaceDir);
                 try {
                     List<McpTool> tools = session.listTools(config.getStartupTimeoutSeconds()).stream()
                             .map(McpTool::fromMap).toList();
@@ -1364,34 +1378,24 @@ public class McpClientManager {
     private static final class StdioSession implements AutoCloseable {
         private static final int STDERR_LIMIT = 8192;
         private static final AtomicLong IDS = new AtomicLong();
+        private final StdioMcpProcessLauncher.LaunchedProcess launchedProcess;
         private final Process process;
         private final BufferedWriter stdin;
         private final BlockingQueue<ReadResult> responses = new LinkedBlockingQueue<>();
         private final StringBuilder stderr = new StringBuilder();
         private final Object lock = new Object();
 
-        private StdioSession(Process process, String id) {
-            this.process = process;
+        private StdioSession(StdioMcpProcessLauncher.LaunchedProcess launchedProcess, String id) {
+            this.launchedProcess = launchedProcess;
+            this.process = launchedProcess.process();
             this.stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
             startReader(process.getInputStream(), "mcp-stdout-" + id);
             startStderrReader(process.getErrorStream(), "mcp-stderr-" + id);
         }
 
-        static StdioSession start(McpServerConfig config) throws IOException {
-            if (config.getCommand() == null || config.getCommand().isBlank()) {
-                throw new IOException("stdio MCP command is required");
-            }
-            List<String> command = new ArrayList<>();
-            command.add(config.getCommand());
-            command.addAll(config.getArgs() == null ? List.of() : config.getArgs());
-            ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(false);
-            if (config.getCwd() != null && !config.getCwd().isBlank()) {
-                pb.directory(new File(config.getCwd()));
-            }
-            retainProcessLaunchEnvironment(pb.environment());
-            pb.environment().put("npm_config_yes", "true");
-            if (config.getEnv() != null) pb.environment().putAll(config.getEnv());
-            Process process = pb.start();
+        static StdioSession start(McpServerConfig config, StdioMcpProcessLauncher processLauncher,
+                                  Path workspaceDir) throws IOException {
+            StdioMcpProcessLauncher.LaunchedProcess process = processLauncher.start(config, workspaceDir);
             StdioSession session = new StdioSession(process, config.getId());
             try {
                 session.initialize(config.getStartupTimeoutSeconds());
@@ -1399,19 +1403,6 @@ public class McpClientManager {
             } catch (IOException | RuntimeException e) {
                 session.close();
                 throw e;
-            }
-        }
-
-        private static void retainProcessLaunchEnvironment(Map<String, String> environment) {
-            Map<String, String> inherited = new LinkedHashMap<>(environment);
-            environment.clear();
-            for (String key : List.of(
-                    "PATH", "Path", "PATHEXT", "SystemRoot", "ComSpec",
-                    "HOME", "USERPROFILE", "TEMP", "TMP", "LANG", "LC_ALL")) {
-                String value = inherited.get(key);
-                if (value != null && !value.isBlank()) {
-                    environment.put(key, value);
-                }
             }
         }
 
@@ -1572,15 +1563,7 @@ public class McpClientManager {
 
         @Override
         public void close() {
-            process.destroy();
-            try {
-                if (!process.waitFor(2, TimeUnit.SECONDS)) {
-                    process.destroyForcibly();
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                process.destroyForcibly();
-            }
+            launchedProcess.close();
         }
 
         private record ReadResult(Map<String, Object> message, IOException error) {

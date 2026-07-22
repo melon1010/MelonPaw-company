@@ -10,6 +10,7 @@ import {
 import { useTranslation } from "react-i18next";
 import api from "../../../../api";
 import type { MCPClientOAuthStatus } from "../../../../api/types";
+import styles from "../index.module.less";
 
 interface MCPOAuthSectionProps {
   clientKey: string;
@@ -46,7 +47,8 @@ export const MCPOAuthSection: React.FC<MCPOAuthSectionProps> = ({
   const [errorMsg, setErrorMsg] = useState("");
 
   const isAuthorized =
-    phase === "success" || (phase === "idle" && currentOAuthStatus?.authorized === true);
+    phase === "success" ||
+    (phase === "idle" && currentOAuthStatus?.authorized === true);
 
   const isExpired =
     phase === "idle" &&
@@ -120,41 +122,38 @@ export const MCPOAuthSection: React.FC<MCPOAuthSectionProps> = ({
   }, [clientKey, onAuthChanged, t]);
 
   return (
-    <div style={sectionStyle}>
-      {/* Status badge */}
-      <div style={statusRowStyle}>
+    <div className={styles.oauthSection}>
+      <div className={styles.oauthStatusRow}>
         {isExpired ? (
           <OAuthBadge
             icon={<ShieldAlert size={14} />}
             label={t("mcp.oauth.expired")}
-            color="#e67e22"
+            tone="warning"
           />
         ) : isAuthorized ? (
           <OAuthBadge
             icon={<ShieldCheck size={14} />}
             label={t("mcp.oauth.authorized")}
-            color="#27ae60"
+            tone="success"
           />
         ) : phase === "error" ? (
           <OAuthBadge
             icon={<ShieldX size={14} />}
             label={t("mcp.oauth.failed")}
-            color="#c0392b"
+            tone="danger"
           />
         ) : (
           <OAuthBadge
             icon={<ShieldX size={14} />}
             label={t("mcp.oauth.notAuthorized")}
-            color="#7f8c8d"
+            tone="muted"
           />
         )}
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div className={styles.oauthActions}>
           {(isAuthorized || isExpired) && clientKey && (
             <Button size="small" onClick={handleRevoke} loading={isRevoking}>
-              <span
-                style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-              >
+              <span className={styles.buttonContent}>
                 <Unlink size={12} />
                 {t("mcp.oauth.revoke")}
               </span>
@@ -167,9 +166,7 @@ export const MCPOAuthSection: React.FC<MCPOAuthSectionProps> = ({
             loading={phase === "starting"}
             disabled={!credentialsComplete}
           >
-            <span
-              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-            >
+            <span className={styles.buttonContent}>
               <KeyRound size={12} />
               {isAuthorized && !isExpired
                 ? t("mcp.oauth.reauthorize")
@@ -179,47 +176,49 @@ export const MCPOAuthSection: React.FC<MCPOAuthSectionProps> = ({
         </div>
       </div>
 
-      {errorMsg && <p style={errorStyle}>{errorMsg}</p>}
-      <p style={hintStyle}>{t("mcp.oauth.credentialsHint")}</p>
-      <div style={advancedStyle}>
-        <label style={labelStyle}>{t("mcp.oauth.tokenEndpoint")}</label>
-        <Input
-          size="small"
-          placeholder="https://auth.example.com/oauth/token"
-          value={tokenEndpoint}
-          onChange={(e) => onTokenEndpointChange?.(e.target.value)}
-        />
-
-        <label style={{ ...labelStyle, marginTop: 8 }}>
-          {t("mcp.oauth.clientId")}
+      {errorMsg && <p className={styles.oauthError}>{errorMsg}</p>}
+      <p className={styles.oauthHint}>{t("mcp.oauth.credentialsHint")}</p>
+      <div className={styles.oauthFields}>
+        <label className={styles.oauthField}>
+          <span>{t("mcp.oauth.tokenEndpoint")}</span>
+          <Input
+            size="small"
+            placeholder="https://auth.example.com/oauth/token"
+            value={tokenEndpoint}
+            onChange={(e) => onTokenEndpointChange?.(e.target.value)}
+          />
         </label>
-        <Input
-          size="small"
-          placeholder={t("mcp.oauth.clientIdPlaceholder")}
-          value={clientId}
-          onChange={(e) => onClientIdChange?.(e.target.value)}
-        />
 
-        <label style={{ ...labelStyle, marginTop: 8 }}>
-          {t("mcp.oauth.clientSecret")}
+        <label className={styles.oauthField}>
+          <span>{t("mcp.oauth.clientId")}</span>
+          <Input
+            size="small"
+            placeholder={t("mcp.oauth.clientIdPlaceholder")}
+            value={clientId}
+            onChange={(e) => onClientIdChange?.(e.target.value)}
+          />
         </label>
-        <Input.Password
-          size="small"
-          autoComplete="new-password"
-          placeholder={t("mcp.oauth.clientSecretPlaceholder")}
-          value={clientSecret}
-          onChange={(e) => onClientSecretChange?.(e.target.value)}
-        />
 
-        <label style={{ ...labelStyle, marginTop: 8 }}>
-          {t("mcp.oauth.scope")}
+        <label className={styles.oauthField}>
+          <span>{t("mcp.oauth.clientSecret")}</span>
+          <Input.Password
+            size="small"
+            autoComplete="new-password"
+            placeholder={t("mcp.oauth.clientSecretPlaceholder")}
+            value={clientSecret}
+            onChange={(e) => onClientSecretChange?.(e.target.value)}
+          />
         </label>
-        <Input
-          size="small"
-          placeholder={t("mcp.oauth.scopePlaceholder")}
-          value={scope}
-          onChange={(e) => onScopeChange?.(e.target.value)}
-        />
+
+        <label className={styles.oauthField}>
+          <span>{t("mcp.oauth.scope")}</span>
+          <Input
+            size="small"
+            placeholder={t("mcp.oauth.scopePlaceholder")}
+            value={scope}
+            onChange={(e) => onScopeChange?.(e.target.value)}
+          />
+        </label>
       </div>
     </div>
   );
@@ -232,71 +231,21 @@ export const MCPOAuthSection: React.FC<MCPOAuthSectionProps> = ({
 interface OAuthBadgeProps {
   icon: React.ReactNode;
   label: string;
-  color: string;
+  tone: "warning" | "success" | "danger" | "muted";
 }
 
-const OAuthBadge: React.FC<OAuthBadgeProps> = ({ icon, label, color }) => (
-  <span style={{ ...badgeStyle, color, borderColor: color }}>
-    {icon}
-    <span style={{ marginLeft: 4 }}>{label}</span>
-  </span>
-);
+const OAuthBadge: React.FC<OAuthBadgeProps> = ({ icon, label, tone }) => {
+  const toneClass = {
+    warning: styles.oauthBadgeWarning,
+    success: styles.oauthBadgeSuccess,
+    danger: styles.oauthBadgeDanger,
+    muted: styles.oauthBadgeMuted,
+  }[tone];
 
-// ---------------------------------------------------------------------------
-// Inline styles (keeps JSX concise, avoids extra CSS module entries)
-// ---------------------------------------------------------------------------
-
-const sectionStyle: React.CSSProperties = {
-  background: "#f8f9fa",
-  border: "1px solid #e9ecef",
-  borderRadius: 8,
-  padding: "12px 14px",
-  marginTop: 8,
-};
-
-const statusRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-};
-
-const badgeStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  fontSize: 12,
-  padding: "2px 8px",
-  borderRadius: 12,
-  border: "1px solid",
-  background: "white",
-};
-
-const errorStyle: React.CSSProperties = {
-  color: "#c0392b",
-  fontSize: 12,
-  marginTop: 6,
-  marginBottom: 0,
-};
-
-const hintStyle: React.CSSProperties = {
-  color: "#666",
-  fontSize: 12,
-  margin: "10px 0 0",
-};
-
-const advancedStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-  marginTop: 10,
-  padding: "10px 12px",
-  background: "white",
-  borderRadius: 6,
-  border: "1px solid #e9ecef",
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: "#888",
-  marginBottom: 2,
+  return (
+    <span className={`${styles.oauthBadge} ${toneClass}`}>
+      {icon}
+      <span>{label}</span>
+    </span>
+  );
 };

@@ -104,6 +104,9 @@ public class MultiAgentManager {
      * 获取或创建 Agent 单例.
      */
     public HarnessAgent getOrCreate(String agentId) {
+        if (ConfigManager.isInternalAgentTemplate(agentId)) {
+            throw new IllegalArgumentException("The default Agent is an internal configuration template");
+        }
         return agents.computeIfAbsent(agentId, id -> {
             AgentConfig config = configManager.getConfig().getAgents().get(id);
             if (config == null) {
@@ -298,6 +301,9 @@ public class MultiAgentManager {
      */
     public void startAll() {
         for (String agentId : configManager.getConfig().getAgents().keySet()) {
+            if (ConfigManager.isInternalAgentTemplate(agentId)) {
+                continue;
+            }
             try {
                 AgentConfig config = configManager.getConfig().getAgents().get(agentId);
                 if (config != null && !config.isEnabled()) {

@@ -2,6 +2,7 @@ package com.melon.app.mcp;
 
 import com.melon.core.config.ConfigManager;
 import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Path;
@@ -14,11 +15,19 @@ public class McpClientRegistry {
 
     private final ConfigManager configManager;
     private final McpClientManager defaultManager;
+    private final StdioMcpProcessLauncher stdioProcessLauncher;
     private final Map<String, McpClientManager> scopedManagers = new ConcurrentHashMap<>();
 
     public McpClientRegistry(ConfigManager configManager, McpClientManager defaultManager) {
+        this(configManager, defaultManager, new StdioMcpProcessLauncher());
+    }
+
+    @Autowired
+    public McpClientRegistry(ConfigManager configManager, McpClientManager defaultManager,
+                             StdioMcpProcessLauncher stdioProcessLauncher) {
         this.configManager = configManager;
         this.defaultManager = defaultManager;
+        this.stdioProcessLauncher = stdioProcessLauncher;
     }
 
     public McpClientManager forAgent(String agentId) {
@@ -31,10 +40,12 @@ public class McpClientRegistry {
     }
 
     private McpClientManager createManager(String agentId) {
-        Path configFile = configManager.resolveWorkspaceDir(agentId)
+        Path workspaceDir = configManager.resolveWorkspaceDir(agentId);
+        Path configFile = workspaceDir
                 .resolve(".melon")
                 .resolve("mcp-clients.json");
-        McpClientManager manager = new McpClientManager(configManager, configFile);
+        McpClientManager manager = new McpClientManager(
+                configManager, configFile, workspaceDir, stdioProcessLauncher);
         manager.init();
         return manager;
     }
