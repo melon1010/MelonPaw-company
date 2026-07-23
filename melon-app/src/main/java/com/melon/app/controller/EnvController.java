@@ -84,8 +84,7 @@ public class EnvController {
                 return ResponseEntity.ok(envList());
             } catch (Exception e) {
                 log.error("Failed to set env: {}", key, e);
-                return ResponseEntity.internalServerError()
-                        .body(Map.of("error", e.getMessage()));
+                throw new IllegalStateException("Failed to update environment setting", e);
             }
         });
     }

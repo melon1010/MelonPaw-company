@@ -1,9 +1,12 @@
 package com.melon.app.cron;
 
 import com.melon.app.auth.EnterpriseIdentityStore;
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.config.ConfigManager;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.HeartbeatConfig;
+import com.melon.core.util.ExecutorUtils;
+import com.melon.core.util.NamedThreadFactory;
 import com.melon.core.util.SafePathUtil;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -14,12 +17,14 @@ import org.springframework.stereotype.Component;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -37,12 +42,29 @@ public class HeartbeatTask implements Runnable {
     private final CronExecutor cronExecutor;
     private final ConfigManager configManager;
     private final EnterpriseIdentityStore identityStore;
+    private final ScheduledExecutorService providedScheduler;
+    private final boolean ownsScheduler;
 
     public HeartbeatTask(CronExecutor cronExecutor, ConfigManager configManager,
                          EnterpriseIdentityStore identityStore) {
+        this(cronExecutor, configManager, identityStore,
+                Executors.newScheduledThreadPool(1, new NamedThreadFactory("melon-heartbeat")), true);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public HeartbeatTask(CronExecutor cronExecutor, ConfigManager configManager,
+                         EnterpriseIdentityStore identityStore, RuntimeExecutors executors) {
+        this(cronExecutor, configManager, identityStore, executors.heartbeat(), false);
+    }
+
+    private HeartbeatTask(CronExecutor cronExecutor, ConfigManager configManager,
+                          EnterpriseIdentityStore identityStore,
+                          ScheduledExecutorService scheduler, boolean ownsScheduler) {
         this.cronExecutor = cronExecutor;
         this.configManager = configManager;
         this.identityStore = identityStore;
+        this.providedScheduler = scheduler;
+        this.ownsScheduler = ownsScheduler;
     }
 
     @Value("${melon.cron.heartbeat_interval_seconds:300}")
@@ -52,6 +74,7 @@ public class HeartbeatTask implements Runnable {
     private boolean heartbeatEnabled;
 
     private ScheduledExecutorService scheduler;
+    private ScheduledFuture<?> scheduledTask;
     private final Map<String, Long> lastRunByAgent = new ConcurrentHashMap<>();
 
     @PostConstruct
@@ -60,19 +83,17 @@ public class HeartbeatTask implements Runnable {
             log.info("Heartbeat task is disabled");
             return;
         }
-        scheduler = new ScheduledThreadPoolExecutor(1, r -> {
-            Thread t = new Thread(r, "melon-heartbeat");
-            t.setDaemon(true);
-            return t;
-        });
-        scheduler.scheduleAtFixedRate(this, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
+        scheduler = providedScheduler;
+        scheduledTask = scheduler.scheduleAtFixedRate(
+                this, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
         log.info("Heartbeat task started: scanInterval={}s", intervalSeconds);
     }
 
     @PreDestroy
     public void stop() {
         if (scheduler != null) {
-            scheduler.shutdownNow();
+            if (scheduledTask != null) scheduledTask.cancel(false);
+            if (ownsScheduler) ExecutorUtils.shutdownGracefully(scheduler, Duration.ofSeconds(5));
             log.info("Heartbeat task stopped");
         }
     }

@@ -40,6 +40,24 @@ vi.mock("@/api/config", () => ({
   clearAuthToken: vi.fn(),
 }));
 
+vi.mock("../AccountControls", () => ({
+  AccountControl: ({
+    mobile,
+    onOpenSettings,
+  }: {
+    mobile?: boolean;
+    onOpenSettings?: () => void;
+  }) => (
+    <button
+      type="button"
+      data-mobile={mobile ? "true" : "false"}
+      onClick={onOpenSettings}
+    >
+      account-control
+    </button>
+  ),
+}));
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mockT }),
 }));
@@ -63,41 +81,77 @@ describe("MobileNavigation permissions", () => {
       initialEntries: ["/workbench"],
     });
 
-    const navigation = screen.getByRole("navigation", { hidden: true });
+    const trigger = screen.getByLabelText("nav.menu", { selector: "button" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(trigger);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: "nav.menu",
+      hidden: true,
+    });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(
       within(navigation).getByRole("button", {
         name: "nav.chat",
-        hidden: true,
       }),
     ).toBeInTheDocument();
     expect(
       within(navigation).getByRole("button", {
         name: "enterprise.nav.projects",
-        hidden: true,
       }),
     ).toBeInTheDocument();
     expect(
       within(navigation).getByRole("button", {
         name: "nav.cronJobs",
-        hidden: true,
       }),
     ).toBeInTheDocument();
 
-    fireEvent.click(
-      within(navigation).getByRole("button", {
-        name: "common.more",
-        hidden: true,
-      }),
-    );
     expect(
-      await screen.findByRole("button", {
+      within(navigation).queryByRole("button", {
         name: "nav.workspace",
-        hidden: true,
+      }),
+    ).not.toBeInTheDocument();
+
+    const accountControl = screen.getByRole("button", {
+      name: "account-control",
+    });
+    expect(accountControl).toHaveAttribute("data-mobile", "true");
+    fireEvent.click(accountControl);
+
+    expect(
+      within(navigation).getByRole("button", {
+        name: "nav.workspace",
       }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "nav.models", hidden: true }),
+      within(navigation).getByRole("button", {
+        name: "sidebar.settings.returnApp",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(navigation).queryByRole("button", { name: "nav.models" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("closes from the mask without rendering a drawer close button", async () => {
+    renderWithProviders(<MobileNavigation />, {
+      initialEntries: ["/workbench"],
+    });
+
+    const trigger = screen.getByLabelText("nav.menu", { selector: "button" });
+    fireEvent.click(trigger);
+
+    await screen.findByRole("navigation", {
+      name: "nav.menu",
+      hidden: true,
+    });
+    expect(document.querySelector(".ant-drawer-close")).not.toBeInTheDocument();
+
+    const mask = document.querySelector(".ant-drawer-mask");
+    expect(mask).not.toBeNull();
+    fireEvent.click(mask!);
+
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
   it("shows administration entries only when their route permission allows it", async () => {
@@ -108,20 +162,26 @@ describe("MobileNavigation permissions", () => {
       initialEntries: ["/workbench"],
     });
 
+    fireEvent.click(screen.getByLabelText("nav.menu", { selector: "button" }));
+    const navigation = await screen.findByRole("navigation", {
+      name: "nav.menu",
+      hidden: true,
+    });
     fireEvent.click(
-      screen.getByRole("button", { name: "common.more", hidden: true }),
+      screen.getByRole("button", {
+        name: "account-control",
+      }),
     );
     expect(
-      await screen.findByRole("button", {
+      within(navigation).getByRole("button", {
         name: "nav.tokenUsage",
-        hidden: true,
       }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "nav.models", hidden: true }),
+      within(navigation).queryByRole("button", { name: "nav.models" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "nav.security", hidden: true }),
+      within(navigation).queryByRole("button", { name: "nav.security" }),
     ).not.toBeInTheDocument();
   });
 });

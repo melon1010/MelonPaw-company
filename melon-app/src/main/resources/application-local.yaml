@@ -5,10 +5,10 @@ spring:
 
 melon:
   execution:
-    # Development only: execute and Skill scripts run on the IDE host process.
+    # 仅用于开发环境：命令执行和技能脚本将在 IDEA 所在的宿主机进程中运行。
     sandbox-mode: ${MELON_EXECUTION_SANDBOX:local}
   enterprise:
     auth:
-      # Loopback development can create the first administrator directly.
-      # Set MELON_BOOTSTRAP_TOKEN to require an explicit token locally.
+      # 本机回环地址开发时可以直接创建首个管理员。
+      # 如需在本地强制校验令牌，请设置 MELON_BOOTSTRAP_TOKEN。
       generate-bootstrap-token: ${MELON_GENERATE_BOOTSTRAP_TOKEN:false}

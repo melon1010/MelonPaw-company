@@ -135,8 +135,7 @@ public class WorkspaceController {
                 return ResponseEntity.ok(result);
             } catch (Exception e) {
                 log.error("Failed to get workspace info", e);
-                return ResponseEntity.internalServerError()
-                        .body(Map.of("error", e.getMessage()));
+                throw new IllegalStateException("Failed to read workspace information", e);
             }
         });
     }
@@ -184,8 +183,7 @@ public class WorkspaceController {
                 return ResponseEntity.ok(Map.of("status", "updated"));
             } catch (IOException e) {
                 log.error("Failed to update workspace", e);
-                return ResponseEntity.internalServerError()
-                        .body(Map.of("error", e.getMessage()));
+                throw new IllegalStateException("Failed to update workspace", e);
             }
         });
     }
@@ -213,8 +211,7 @@ public class WorkspaceController {
                         "path", workspaceResponsePath(id, workspaceDir, principal)));
             } catch (Exception e) {
                 log.error("Failed to init workspace", e);
-                return ResponseEntity.internalServerError()
-                        .body(Map.of("error", e.getMessage()));
+                throw new IllegalStateException("Failed to initialize workspace", e);
             }
         });
     }
@@ -869,7 +866,7 @@ public class WorkspaceController {
         try {
             Files.createDirectories(target.getParent());
         } catch (IOException e) {
-            return Mono.just(ResponseEntity.internalServerError().body(Map.of("detail", e.getMessage())));
+            return Mono.error(new IllegalStateException("Failed to prepare upload directory", e));
         }
         return storeFilePart(filePart, target, MAX_WORKSPACE_UPLOAD_BYTES)
                 .<ResponseEntity<?>>map(size -> ResponseEntity.ok(Map.of(

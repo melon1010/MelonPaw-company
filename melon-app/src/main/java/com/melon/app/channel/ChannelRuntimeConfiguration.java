@@ -5,6 +5,8 @@ import com.melon.channels.ChannelAdapterRegistry;
 import com.melon.channels.ChannelConfigService;
 import com.melon.channels.ChannelManager;
 import com.melon.channels.ChannelQueueManager;
+import com.melon.app.config.RuntimeExecutors;
+import com.melon.app.config.RuntimeConcurrencyProperties;
 import com.melon.core.config.ConfigManager;
 import org.springframework.core.Ordered;
 import org.springframework.context.annotation.Bean;
@@ -19,8 +21,8 @@ import java.util.Map;
 public class ChannelRuntimeConfiguration {
 
     @Bean
-    public ChannelAdapterRegistry channelAdapterRegistry() {
-        return new ChannelAdapterRegistry();
+    public ChannelAdapterRegistry channelAdapterRegistry(RuntimeExecutors executors) {
+        return new ChannelAdapterRegistry(executors.channel(), executors.channelScheduler());
     }
 
     @Bean
@@ -36,8 +38,10 @@ public class ChannelRuntimeConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    public ChannelQueueManager channelQueueManager() {
-        return new ChannelQueueManager();
+    public ChannelQueueManager channelQueueManager(
+            RuntimeExecutors executors, RuntimeConcurrencyProperties properties) {
+        return new ChannelQueueManager(
+                executors.channel(), properties.getChannelPendingPerSession());
     }
 
     @Bean

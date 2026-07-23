@@ -2,6 +2,8 @@ package com.melon.channels;
 
 import com.melon.core.util.JsonUtils;
 import com.melon.core.util.OutboundNetworkPolicy;
+import com.melon.core.util.ExecutorUtils;
+import com.melon.core.util.NamedThreadFactory;
 
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -14,14 +16,34 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 
 /** HTTP adapter shared by the DingTalk and Feishu integrations. */
 public class HttpChannelAdapter extends BasicChannelAdapter {
 
+    private final ExecutorService worker;
+    private final boolean ownsWorker;
+
     public HttpChannelAdapter(String type, boolean qrcode, boolean streaming, boolean webhook) {
+        this(type, qrcode, streaming, webhook, standaloneWorker(), true);
+    }
+
+    HttpChannelAdapter(
+            String type, boolean qrcode, boolean streaming, boolean webhook, ExecutorService worker) {
+        this(type, qrcode, streaming, webhook, worker, false);
+    }
+
+    private HttpChannelAdapter(
+            String type, boolean qrcode, boolean streaming, boolean webhook,
+            ExecutorService worker, boolean ownsWorker) {
         super(requireDomesticHttpType(type), true, qrcode, streaming, webhook);
+        this.worker = java.util.Objects.requireNonNull(worker);
+        this.ownsWorker = ownsWorker;
     }
 
     @Override
@@ -81,7 +103,18 @@ public class HttpChannelAdapter extends BasicChannelAdapter {
                         e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
             }
             return message;
-        });
+        }, worker);
+    }
+
+    @Override
+    public void close() {
+        if (ownsWorker) ExecutorUtils.shutdownGracefully(worker, Duration.ofSeconds(5));
+    }
+
+    private static ExecutorService standaloneWorker() {
+        return new ThreadPoolExecutor(
+                2, 4, 60L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(64),
+                new NamedThreadFactory("melon-http-channel"), new ThreadPoolExecutor.AbortPolicy());
     }
 
     @Override

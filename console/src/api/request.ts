@@ -54,6 +54,13 @@ function buildHeaders(method?: string, extra?: HeadersInit): Headers {
     }
   }
 
+  if (!headers.has("Accept-Language")) {
+    headers.set(
+      "Accept-Language",
+      localStorage.getItem("language") || navigator.language || "en",
+    );
+  }
+
   return headers;
 }
 

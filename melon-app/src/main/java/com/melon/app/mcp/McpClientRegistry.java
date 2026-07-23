@@ -1,5 +1,6 @@
 package com.melon.app.mcp;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.config.ConfigManager;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
 
 /** Owns one MCP client manager per Agent so connections and credentials never cross scopes. */
 @Component
@@ -16,18 +18,28 @@ public class McpClientRegistry {
     private final ConfigManager configManager;
     private final McpClientManager defaultManager;
     private final StdioMcpProcessLauncher stdioProcessLauncher;
+    private final ScheduledExecutorService lifecycle;
     private final Map<String, McpClientManager> scopedManagers = new ConcurrentHashMap<>();
 
     public McpClientRegistry(ConfigManager configManager, McpClientManager defaultManager) {
-        this(configManager, defaultManager, new StdioMcpProcessLauncher());
+        this(configManager, defaultManager, new StdioMcpProcessLauncher(),
+                (ScheduledExecutorService) null);
     }
 
     @Autowired
     public McpClientRegistry(ConfigManager configManager, McpClientManager defaultManager,
-                             StdioMcpProcessLauncher stdioProcessLauncher) {
+                             StdioMcpProcessLauncher stdioProcessLauncher,
+                             RuntimeExecutors executors) {
+        this(configManager, defaultManager, stdioProcessLauncher, executors.mcpLifecycle());
+    }
+
+    private McpClientRegistry(ConfigManager configManager, McpClientManager defaultManager,
+                              StdioMcpProcessLauncher stdioProcessLauncher,
+                              ScheduledExecutorService lifecycle) {
         this.configManager = configManager;
         this.defaultManager = defaultManager;
         this.stdioProcessLauncher = stdioProcessLauncher;
+        this.lifecycle = lifecycle;
     }
 
     public McpClientManager forAgent(String agentId) {
@@ -44,8 +56,10 @@ public class McpClientRegistry {
         Path configFile = workspaceDir
                 .resolve(".melon")
                 .resolve("mcp-clients.json");
-        McpClientManager manager = new McpClientManager(
-                configManager, configFile, workspaceDir, stdioProcessLauncher);
+        McpClientManager manager = lifecycle == null
+                ? new McpClientManager(configManager, configFile, workspaceDir, stdioProcessLauncher)
+                : new McpClientManager(configManager, configFile, workspaceDir,
+                        stdioProcessLauncher, lifecycle, false);
         manager.init();
         return manager;
     }

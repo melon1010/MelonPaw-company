@@ -14,6 +14,7 @@ import com.melon.app.service.ApprovalService;
 import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.auth.EnterpriseIdentityStore;
 import com.melon.app.auth.EnterpriseAgentAccessService;
+import com.melon.app.util.LanguageNormalizer;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.HeartbeatConfig;
@@ -47,8 +48,6 @@ import static com.melon.app.auth.EnterprisePermissions.APPROVALS_DECIDE;
 public class FrontendCompatController {
 
     private static final String LANGUAGE_PREFERENCE = "ui.language";
-    private static final Set<String> SUPPORTED_LANGUAGES = Set.of(
-            "zh", "en", "ja", "ru", "id", "pt", "pt-BR", "vi");
 
     private final ConfigManager configManager;
     private final ProviderManager providerManager;
@@ -105,7 +104,8 @@ public class FrontendCompatController {
         Optional<String> preference = principal == null ? Optional.empty()
                 : identityStore.getUserPreference(principal.id(), LANGUAGE_PREFERENCE);
         return Mono.just(ResponseEntity.ok(Map.of(
-                "language", preference.orElse("zh"),
+                "language", preference.map(LanguageNormalizer::normalizeOrDefault)
+                        .orElse(LanguageNormalizer.DEFAULT_LANGUAGE),
                 "configured", preference.isPresent()
         )));
     }
@@ -117,11 +117,9 @@ public class FrontendCompatController {
         if (principal == null) {
             return Mono.error(new SecurityException("Authentication is required"));
         }
-        String language = stringValue(body != null ? body.get("language") : null, "zh");
-        if (!SUPPORTED_LANGUAGES.contains(language)) {
-            return Mono.just(ResponseEntity.badRequest().body(Map.of(
-                    "detail", "Unsupported language: " + language)));
-        }
+        String requested = stringValue(body != null ? body.get("language") : null, "");
+        String language = LanguageNormalizer.normalize(requested)
+                .orElseThrow(() -> new IllegalArgumentException("Unsupported language: " + requested));
         identityStore.setUserPreference(principal.id(), LANGUAGE_PREFERENCE, language);
         return Mono.just(ResponseEntity.ok(Map.of("language", language)));
     }

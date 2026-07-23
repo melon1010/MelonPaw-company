@@ -6,33 +6,36 @@ import {
   Bug,
   CalendarClock,
   DatabaseBackup,
+  Files,
   Folder,
+  Gauge,
   Globe2,
   HeartPulse,
+  History,
   Inbox,
-  Library,
   LayoutDashboard,
-  LogOut,
+  Library,
+  ArrowLeft,
   Menu,
   MessageSquareText,
   Mic,
   Network,
   Package,
   Radio,
+  ScrollText,
+  Settings2,
   Shield,
   Sparkles,
-  Settings2,
   Users,
-  Files,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
 import { canAccessRoute } from "../../auth/authorization";
-import { authApi } from "../../api/modules/auth";
-import { clearAuthToken } from "../../api/config";
+import { AccountControl } from "../AccountControls";
 import styles from "./index.module.less";
 
 interface NavItem {
@@ -42,14 +45,17 @@ interface NavItem {
   icon: LucideIcon;
 }
 
+const DRAWER_NAV_ID = "mobile-navigation-drawer";
+
 export default function MobileNavigation() {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, clearSession } = useAuth();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [settingsMode, setSettingsMode] = useState(false);
 
-  const { primary, more } = useMemo(() => {
+  const { primary, workspace, administration } = useMemo(() => {
     const primaryCandidates: NavItem[] = [
       {
         id: "core.chat",
@@ -70,11 +76,13 @@ export default function MobileNavigation() {
         icon: CalendarClock,
       },
     ];
-    const accessiblePrimary = primaryCandidates.filter((item) =>
-      canAccessRoute(item.id, user),
-    );
-
-    const moreCandidates: NavItem[] = [
+    const workspaceCandidates: NavItem[] = [
+      {
+        id: "company.workbench",
+        path: "/workbench",
+        label: t("enterprise.nav.workbench"),
+        icon: LayoutDashboard,
+      },
       {
         id: "core.inbox",
         path: "/inbox",
@@ -82,10 +90,10 @@ export default function MobileNavigation() {
         icon: Inbox,
       },
       {
-        id: "company.workbench",
-        path: "/workbench",
-        label: t("enterprise.nav.workbench"),
-        icon: LayoutDashboard,
+        id: "core.channels",
+        path: "/channels",
+        label: t("nav.channels"),
+        icon: Radio,
       },
       {
         id: "core.workspace",
@@ -100,16 +108,22 @@ export default function MobileNavigation() {
         icon: Sparkles,
       },
       {
-        id: "core.channels",
-        path: "/channels",
-        label: t("nav.channels"),
-        icon: Radio,
-      },
-      {
         id: "core.heartbeat",
         path: "/heartbeat",
         label: t("nav.heartbeat"),
         icon: HeartPulse,
+      },
+      {
+        id: "core.sessions",
+        path: "/sessions",
+        label: t("nav.sessions"),
+        icon: History,
+      },
+      {
+        id: "core.tools",
+        path: "/tools",
+        label: t("nav.tools"),
+        icon: Wrench,
       },
       {
         id: "core.mcp",
@@ -129,6 +143,8 @@ export default function MobileNavigation() {
         label: t("nav.agentStats"),
         icon: Activity,
       },
+    ];
+    const administrationCandidates: NavItem[] = [
       {
         id: "company.members",
         path: "/members",
@@ -136,16 +152,22 @@ export default function MobileNavigation() {
         icon: Users,
       },
       {
-        id: "core.skill-pool",
-        path: "/skill-pool",
-        label: t("nav.skillPool", "Skill Pool"),
-        icon: Library,
+        id: "company.roles",
+        path: "/roles",
+        label: t("enterprise.nav.roles", "Roles & permissions"),
+        icon: Shield,
       },
       {
         id: "core.models",
         path: "/models",
         label: t("nav.models"),
         icon: BriefcaseBusiness,
+      },
+      {
+        id: "core.skill-pool",
+        path: "/skill-pool",
+        label: t("nav.skillPool", "Skill Pool"),
+        icon: Library,
       },
       {
         id: "core.environments",
@@ -166,10 +188,22 @@ export default function MobileNavigation() {
         icon: BarChart3,
       },
       {
+        id: "core.management-audit",
+        path: "/management-audit",
+        label: t("enterprise.nav.audit", "Management audit"),
+        icon: ScrollText,
+      },
+      {
         id: "core.backups",
         path: "/backups",
         label: t("nav.backups"),
         icon: DatabaseBackup,
+      },
+      {
+        id: "core.quotas",
+        path: "/quotas",
+        label: t("enterprise.nav.quotas", "Quotas"),
+        icon: Gauge,
       },
       {
         id: "core.voice-transcription",
@@ -190,92 +224,135 @@ export default function MobileNavigation() {
         icon: Package,
       },
     ];
+    const accessible = (items: NavItem[]) =>
+      items.filter((item) => canAccessRoute(item.id, user));
 
     return {
-      primary: accessiblePrimary.slice(0, 3),
-      more: moreCandidates.filter((item) => canAccessRoute(item.id, user)),
+      primary: accessible(primaryCandidates),
+      workspace: accessible(workspaceCandidates),
+      administration: accessible(administrationCandidates),
     };
   }, [t, user]);
 
-  const go = (path: string) => {
+  useEffect(() => {
     setOpen(false);
+    setSettingsMode(false);
+  }, [location.pathname]);
+
+  const closeDrawer = () => {
+    setOpen(false);
+    setSettingsMode(false);
+  };
+
+  const go = (path: string) => {
+    closeDrawer();
     navigate(path);
   };
 
-  return (
-    <>
-      <nav
-        className={styles.mobileNav}
-        aria-label={t("nav.menu", "Navigation")}
-      >
-        {primary.map((item) => {
+  const renderSection = (label: string, items: NavItem[]) => {
+    if (items.length === 0) return null;
+    return (
+      <section className={styles.drawerSection}>
+        <div className={styles.drawerSectionLabel}>{label}</div>
+        {items.map((item) => {
           const Icon = item.icon;
-          const active = location.pathname.startsWith(item.path);
+          const active =
+            location.pathname === item.path ||
+            location.pathname.startsWith(`${item.path}/`);
           return (
             <button
               type="button"
               key={item.id}
-              className={active ? styles.navItemActive : styles.navItem}
+              className={active ? styles.drawerItemActive : styles.drawerItem}
+              aria-current={active ? "page" : undefined}
               onClick={() => go(item.path)}
             >
-              <Icon size={20} />
+              <span className={styles.drawerItemIcon}>
+                <Icon size={19} aria-hidden />
+              </span>
               <span>{item.label}</span>
             </button>
           );
         })}
-        <button
-          type="button"
-          className={open ? styles.navItemActive : styles.navItem}
-          onClick={() => setOpen(true)}
-        >
-          <Menu size={20} />
-          <span>{t("common.more", "More")}</span>
-        </button>
-      </nav>
+      </section>
+    );
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className={styles.menuTrigger}
+        aria-label={t("nav.menu", "Navigation")}
+        aria-controls={DRAWER_NAV_ID}
+        aria-expanded={open}
+        onClick={() => {
+          setSettingsMode(false);
+          setOpen(true);
+        }}
+      >
+        <Menu size={21} strokeWidth={1.9} aria-hidden />
+      </button>
 
       <Drawer
         open={open}
-        onClose={() => setOpen(false)}
-        placement="bottom"
-        height="min(76vh, 640px)"
-        title={t("nav.menu", "Navigation")}
-        className={styles.moreDrawer}
+        onClose={closeDrawer}
+        placement="left"
+        closable={false}
+        maskClosable
+        width="min(86vw, 312px)"
+        title={
+          <span className={styles.drawerBrand}>
+            <img src="/company-mark.svg" alt="" />
+            <strong>MelonPaw</strong>
+          </span>
+        }
+        rootClassName={styles.mobileDrawerRoot}
       >
-        <div className={styles.drawerGrid}>
-          {more.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                type="button"
-                key={item.id}
-                className={styles.drawerItem}
-                onClick={() => go(item.path)}
-              >
-                <Icon size={19} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div className={styles.drawerFooter}>
-          <div className={styles.identity}>
-            <span>{user?.display_name || user?.username}</span>
-            <small>{user?.roles?.[0] || ""}</small>
-          </div>
-          <button
-            type="button"
-            className={styles.logout}
-            aria-label={t("login.logout")}
-            onClick={() => {
-              void authApi.logout().finally(() => {
-                clearAuthToken();
-                clearSession();
-                window.location.href = "/login";
-              });
-            }}
+        <div className={styles.drawerShell}>
+          <nav
+            id={DRAWER_NAV_ID}
+            className={styles.drawerNavigation}
+            aria-label={t("nav.menu", "Navigation")}
           >
-            <LogOut size={18} />
-          </button>
+            {settingsMode ? (
+              <>
+                <button
+                  type="button"
+                  className={styles.settingsBack}
+                  onClick={() => setSettingsMode(false)}
+                >
+                  <ArrowLeft size={18} aria-hidden />
+                  <span>
+                    {t("sidebar.settings.returnApp", "Return to application")}
+                  </span>
+                </button>
+                {renderSection(
+                  t("enterprise.nav.operations", "Operations"),
+                  workspace,
+                )}
+                {renderSection(
+                  t("enterprise.nav.administration", "Administration"),
+                  administration,
+                )}
+              </>
+            ) : (
+              renderSection(t("enterprise.nav.work", "Work"), primary)
+            )}
+          </nav>
+
+          <div className={styles.drawerFooter}>
+            <div className={styles.drawerAccount}>
+              <AccountControl
+                variant="sidebar"
+                mobile
+                placement="topLeft"
+                onOpenSettings={
+                  settingsMode ? undefined : () => setSettingsMode(true)
+                }
+              />
+            </div>
+          </div>
         </div>
       </Drawer>
     </>

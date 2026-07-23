@@ -2,6 +2,7 @@ package com.melon.app.config;
 
 import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.service.EnterpriseAuditService;
+import com.melon.app.web.RequestIdSupport;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
@@ -92,8 +93,7 @@ public class EnterpriseAuditWebFilter implements WebFilter {
     }
 
     private String requestId(ServerWebExchange exchange) {
-        String supplied = exchange.getRequest().getHeaders().getFirst("X-Request-ID");
-        return supplied == null || supplied.isBlank() ? exchange.getRequest().getId() : supplied;
+        return RequestIdSupport.resolve(exchange);
     }
 
     private String sourceIp(ServerWebExchange exchange) {

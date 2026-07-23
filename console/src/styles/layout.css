@@ -1005,7 +1005,7 @@ html.dark-mode .qwenpaw-sender-content {
 
 @media (max-width: 768px) {
   .page-container {
-    padding-bottom: calc(58px + env(safe-area-inset-bottom));
+    padding-bottom: 0;
   }
 }
 

@@ -51,11 +51,13 @@ function ScopeIcon({ scope, size = 16 }: { scope: AgentScope; size?: number }) {
 interface AgentScopeSwitcherProps {
   variant?: "header" | "sidebar" | "menu";
   collapsed?: boolean;
+  mobile?: boolean;
 }
 
 export default function AgentScopeSwitcher({
   variant = "header",
   collapsed = false,
+  mobile = false,
 }: AgentScopeSwitcherProps) {
   const { t } = useTranslation();
   const selectedAgent = useAgentStore((state) => state.selectedAgent);
@@ -210,9 +212,11 @@ export default function AgentScopeSwitcher({
 
   return (
     <Dropdown
-      trigger={variant === "menu" ? ["hover", "click"] : ["click"]}
-      placement={variant === "sidebar" ? "topLeft" : "bottomLeft"}
-      align={variant === "menu" ? { offset: [210, -30] } : undefined}
+      trigger={variant === "menu" && !mobile ? ["hover", "click"] : ["click"]}
+      placement={
+        mobile ? "topLeft" : variant === "sidebar" ? "topLeft" : "bottomLeft"
+      }
+      align={variant === "menu" && !mobile ? { offset: [210, -30] } : undefined}
       overlayClassName={`${styles.scopeMenuPopup} ${
         variant === "menu" ? styles.accountScopeMenuPopup : ""
       }`}

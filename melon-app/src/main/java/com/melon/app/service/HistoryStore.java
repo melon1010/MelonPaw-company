@@ -5,6 +5,9 @@ import com.melon.core.config.ConfigManager;
 import com.melon.core.config.LightContextConfig;
 import com.melon.core.util.JsonUtils;
 import com.melon.core.util.SafePathUtil;
+import com.melon.core.util.ExecutorUtils;
+import com.melon.core.util.NamedThreadFactory;
+import com.melon.app.config.RuntimeExecutors;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
+import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -31,8 +35,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -44,29 +49,32 @@ public class HistoryStore {
     private static final Logger log = LoggerFactory.getLogger(HistoryStore.class);
     private final ConfigManager configManager;
     private final Set<Path> initializedDbs = ConcurrentHashMap.newKeySet();
-    private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "melon-history-writer");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final ExecutorService writer;
+    private final boolean ownsWriter;
     private final AtomicInteger pendingWrites = new AtomicInteger();
     private final Object idleMonitor = new Object();
 
     public HistoryStore(ConfigManager configManager) {
+        this(configManager, new ThreadPoolExecutor(
+                1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(512),
+                new NamedThreadFactory("melon-history"), new ThreadPoolExecutor.CallerRunsPolicy()), true);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public HistoryStore(ConfigManager configManager, RuntimeExecutors executors) {
+        this(configManager, executors.history(), false);
+    }
+
+    private HistoryStore(ConfigManager configManager, ExecutorService writer, boolean ownsWriter) {
         this.configManager = configManager;
+        this.writer = writer;
+        this.ownsWriter = ownsWriter;
     }
 
     @PreDestroy
     public void shutdown() {
-        writer.shutdown();
-        try {
-            if (!writer.awaitTermination(5, TimeUnit.SECONDS)) {
-                writer.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            writer.shutdownNow();
-        }
+        awaitIdle(5000);
+        if (ownsWriter) ExecutorUtils.shutdownGracefully(writer, Duration.ofSeconds(5));
     }
 
     public Path historyPath(String agentId) {

@@ -42,6 +42,7 @@ function mockFetch(
 describe("request", () => {
   beforeEach(() => {
     vi.mocked(buildAuthHeaders).mockReturnValue({});
+    localStorage.clear();
     Object.defineProperty(window, "location", {
       value: { pathname: "/chat", href: "" },
       writable: true,
@@ -85,6 +86,16 @@ describe("request", () => {
     });
     const headers: Headers = (fetch as any).mock.calls[0][1].headers;
     expect(headers.get("Content-Type")).toBe("multipart/form-data");
+  });
+
+  it("sends the language selected in the console", async () => {
+    localStorage.setItem("language", "pt-BR");
+    mockFetch(200, { data: "ok" });
+
+    await request("/models");
+
+    const headers: Headers = (fetch as any).mock.calls[0][1].headers;
+    expect(headers.get("Accept-Language")).toBe("pt-BR");
   });
 
   it("correctly parses and returns JSON response", async () => {

@@ -44,6 +44,7 @@ const KNOWN_LANGUAGE_KEYS = new Set<string>(
 interface AccountControlProps {
   variant: "header" | "sidebar";
   collapsed?: boolean;
+  mobile?: boolean;
   placement?: "bottomRight" | "topLeft";
   navigationItems?: MenuProps["items"];
   onNavigationClick?: MenuProps["onClick"];
@@ -53,6 +54,7 @@ interface AccountControlProps {
 export function AccountControl({
   variant,
   collapsed = false,
+  mobile = false,
   placement = "bottomRight",
   navigationItems = [],
   onNavigationClick,
@@ -112,10 +114,12 @@ export function AccountControl({
 
   const themeSubmenu = (
     <Dropdown
-      trigger={["hover", "click"]}
-      placement="bottomRight"
-      align={{ offset: [210, -30] }}
-      overlayClassName={styles.accountSubmenuPopup}
+      trigger={mobile ? ["click"] : ["hover", "click"]}
+      placement={mobile ? "topLeft" : "bottomRight"}
+      align={mobile ? undefined : { offset: [210, -30] }}
+      overlayClassName={`${styles.accountSubmenuPopup} ${
+        mobile ? styles.accountSubmenuPopupMobile : ""
+      }`}
       menu={{
         items: themeOptions.map((option) => ({
           key: option.key,
@@ -137,10 +141,12 @@ export function AccountControl({
 
   const languageSubmenu = (
     <Dropdown
-      trigger={["hover", "click"]}
-      placement="bottomRight"
-      align={{ offset: [210, -30] }}
-      overlayClassName={styles.accountSubmenuPopup}
+      trigger={mobile ? ["click"] : ["hover", "click"]}
+      placement={mobile ? "topLeft" : "bottomRight"}
+      align={mobile ? undefined : { offset: [210, -30] }}
+      overlayClassName={`${styles.accountSubmenuPopup} ${
+        mobile ? styles.accountSubmenuPopupMobile : ""
+      }`}
       menu={{
         items: LANGUAGES.map((language) => ({
           key: language.key,
@@ -190,7 +196,7 @@ export function AccountControl({
       {
         key: "workspace",
         icon: <Layers3 size={15} />,
-        label: <AgentScopeSwitcher variant="menu" />,
+        label: <AgentScopeSwitcher variant="menu" mobile={mobile} />,
       },
       {
         key: "theme",
@@ -259,8 +265,10 @@ export function AccountControl({
         onClick: handleAccountAction,
       }}
       placement={placement}
-      trigger={["hover", "click"]}
-      overlayClassName={styles.accountMenuPopup}
+      trigger={mobile ? ["click"] : ["hover", "click"]}
+      overlayClassName={`${styles.accountMenuPopup} ${
+        mobile ? styles.accountMenuPopupMobile : ""
+      }`}
     >
       <button
         className={isHeader ? styles.headerAccount : styles.sidebarAccount}

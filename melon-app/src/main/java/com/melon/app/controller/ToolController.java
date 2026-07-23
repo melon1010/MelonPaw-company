@@ -90,8 +90,7 @@ public class ToolController {
                 return ResponseEntity.ok(Map.of("name", toolName, "enabled", enabled));
             } catch (Exception e) {
                 log.error("Failed to toggle tool: {}", name, e);
-                return ResponseEntity.internalServerError()
-                        .body(Map.of("error", e.getMessage()));
+                throw new IllegalStateException("Failed to update tool", e);
             }
         });
     }

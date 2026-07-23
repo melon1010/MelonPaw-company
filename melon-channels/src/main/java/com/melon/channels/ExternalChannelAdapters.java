@@ -38,7 +38,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -416,7 +416,8 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
     private static final String VERSION = "2.0.1";
     private static final int PROCESSED_LIMIT = 2000;
 
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
+    private final Executor worker;
+    private final ScheduledExecutorService executor;
     private final Map<String, ScheduledFuture<?>> tasks = new ConcurrentHashMap<>();
     private final Map<String, String> cursors = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Long>> processed = new ConcurrentHashMap<>();
@@ -425,8 +426,10 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
     private final Map<String, ScheduledFuture<?>> typingTasks = new ConcurrentHashMap<>();
     private final Map<String, TypingTicket> typingTickets = new ConcurrentHashMap<>();
 
-    WeChatChannelAdapter() {
+    WeChatChannelAdapter(Executor worker, ScheduledExecutorService executor) {
         super("wechat", true, true, false, false);
+        this.worker = worker;
+        this.executor = executor;
     }
 
     @Override
@@ -574,7 +577,7 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
                 stopTyping(message.getAgentId(), toUser, message.getSessionId(), config);
             }
             return message;
-        });
+        }, worker);
     }
 
     private void poll(String agentId, Map<String, Object> config, ChannelInboundDispatcher dispatcher) {
@@ -915,7 +918,7 @@ class WeChatChannelAdapter extends BasicChannelAdapter {
     @Override
     public void close() {
         tasks.values().forEach(task -> task.cancel(true));
-        executor.shutdownNow();
+        typingTasks.values().forEach(task -> task.cancel(true));
     }
 }
 
@@ -925,14 +928,17 @@ class QQChannelAdapter extends BasicChannelAdapter {
     private static final int INTENTS = (1 << 30) | (1 << 12) | (1 << 25) | (1 << 1) | (1 << 26);
     private static final int TEXT_CHUNK_SIZE = 1800;
 
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
+    private final Executor worker;
+    private final ScheduledExecutorService executor;
     private final Map<String, WebSocket> sockets = new ConcurrentHashMap<>();
     private final Map<String, ScheduledFuture<?>> heartbeats = new ConcurrentHashMap<>();
     private final Map<String, Token> tokens = new ConcurrentHashMap<>();
     private final Map<String, Integer> seq = new ConcurrentHashMap<>();
 
-    QQChannelAdapter() {
+    QQChannelAdapter(Executor worker, ScheduledExecutorService executor) {
         super("qq", true, false, true, true);
+        this.worker = worker;
+        this.executor = executor;
     }
 
     @Override
@@ -948,7 +954,7 @@ class QQChannelAdapter extends BasicChannelAdapter {
             } catch (Exception ignored) {
             }
             return health(agentId, config);
-        });
+        }, worker);
     }
 
     @Override
@@ -1068,7 +1074,7 @@ class QQChannelAdapter extends BasicChannelAdapter {
                         message.getAgentId(), message.getSessionId(), e.toString());
             }
             return message;
-        });
+        }, worker);
     }
 
     private QQRoute resolveRoute(ChannelOutboundMessage message, Map<?, ?> meta) {
@@ -1492,7 +1498,6 @@ class QQChannelAdapter extends BasicChannelAdapter {
     public void close() {
         sockets.values().forEach(WebSocket::abort);
         heartbeats.values().forEach(task -> task.cancel(true));
-        executor.shutdownNow();
     }
 }
 
@@ -1500,9 +1505,11 @@ class WeComChannelAdapter extends BasicChannelAdapter {
     private static final String WECOM_AUTH_ORIGIN = "https://work.weixin.qq.com";
 
     private final Map<String, WebSocket> sockets = new ConcurrentHashMap<>();
+    private final Executor worker;
 
-    WeComChannelAdapter() {
+    WeComChannelAdapter(Executor worker) {
         super("wecom", true, false, true, true);
+        this.worker = worker;
     }
 
     @Override
@@ -1618,7 +1625,7 @@ class WeComChannelAdapter extends BasicChannelAdapter {
                 ChannelHttpSupport.mark(message, "failed", e.getMessage());
             }
             return message;
-        });
+        }, worker);
     }
 
     private String replyUrl(ChannelOutboundMessage message, Map<String, Object> config) {
@@ -1639,10 +1646,11 @@ class XiaoYiChannelAdapter extends BasicChannelAdapter {
     private static final String BACKUP = "wss://116.63.174.231/openclaw/v1/ws/link";
     private final Map<String, WebSocket> sockets = new ConcurrentHashMap<>();
     private final Map<String, String> sessionServers = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
+    private final ScheduledExecutorService executor;
 
-    XiaoYiChannelAdapter() {
+    XiaoYiChannelAdapter(ScheduledExecutorService executor) {
         super("xiaoyi", true, false, true, true);
+        this.executor = executor;
     }
 
     @Override
@@ -1771,7 +1779,6 @@ class XiaoYiChannelAdapter extends BasicChannelAdapter {
     @Override
     public void close() {
         sockets.values().forEach(WebSocket::abort);
-        executor.shutdownNow();
     }
 }
 
@@ -1782,10 +1789,13 @@ class YuanbaoChannelAdapter extends BasicChannelAdapter {
     private final Map<String, WebSocket> sockets = new ConcurrentHashMap<>();
     private final Map<String, Boolean> authed = new ConcurrentHashMap<>();
     private final Map<String, String> botIds = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
+    private final Executor worker;
+    private final ScheduledExecutorService executor;
 
-    YuanbaoChannelAdapter() {
+    YuanbaoChannelAdapter(Executor worker, ScheduledExecutorService executor) {
         super("yuanbao", true, false, true, true);
+        this.worker = worker;
+        this.executor = executor;
     }
 
     @Override
@@ -1859,7 +1869,7 @@ class YuanbaoChannelAdapter extends BasicChannelAdapter {
                 ChannelHttpSupport.mark(message, "failed", e.getMessage());
             }
             return message;
-        });
+        }, worker);
     }
 
     private void connect(String agentId, Map<String, Object> config, ChannelInboundDispatcher dispatcher) throws Exception {
@@ -2031,7 +2041,6 @@ class YuanbaoChannelAdapter extends BasicChannelAdapter {
     @Override
     public void close() {
         sockets.values().forEach(WebSocket::abort);
-        executor.shutdownNow();
     }
 }
 

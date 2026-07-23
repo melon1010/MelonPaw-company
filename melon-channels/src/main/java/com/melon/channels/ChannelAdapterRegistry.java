@@ -2,20 +2,33 @@ package com.melon.channels;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 
 public class ChannelAdapterRegistry implements AutoCloseable {
 
     private final Map<String, ChannelAdapter> adapters = new LinkedHashMap<>();
+    private final ChannelExecutionContext executionContext;
 
     public ChannelAdapterRegistry() {
+        this(ChannelExecutionContext.standalone());
+    }
+
+    public ChannelAdapterRegistry(
+            ExecutorService worker, ScheduledExecutorService scheduler) {
+        this(ChannelExecutionContext.managed(worker, scheduler));
+    }
+
+    private ChannelAdapterRegistry(ChannelExecutionContext executionContext) {
+        this.executionContext = executionContext;
         register(new BasicChannelAdapter("console", true, false, true, false));
-        register(new HttpChannelAdapter("dingtalk", true, true, true));
-        register(new HttpChannelAdapter("feishu", true, true, true));
-        register(new QQChannelAdapter());
-        register(new WeChatChannelAdapter());
-        register(new WeComChannelAdapter());
-        register(new YuanbaoChannelAdapter());
-        register(new XiaoYiChannelAdapter());
+        register(new HttpChannelAdapter("dingtalk", true, true, true, executionContext.worker()));
+        register(new HttpChannelAdapter("feishu", true, true, true, executionContext.worker()));
+        register(new QQChannelAdapter(executionContext.worker(), executionContext.scheduler()));
+        register(new WeChatChannelAdapter(executionContext.worker(), executionContext.scheduler()));
+        register(new WeComChannelAdapter(executionContext.worker()));
+        register(new YuanbaoChannelAdapter(executionContext.worker(), executionContext.scheduler()));
+        register(new XiaoYiChannelAdapter(executionContext.scheduler()));
         register(new OneBotChannelAdapter());
     }
 
@@ -45,5 +58,6 @@ public class ChannelAdapterRegistry implements AutoCloseable {
     @Override
     public void close() {
         adapters.values().forEach(ChannelAdapter::close);
+        executionContext.close();
     }
 }

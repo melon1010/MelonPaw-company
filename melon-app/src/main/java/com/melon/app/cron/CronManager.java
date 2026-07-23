@@ -1,5 +1,8 @@
 package com.melon.app.cron;
 
+import com.melon.app.config.RuntimeExecutors;
+import com.melon.core.util.ExecutorUtils;
+import com.melon.core.util.NamedThreadFactory;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,9 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -33,10 +36,10 @@ import java.util.concurrent.TimeUnit;
 public class CronManager {
 
     private static final Logger log = LoggerFactory.getLogger(CronManager.class);
-    private static final int POOL_SIZE = 4;
     public static final String DEFAULT_TIMEZONE = "Asia/Shanghai";
 
     private final ScheduledExecutorService executor;
+    private final boolean ownsExecutor;
     private final CronExecutor cronExecutor;
 
     /** 所有已注册的定时任务. */
@@ -45,12 +48,19 @@ public class CronManager {
     private final ConcurrentHashMap<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
 
     public CronManager(CronExecutor cronExecutor) {
+        this(cronExecutor, Executors.newScheduledThreadPool(
+                4, new NamedThreadFactory("melon-cron")), true);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CronManager(CronExecutor cronExecutor, RuntimeExecutors executors) {
+        this(cronExecutor, executors.cron(), false);
+    }
+
+    private CronManager(CronExecutor cronExecutor, ScheduledExecutorService executor, boolean ownsExecutor) {
         this.cronExecutor = cronExecutor;
-        this.executor = new ScheduledThreadPoolExecutor(POOL_SIZE, r -> {
-            Thread t = new Thread(r, "melon-cron-" + Thread.currentThread().getId());
-            t.setDaemon(true);
-            return t;
-        });
+        this.executor = executor;
+        this.ownsExecutor = ownsExecutor;
     }
 
     // ======================== Public API ========================
@@ -166,7 +176,7 @@ public class CronManager {
         }
         scheduledTasks.clear();
         jobs.clear();
-        executor.shutdownNow();
+        if (ownsExecutor) ExecutorUtils.shutdownGracefully(executor, Duration.ofSeconds(5));
         log.info("CronManager shut down");
     }
 

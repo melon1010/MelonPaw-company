@@ -75,7 +75,6 @@ import {
 import { ChatScalar, ChatList } from "../../plugins/registry/slotKeys";
 import { HostRequestCard, HostResponseCard } from "./HostBubbles";
 import { withGenericFallback } from "../../components/Chat/ToolCards/adapters/v1Adapter";
-import AgentScopeSwitcher from "../../components/AgentScopeSwitcher";
 
 interface SenderSkillsMenuProps {
   skills: Array<{ name: string; description?: string }>;
@@ -2874,9 +2873,6 @@ export default function ChatPage() {
               onLoadingChange={setChatLoading}
             />
             <div className={styles.chatHeaderLeading}>
-              <span className={styles.mobileScopeSwitcher}>
-                <AgentScopeSwitcher />
-              </span>
               {chatId ? (
                 <span className={styles.chatConversationTitle}>
                   <ChatHeaderTitle />

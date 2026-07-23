@@ -5,6 +5,7 @@ import com.melon.app.runner.ChatManager;
 import com.melon.app.runner.ChatSpec;
 import com.melon.app.runner.MelonPawEnvelopeMapper;
 import com.melon.app.task.EnterpriseTaskService;
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.channels.ChannelConfigService;
 import com.melon.channels.ChannelInboundMessage;
 import com.melon.channels.ChannelMessageRenderer;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 @Component
 public class ChannelRuntimeProcessor {
@@ -43,26 +45,40 @@ public class ChannelRuntimeProcessor {
     private final ConfigManager configManager;
     private final ChannelConfigService channelConfigService;
     private final EnterpriseTaskService taskService;
+    private final Executor executor;
     private final ChannelMessageRenderer messageRenderer = new ChannelMessageRenderer();
 
     public ChannelRuntimeProcessor(AgentRunner agentRunner, ChatManager chatManager,
                                    ConfigManager configManager, ChannelConfigService channelConfigService) {
-        this(agentRunner, chatManager, configManager, channelConfigService, null);
+        this(agentRunner, chatManager, configManager, channelConfigService, null, Runnable::run);
+    }
+
+    public ChannelRuntimeProcessor(AgentRunner agentRunner, ChatManager chatManager,
+                                   ConfigManager configManager, ChannelConfigService channelConfigService,
+                                   EnterpriseTaskService taskService) {
+        this(agentRunner, chatManager, configManager, channelConfigService, taskService, Runnable::run);
     }
 
     @Autowired
     public ChannelRuntimeProcessor(AgentRunner agentRunner, ChatManager chatManager,
                                    ConfigManager configManager, ChannelConfigService channelConfigService,
-                                   EnterpriseTaskService taskService) {
+                                   EnterpriseTaskService taskService, RuntimeExecutors executors) {
+        this(agentRunner, chatManager, configManager, channelConfigService, taskService, executors.channel());
+    }
+
+    private ChannelRuntimeProcessor(AgentRunner agentRunner, ChatManager chatManager,
+                                    ConfigManager configManager, ChannelConfigService channelConfigService,
+                                    EnterpriseTaskService taskService, Executor executor) {
         this.agentRunner = agentRunner;
         this.chatManager = chatManager;
         this.configManager = configManager;
         this.channelConfigService = channelConfigService;
         this.taskService = taskService;
+        this.executor = executor;
     }
 
     public CompletableFuture<ChannelOutboundMessage> process(ChannelInboundMessage inbound) {
-        return CompletableFuture.supplyAsync(() -> run(inbound));
+        return CompletableFuture.supplyAsync(() -> run(inbound), executor);
     }
 
     private ChannelOutboundMessage run(ChannelInboundMessage inbound) {

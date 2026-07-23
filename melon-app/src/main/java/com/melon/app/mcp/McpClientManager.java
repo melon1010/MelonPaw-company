@@ -1,7 +1,10 @@
 package com.melon.app.mcp;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.config.ConfigManager;
+import com.melon.core.util.ExecutorUtils;
 import com.melon.core.util.JsonUtils;
+import com.melon.core.util.NamedThreadFactory;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -58,11 +61,9 @@ public class McpClientManager {
     private final ConcurrentHashMap<String, AtomicInteger> restartCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Boolean> retryableConnectionFailures = new ConcurrentHashMap<>();
     private final AtomicBoolean initialized = new AtomicBoolean();
-    private final ScheduledExecutorService lifecycle = Executors.newScheduledThreadPool(2, task -> {
-        Thread thread = new Thread(task, "mcp-lifecycle");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final ScheduledExecutorService lifecycle;
+    private final boolean ownsLifecycle;
+    private volatile ScheduledFuture<?> livenessTask;
     private final ConfigManager configManager;
     private final Path persistedConfigFile;
     private final Path workspaceDir;
@@ -70,25 +71,34 @@ public class McpClientManager {
     private volatile boolean shuttingDown;
 
     @Autowired
-    public McpClientManager(ConfigManager configManager, StdioMcpProcessLauncher stdioProcessLauncher) {
-        this(configManager, null, null, stdioProcessLauncher);
+    public McpClientManager(ConfigManager configManager, StdioMcpProcessLauncher stdioProcessLauncher,
+                            RuntimeExecutors executors) {
+        this(configManager, null, null, stdioProcessLauncher, executors.mcpLifecycle(), false);
     }
 
     public McpClientManager(ConfigManager configManager) {
-        this(configManager, null, null, new StdioMcpProcessLauncher());
+        this(configManager, null, null, new StdioMcpProcessLauncher(), standaloneLifecycle(), true);
     }
 
     /** Creates an isolated MCP registry backed by the supplied Agent-local file. */
     public McpClientManager(ConfigManager configManager, Path persistedConfigFile) {
-        this(configManager, persistedConfigFile, null, new StdioMcpProcessLauncher());
+        this(configManager, persistedConfigFile, null, new StdioMcpProcessLauncher(), standaloneLifecycle(), true);
     }
 
     McpClientManager(ConfigManager configManager, Path persistedConfigFile, Path workspaceDir,
                      StdioMcpProcessLauncher stdioProcessLauncher) {
+        this(configManager, persistedConfigFile, workspaceDir, stdioProcessLauncher, standaloneLifecycle(), true);
+    }
+
+    McpClientManager(ConfigManager configManager, Path persistedConfigFile, Path workspaceDir,
+                     StdioMcpProcessLauncher stdioProcessLauncher,
+                     ScheduledExecutorService lifecycle, boolean ownsLifecycle) {
         this.configManager = configManager;
         this.persistedConfigFile = persistedConfigFile;
         this.workspaceDir = workspaceDir == null ? null : workspaceDir.toAbsolutePath().normalize();
         this.stdioProcessLauncher = Objects.requireNonNull(stdioProcessLauncher);
+        this.lifecycle = Objects.requireNonNull(lifecycle);
+        this.ownsLifecycle = ownsLifecycle;
     }
 
     @PostConstruct
@@ -101,7 +111,7 @@ public class McpClientManager {
                 connectAsync(config.getId());
             }
         }
-        lifecycle.scheduleWithFixedDelay(this::checkLiveness,
+        livenessTask = lifecycle.scheduleWithFixedDelay(this::checkLiveness,
                 LIVENESS_INTERVAL_SECONDS, LIVENESS_INTERVAL_SECONDS, TimeUnit.SECONDS);
         log.info("McpClientManager initialized");
     }
@@ -110,11 +120,17 @@ public class McpClientManager {
     public void shutdown() {
         if (shuttingDown) return;
         shuttingDown = true;
-        lifecycle.shutdownNow();
+        ScheduledFuture<?> task = livenessTask;
+        if (task != null) task.cancel(false);
         log.info("Shutting down McpClientManager, disconnecting {} servers", servers.size());
         for (String id : servers.keySet()) {
             disconnect(id);
         }
+        if (ownsLifecycle) ExecutorUtils.shutdownGracefully(lifecycle, Duration.ofSeconds(5));
+    }
+
+    private static ScheduledExecutorService standaloneLifecycle() {
+        return Executors.newScheduledThreadPool(2, new NamedThreadFactory("melon-mcp-lifecycle"));
     }
 
     // ======================== Server Management ========================

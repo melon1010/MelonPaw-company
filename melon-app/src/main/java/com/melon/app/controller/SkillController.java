@@ -8,6 +8,7 @@ import com.melon.app.auth.ProjectAgentService;
 import com.melon.app.service.BuiltinSkillService;
 import com.melon.app.service.SecuritySettingsService;
 import com.melon.app.service.SkillService;
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.util.JsonUtils;
 import com.melon.core.util.OutboundNetworkPolicy;
@@ -43,6 +44,8 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import com.melon.core.util.ExecutorUtils;
+import com.melon.core.util.NamedThreadFactory;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 
@@ -70,19 +73,24 @@ public class SkillController {
     private final ProjectAgentService projectAgentService;
     private final Map<String, Map<String, Object>> hubInstallTasks = new ConcurrentHashMap<>();
     private final Map<String, Future<?>> hubInstallFutures = new ConcurrentHashMap<>();
-    private final ExecutorService hubInstallExecutor = new ThreadPoolExecutor(
-            2, 2, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(20), runnable -> {
-                Thread thread = new Thread(runnable, "skill-hub-install");
-                thread.setDaemon(true);
-                return thread;
-            }, new ThreadPoolExecutor.AbortPolicy());
+    private final ExecutorService hubInstallExecutor;
+    private final boolean ownsHubInstallExecutor;
 
     public SkillController(SkillService skillService, BuiltinSkillService builtinSkillService,
                            SecuritySettingsService securitySettingsService,
                            MultiAgentManager multiAgentManager,
                            EnterpriseAgentAccessService agentAccessService) {
         this(skillService, builtinSkillService, securitySettingsService,
-                multiAgentManager, agentAccessService, null);
+                multiAgentManager, agentAccessService, null, standaloneInstallExecutor(), true);
+    }
+
+    public SkillController(SkillService skillService, BuiltinSkillService builtinSkillService,
+                           SecuritySettingsService securitySettingsService,
+                           MultiAgentManager multiAgentManager,
+                           EnterpriseAgentAccessService agentAccessService,
+                           ProjectAgentService projectAgentService) {
+        this(skillService, builtinSkillService, securitySettingsService,
+                multiAgentManager, agentAccessService, projectAgentService, standaloneInstallExecutor(), true);
     }
 
     @Autowired
@@ -90,7 +98,19 @@ public class SkillController {
                            SecuritySettingsService securitySettingsService,
                            MultiAgentManager multiAgentManager,
                            EnterpriseAgentAccessService agentAccessService,
-                           ProjectAgentService projectAgentService) {
+                           ProjectAgentService projectAgentService,
+                           RuntimeExecutors executors) {
+        this(skillService, builtinSkillService, securitySettingsService,
+                multiAgentManager, agentAccessService, projectAgentService, executors.skillInstall(), false);
+    }
+
+    private SkillController(SkillService skillService, BuiltinSkillService builtinSkillService,
+                            SecuritySettingsService securitySettingsService,
+                            MultiAgentManager multiAgentManager,
+                            EnterpriseAgentAccessService agentAccessService,
+                            ProjectAgentService projectAgentService,
+                            ExecutorService hubInstallExecutor,
+                            boolean ownsHubInstallExecutor) {
         this.skillService = skillService;
         this.builtinSkillService = builtinSkillService;
         this.securitySettingsService = securitySettingsService;
@@ -98,11 +118,21 @@ public class SkillController {
         this.agentAccessService = agentAccessService;
         this.projectAgentService = projectAgentService;
         this.skillScanner = new SkillScanner();
+        this.hubInstallExecutor = hubInstallExecutor;
+        this.ownsHubInstallExecutor = ownsHubInstallExecutor;
     }
 
     @PreDestroy
     void shutdownHubInstallExecutor() {
-        hubInstallExecutor.shutdownNow();
+        if (ownsHubInstallExecutor) {
+            ExecutorUtils.shutdownGracefully(hubInstallExecutor, Duration.ofSeconds(5));
+        }
+    }
+
+    private static ExecutorService standaloneInstallExecutor() {
+        return new ThreadPoolExecutor(
+                2, 2, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(20),
+                new NamedThreadFactory("melon-skill-install"), new ThreadPoolExecutor.AbortPolicy());
     }
 
     /**
@@ -116,7 +146,7 @@ public class SkillController {
                 return ResponseEntity.ok(skills);
             } catch (Exception e) {
                 log.error("Failed to list skills", e);
-                return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+                throw new IllegalStateException("Failed to list skills", e);
             }
         });
     }
@@ -479,7 +509,7 @@ public class SkillController {
                 return ResponseEntity.notFound().build();
             } catch (Exception e) {
                 log.error("Failed to get skill: {}", name, e);
-                return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+                throw new IllegalStateException("Failed to get skill", e);
             }
         });
     }
@@ -515,7 +545,7 @@ public class SkillController {
                 return ResponseEntity.ok(Map.of("created", true, "status", "created", "name", name));
             } catch (Exception e) {
                 log.error("Failed to create skill", e);
-                return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+                throw new IllegalStateException("Failed to create skill", e);
             }
         }));
     }
@@ -690,7 +720,7 @@ public class SkillController {
                 return ResponseEntity.ok(Map.of("deleted", true, "status", "deleted", "name", name));
             } catch (Exception e) {
                 log.error("Failed to delete skill: {}", name, e);
-                return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+                throw new IllegalStateException("Failed to delete skill", e);
             }
         }));
     }

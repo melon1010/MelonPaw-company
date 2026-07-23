@@ -16,9 +16,26 @@ spring:
 melon:
   home_dir: ${MELON_HOME:~/.melonPaw-CompanyAI}
   execution:
-    # Keep production fail-closed. IDEA development should enable the `local`
-    # Spring profile from application-local.yaml.
+    # 生产环境默认采用安全关闭策略。使用 IDEA 本地开发时，
+    # 应通过 application-local.yaml 启用 Spring 的 local 配置。
     sandbox-mode: ${MELON_EXECUTION_SANDBOX:docker}
+  runtime:
+    channel:
+      core-threads: ${MELON_CHANNEL_CORE_THREADS:4}
+      max-threads: ${MELON_CHANNEL_MAX_THREADS:16}
+      queue-capacity: ${MELON_CHANNEL_QUEUE_CAPACITY:256}
+    # 历史记录投影固定使用单线程，以保证 SQLite 写入顺序。
+    history-queue-capacity: ${MELON_HISTORY_QUEUE_CAPACITY:512}
+    skill-install:
+      core-threads: ${MELON_SKILL_INSTALL_THREADS:2}
+      max-threads: ${MELON_SKILL_INSTALL_THREADS:2}
+      queue-capacity: ${MELON_SKILL_INSTALL_QUEUE_CAPACITY:20}
+    mcp-lifecycle-threads: ${MELON_MCP_LIFECYCLE_THREADS:4}
+    channel-scheduler-threads: ${MELON_CHANNEL_SCHEDULER_THREADS:4}
+    channel-pending-per-session: ${MELON_CHANNEL_PENDING_PER_SESSION:32}
+    cron-threads: ${MELON_CRON_THREADS:4}
+    shutdown-timeout: ${MELON_EXECUTOR_SHUTDOWN_TIMEOUT:5s}
+    config-watcher-enabled: ${MELON_CONFIG_WATCHER_ENABLED:true}
   enterprise:
     database-path: ${MELON_ENTERPRISE_DATABASE_PATH:}
     auth:

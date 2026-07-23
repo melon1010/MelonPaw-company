@@ -304,15 +304,7 @@ public class ConsoleCompatController {
         } catch (Exception e) {
             log.warn("Failed to interrupt chat: agent={}, user={}, session={}, chat={}",
                     effectiveAgentId, userId, sessionId, chatId, e);
-            return Mono.just(ResponseEntity.internalServerError().body(Map.of(
-                    "stopped", false,
-                    "interrupted", false,
-                    "chat_id", chatId,
-                    "agent_id", effectiveAgentId,
-                    "session_id", sessionId,
-                    "user_id", userId,
-                    "detail", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()
-            )));
+            return Mono.error(new IllegalStateException("Failed to interrupt chat", e));
         }
 
         boolean executionCancelled = agentRunner.cancel(effectiveAgentId, userId, sessionId);

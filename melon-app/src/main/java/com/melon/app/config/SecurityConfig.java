@@ -3,6 +3,9 @@ package com.melon.app.config;
 import com.melon.app.auth.AuthService;
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.web.ApiErrorResponse;
+import com.melon.app.web.RequestIdSupport;
+import com.melon.core.util.JsonUtils;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -333,7 +336,9 @@ public class SecurityConfig {
         }
         exchange.getResponse().setStatusCode(status);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        String json = "{\"status\":\"error\",\"detail\":\"" + detail + "\"}";
+        String code = status == HttpStatus.UNAUTHORIZED ? "unauthorized" : "forbidden";
+        String json = JsonUtils.toJson(ApiErrorResponse.of(
+                code, detail, RequestIdSupport.resolve(exchange)));
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
         return exchange.getResponse().writeWith(
                 Mono.just(exchange.getResponse().bufferFactory().wrap(bytes)));

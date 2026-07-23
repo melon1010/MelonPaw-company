@@ -354,7 +354,7 @@ public class McpController {
                 return ResponseEntity.ok(serverMap(config));
             } catch (Exception e) {
                 log.error("Failed to register MCP server", e);
-                return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+                throw new IllegalStateException("Failed to register MCP server", e);
             }
         }));
     }
