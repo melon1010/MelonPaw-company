@@ -34,7 +34,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@types/react-window": "^1.8.8",
     "@vvo/tzdb": "^6.198.0",
-    "ahooks": "^3.9.6",
+    "ahooks": "^3.9.7",
     "antd": "^5.29.1",
     "antd-style": "^3.7.1",
     "dayjs": "^1.11.13",
