@@ -3,6 +3,7 @@ package com.melon.app.service;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.ConfigManager;
 import com.melon.app.task.EnterpriseTaskService;
+import com.melon.app.runner.ToolApprovalGrantService;
 import io.agentscope.core.event.ConfirmResult;
 import io.agentscope.core.message.ToolUseBlock;
 import org.slf4j.Logger;
@@ -30,6 +31,7 @@ public class ApprovalService {
     private final ConfigManager configManager;
     private final AuditLogService auditLogService;
     private final EnterpriseTaskService taskService;
+    private final ToolApprovalGrantService approvalGrantService;
 
     // agentId + ownerUserId + sessionId -> live approval gate for the paused AgentScope stream
     private final ConcurrentHashMap<String, PendingApprovalSession> pendingApprovalSessions = new ConcurrentHashMap<>();
@@ -37,19 +39,21 @@ public class ApprovalService {
     private final ConcurrentHashMap<String, Map<String, Object>> pendingPlans = new ConcurrentHashMap<>();
 
     public ApprovalService(ConfigManager configManager) {
-        this(configManager, null, null);
+        this(configManager, null, null, null);
     }
 
     public ApprovalService(ConfigManager configManager, AuditLogService auditLogService) {
-        this(configManager, auditLogService, null);
+        this(configManager, auditLogService, null, null);
     }
 
     @Autowired
     public ApprovalService(ConfigManager configManager, AuditLogService auditLogService,
-                           EnterpriseTaskService taskService) {
+                           EnterpriseTaskService taskService,
+                           ToolApprovalGrantService approvalGrantService) {
         this.configManager = configManager;
         this.auditLogService = auditLogService;
         this.taskService = taskService;
+        this.approvalGrantService = approvalGrantService;
     }
 
     /**
@@ -164,12 +168,19 @@ public class ApprovalService {
     }
 
     public boolean decidePendingApproval(String agentId, String sessionId, String requestId, boolean approved) {
-        return decidePendingApproval(agentId, sessionId, requestId, "", true, approved);
+        return decidePendingApproval(agentId, sessionId, requestId, "", true, approved, "once");
     }
 
     /** Decides one approval after owner/elevated-role authorization. */
     public boolean decidePendingApproval(String agentId, String sessionId, String requestId,
                                          String actorUserId, boolean elevated, boolean approved) {
+        return decidePendingApproval(agentId, sessionId, requestId, actorUserId, elevated, approved, "once");
+    }
+
+    /** Decides one approval and remembers only an explicit ALLOW decision. */
+    public boolean decidePendingApproval(String agentId, String sessionId, String requestId,
+                                         String actorUserId, boolean elevated, boolean approved,
+                                         String approvalScope) {
         PendingApprovalSession session = elevated
                 ? findPendingSession(agentId, sessionId, requestId)
                 : pendingApprovalSessions.get(approvalScopeKey(agentId, actorUserId, sessionId));
@@ -178,11 +189,25 @@ public class ApprovalService {
         ApprovalDecision decision = session.decide(requestId, approved);
         boolean accepted = decision != null;
         boolean done = accepted && session.isDone();
+        String normalizedScope = normalizeApprovalScope(approvalScope);
+        if (accepted && approved && approvalGrantService != null) {
+            try {
+                approvalGrantService.remember(session.agentId(), session.ownerUserId(), normalizedScope,
+                        decision.approval());
+            } catch (RuntimeException e) {
+                // The current call remains approved even if durable grant storage is unavailable.
+                log.warn("Failed to remember tool approval: agent={}, user={}, request={}",
+                        session.agentId(), session.ownerUserId(), requestId, e);
+            }
+        }
         if (accepted && auditLogService != null) {
             Map<String, Object> approval = new LinkedHashMap<>(
                     decision.approval() != null ? decision.approval() : Map.of());
             approval.put("decision_actor_user_id", normalizeUserId(actorUserId));
             approval.put("decision_actor_scope", elevated ? "ELEVATED" : "OWNER");
+            approval.put("approval_scope", approved ? normalizedScope : "current_call");
+            approval.put("remembered", approved && !"once".equals(normalizedScope)
+                    && Boolean.TRUE.equals(approval.get("rememberable")));
             String auditedAgentId = stringValue(approval.getOrDefault("agent_id", session.agentId()), session.agentId());
             String sid = stringValue(approval.getOrDefault("session_id", sessionId), "default");
             String toolName = stringValue(approval.getOrDefault("actual_tool_name",
@@ -207,6 +232,12 @@ public class ApprovalService {
             pendingApprovalSessions.remove(session.scopeKey(), session);
         }
         return accepted;
+    }
+
+    private String normalizeApprovalScope(String scope) {
+        if ("exact".equalsIgnoreCase(scope)) return "exact";
+        if ("similar".equalsIgnoreCase(scope)) return "similar";
+        return "once";
     }
 
     private void recordApprovalCancellation(PendingApprovalSession session, String reason) {
@@ -373,6 +404,10 @@ public class ApprovalService {
 
         String agentId() {
             return agentId;
+        }
+
+        String ownerUserId() {
+            return ownerUserId;
         }
 
         String sessionId() {

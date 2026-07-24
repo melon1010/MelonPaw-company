@@ -103,22 +103,16 @@ export default function LoginPage() {
         {isDark ? <Sun size={17} /> : <Moon size={17} />}
       </button>
 
-      <div className={styles.gridAxis} aria-hidden="true" />
+      <header className={styles.brandLockup}>
+        <img className={styles.brandMark} src="/company-mark.svg" alt="" />
+        <div className={styles.brandNameGroup}>
+          <strong>MelonPaw</strong>
+          <span>Company</span>
+        </div>
+      </header>
 
       <main className={styles.loginShell}>
-        <header className={styles.brandLockup}>
-          <img className={styles.brandMark} src="/company-mark.svg" alt="" />
-          <div className={styles.brandNameGroup}>
-            <strong>MelonPaw</strong>
-            <span>Company</span>
-          </div>
-        </header>
-
         <section className={styles.authPanel} aria-labelledby="login-title">
-          <div className={styles.authEyebrow}>
-            <span className={styles.statusDot} aria-hidden="true" />
-            <span>{t("enterprise.auth.privateEdition")}</span>
-          </div>
           <div className={styles.heading}>
             <h1 id="login-title">
               {isBootstrap
@@ -212,11 +206,6 @@ export default function LoginPage() {
               </Button>
             </Form.Item>
           </Form>
-
-          <div className={styles.panelFooter}>
-            <span>MelonPaw Company Console</span>
-            <span aria-hidden="true">MP / 01</span>
-          </div>
         </section>
       </main>
     </div>

@@ -30,13 +30,11 @@ import { Slot } from "../plugins/registry/Slot";
 import { flattenMenu, type FlatMenuEntry } from "./registry/adapter";
 import { SidebarAccount, SidebarBrand } from "./SidebarChrome";
 import { useAgentStore } from "../stores/agentStore";
+import { APP_PRIMARY_NAV_IDS, APP_PRIMARY_NAV_ID_SET } from "./navigationMode";
 
 const { Sider } = Layout;
 const MOBILE_SIDEBAR_QUERY = "(max-width: 768px)";
 const INBOX_BADGE_POLLING_MS = 6000;
-
-const PRIMARY_NAV_IDS = ["company.projects", "core.cron-jobs"] as const;
-const PRIMARY_NAV_ID_SET = new Set<string>(PRIMARY_NAV_IDS);
 
 function isMobileSidebarViewport() {
   return (
@@ -98,12 +96,13 @@ export default function Sidebar({
     const entriesById = new Map(
       agentEntries.map((entry) => [entry.key, entry]),
     );
-    return PRIMARY_NAV_IDS.map((id) => entriesById.get(id)).filter(
+    return APP_PRIMARY_NAV_IDS.map((id) => entriesById.get(id)).filter(
       (entry): entry is FlatMenuEntry => Boolean(entry),
     );
   }, [agentEntries]);
   const secondaryAgentEntries = useMemo(
-    () => agentEntries.filter((entry) => !PRIMARY_NAV_ID_SET.has(entry.key)),
+    () =>
+      agentEntries.filter((entry) => !APP_PRIMARY_NAV_ID_SET.has(entry.key)),
     [agentEntries],
   );
 

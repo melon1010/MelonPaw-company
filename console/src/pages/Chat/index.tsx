@@ -142,8 +142,7 @@ interface ApprovalMessageData {
   toolParams: Record<string, unknown>;
   createdAt: number;
   timeoutSeconds: number;
-  // Approval-scope choice (console-only). When isGeneralized is true the
-  // card offers Approve Pattern (similar) vs Approve Exact (exact).
+  rememberable?: boolean;
   isGeneralized?: boolean;
   exactTarget?: string;
   similarTarget?: string;
@@ -1545,6 +1544,7 @@ export default function ChatPage() {
         toolParams: approval.tool_params,
         createdAt: approval.created_at,
         timeoutSeconds: approval.timeout_seconds,
+        rememberable: approval.rememberable,
         isGeneralized: approval.is_generalized,
         exactTarget: approval.exact_target,
         similarTarget: approval.similar_target,
@@ -1555,7 +1555,7 @@ export default function ChatPage() {
   }, [approvals, chatId]);
 
   const handleApprove = useCallback(
-    async (requestId: string, scope?: "exact" | "similar") => {
+    async (requestId: string, scope?: "once" | "exact" | "similar") => {
       const request = approvalRequests.get(requestId);
       if (!request) return;
 
@@ -2791,34 +2791,12 @@ export default function ChatPage() {
             timeoutSeconds={activeApproval.timeoutSeconds}
             sessionId={activeApproval.sessionId}
             rootSessionId={activeApproval.rootSessionId}
+            rememberable={activeApproval.rememberable}
             isGeneralized={activeApproval.isGeneralized}
             exactTarget={activeApproval.exactTarget}
             similarTarget={activeApproval.similarTarget}
             onApprove={(reqId, scope) => handleApprove(reqId, scope)}
             onDeny={handleDeny}
-            onCancel={() => {
-              const sessionId =
-                activeApproval.rootSessionId || window.currentSessionId || "";
-              const resolvedChatId =
-                sessionApi.getRealIdForSession(sessionId) ??
-                chatIdRef.current ??
-                sessionId;
-
-              if (!resolvedChatId) return;
-              chatApi
-                .stopChat(resolvedChatId)
-                .then(() => {
-                  setApprovals((prev) =>
-                    prev.filter(
-                      (item) =>
-                        item.root_session_id !== activeApproval.rootSessionId,
-                    ),
-                  );
-                })
-                .catch((error) => {
-                  console.error("[Chat] stopChat failed:", error);
-                });
-            }}
           />
         </div>
       </div>
@@ -2956,27 +2934,14 @@ export default function ChatPage() {
         attachments: {
           multiple: true,
           trigger: function (props: any) {
-            const uploadLimit = useUploadLimitStore.getState().uploadMaxSizeMb;
-            const tooltipKey = multimodalCaps.supportsMultimodal
-              ? multimodalCaps.supportsImage && !multimodalCaps.supportsVideo
-                ? "chat.attachments.tooltipImageOnly"
-                : "chat.attachments.tooltip"
-              : "chat.attachments.tooltipNoMultimodal";
-            const tooltipTitle =
-              uploadLimit !== null
-                ? `${t(tooltipKey)}, ${t("chat.attachments.fileSizeLimit", {
-                    limit: uploadLimit,
-                  })}`
-                : t(tooltipKey);
             return (
-              <Tooltip title={tooltipTitle}>
-                <IconButton
-                  disabled={props?.disabled}
-                  icon={<SparkPlusLine size={18} />}
-                  bordered={false}
-                  className={styles.senderAttachmentButton}
-                />
-              </Tooltip>
+              <IconButton
+                disabled={props?.disabled}
+                icon={<SparkPlusLine size={18} />}
+                bordered={false}
+                aria-label={t("chat.attachments.tooltip")}
+                className={styles.senderAttachmentButton}
+              />
             );
           },
           customRequest: handleFileUpload,

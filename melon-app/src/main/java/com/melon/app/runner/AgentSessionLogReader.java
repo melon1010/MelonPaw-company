@@ -61,7 +61,8 @@ public class AgentSessionLogReader {
             return annotateTurnPhases(shadowMessages);
         }
 
-        Map<String, Object> state = stateLookup.findAsMap(agentId, userId, sessionId);
+        String stateUserId = chatManager.stateUserId(agentId, channel, sessionId, userId);
+        Map<String, Object> state = stateLookup.findAsMap(agentId, stateUserId, sessionId);
         if (!state.isEmpty()) {
             List<Map<String, Object>> messages = deduplicateMessages(readStateMessages(state));
             if (!messages.isEmpty() && !looksTruncatedConsoleHistory(messages)) {

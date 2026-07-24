@@ -69,6 +69,9 @@ public class StdioMcpProcessLauncher {
                 "--pids-limit", setting("MELON_MCP_SANDBOX_PIDS", "256"),
                 "--user", setting("MELON_MCP_SANDBOX_USER", "10001:10001"),
                 "--init",
+                "--read-only",
+                "--tmpfs", "/tmp:rw,nosuid,nodev,size=256m",
+                "--tmpfs", "/home/melon:rw,nosuid,nodev,size=256m",
                 "--cap-drop", "ALL",
                 "--security-opt", "no-new-privileges:true"));
 

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { Button, Card, Tag, Typography, Space } from "antd";
-import { Shield, Check, X, Clock, Copy } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Button, Card, Dropdown, Tag, Typography, Space } from "antd";
+import { Shield, Clock, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAgentStore } from "../../stores/agentStore";
 import { getAgentDisplayName } from "../../utils/agentDisplayName";
@@ -24,23 +24,22 @@ export interface ApprovalCardProps {
   compact?: boolean;
   sessionId?: string;
   rootSessionId?: string;
-  // Approval-scope choice (console-only). When true the card renders
-  // Approve Pattern + Approve Exact; when false, a single Approve button.
+  rememberable?: boolean;
   isGeneralized?: boolean;
   exactTarget?: string;
   similarTarget?: string;
-  onApprove: (requestId: string, scope?: "exact" | "similar") => Promise<void>;
+  onApprove: (
+    requestId: string,
+    scope?: "once" | "exact" | "similar",
+  ) => Promise<void>;
   onDeny: (requestId: string) => Promise<void>;
-  onCancel?: () => void;
   onAcknowledge?: (requestId: string) => Promise<void>;
 }
 
 export function ApprovalCard({
   requestId,
   toolName,
-  toolSource,
   severity,
-  findingsCount,
   findingsSummary,
   toolParams,
   createdAt,
@@ -51,12 +50,11 @@ export function ApprovalCard({
   compact = false,
   sessionId,
   rootSessionId,
+  rememberable,
   isGeneralized,
   exactTarget,
-  similarTarget,
   onApprove,
   onDeny,
-  onCancel,
   onAcknowledge,
 }: ApprovalCardProps) {
   const { t } = useTranslation();
@@ -66,20 +64,14 @@ export function ApprovalCard({
     [agents],
   );
   const [loading, setLoading] = useState<
-    "approve-pattern" | "approve-exact" | "deny" | "acknowledge" | null
+    | "approve-once"
+    | "approve-pattern"
+    | "approve-exact"
+    | "deny"
+    | "acknowledge"
+    | null
   >(null);
   const [remaining, setRemaining] = useState<number>(timeoutSeconds);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-
-  const handleCopy = useCallback(async (text: string, field: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 1500);
-    } catch {
-      /* clipboard not available */
-    }
-  }, []);
 
   // Check if this is a cross-session approval
   const isCrossSession =
@@ -98,10 +90,21 @@ export function ApprovalCard({
   }, [agentsById, ownerAgentId, agentId, t]);
   const shouldShowExecutionAgent =
     showInboxAgentContext && Boolean(isCrossSession);
-  const displayToolSource =
-    toolSource && toolSource !== "builtin"
-      ? toolSource
-      : t("approval.builtinSource", "Built-in");
+  const persistsApproval = rememberable ?? Boolean(exactTarget);
+  const targetPreview = useMemo(() => {
+    const preferredKeys = ["command", "path", "file_path", "action", "url"];
+    for (const key of preferredKeys) {
+      const value = toolParams?.[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    if (exactTarget && exactTarget !== toolName) {
+      const prefix = `${toolName}:`;
+      return exactTarget.startsWith(prefix)
+        ? exactTarget.slice(prefix.length).trim()
+        : exactTarget;
+    }
+    return "";
+  }, [exactTarget, toolName, toolParams]);
 
   useEffect(() => {
     const elapsed = Date.now() / 1000 - createdAt;
@@ -121,9 +124,13 @@ export function ApprovalCard({
     return () => clearInterval(timer);
   }, [createdAt, timeoutSeconds]);
 
-  const handleApprove = async (scope?: "exact" | "similar") => {
+  const handleApprove = async (scope?: "once" | "exact" | "similar") => {
     const loadingKey =
-      scope === "similar" ? "approve-pattern" : "approve-exact";
+      scope === "once"
+        ? "approve-once"
+        : scope === "similar"
+        ? "approve-pattern"
+        : "approve-exact";
     console.log(
       "[ApprovalCard] Approve button clicked:",
       requestId,
@@ -212,25 +219,9 @@ export function ApprovalCard({
           </>
         ) : null}
 
-        <div className={styles.infoRow}>
-          <Text className={styles.label}>{t("approval.tool", "Tool")}:</Text>
-          <Text className={styles.value} code>
+        <div className={styles.riskLine}>
+          <Text className={styles.toolName} code>
             {toolName}
-          </Text>
-        </div>
-
-        <div className={styles.infoRow}>
-          <Text className={styles.label}>
-            {t("approval.source", "Source")}:
-          </Text>
-          <Text className={styles.value} code>
-            {displayToolSource}
-          </Text>
-        </div>
-
-        <div className={styles.infoRow}>
-          <Text className={styles.label}>
-            {t("approval.severity", "Severity")}:
           </Text>
           <Tag
             color={getSeverityColor(severity)}
@@ -238,92 +229,19 @@ export function ApprovalCard({
           >
             {severity.toUpperCase()}
           </Tag>
-        </div>
-
-        <div className={styles.infoRow}>
-          <Text className={styles.label}>
-            {t("approval.findings", "Findings")}:
-          </Text>
-          <Text className={styles.value}>{findingsCount}</Text>
-        </div>
-
-        {isCrossSession && !showInboxAgentContext && (
-          <div className={styles.infoRow}>
-            <Text className={styles.label}>
-              {t("approval.source", "Source")}:
-            </Text>
+          {isCrossSession && !showInboxAgentContext ? (
             <Tag color="blue" className={styles.crossSessionTag}>
-              {t("approval.subSession", "Sub-Agent")} ({sessionId?.slice(0, 8)})
+              {t("approval.subSession", "Sub-Agent")}
             </Tag>
-          </div>
-        )}
+          ) : null}
+        </div>
 
-        {isGeneralized && (exactTarget || similarTarget) && (
-          <div className={styles.infoRow}>
-            <Text className={styles.label}>
-              {t("approval.approvalScope", "Approval scope")}:
-            </Text>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 2,
-                fontSize: 12,
-              }}
-            >
-              <Text className={styles.value} style={{ fontSize: 12 }}>
-                {t("approval.approveExact", "Approve Exact")}:{" "}
-                <code>{exactTarget}</code>
-              </Text>
-              <Text className={styles.value} style={{ fontSize: 12 }}>
-                {t("approval.approvePattern", "Approve Pattern")}:{" "}
-                <code>{similarTarget}</code>
-              </Text>
-            </div>
-          </div>
-        )}
+        {targetPreview ? (
+          <code className={styles.targetPreview}>{targetPreview}</code>
+        ) : null}
 
         {findingsSummary && (
-          <div className={styles.summaryBox}>
-            <Text className={styles.summaryText}>{findingsSummary}</Text>
-            <button
-              className={`${styles.copyButton} ${
-                copiedField === "summary" ? styles.copied : ""
-              }`}
-              onClick={() => handleCopy(findingsSummary, "summary")}
-              title={t("common.copy", "Copy")}
-              aria-label={t("common.copy", "Copy")}
-              type="button"
-            >
-              <Copy size={12} />
-            </button>
-          </div>
-        )}
-
-        {toolParams && Object.keys(toolParams).length > 0 && (
-          <details className={styles.paramsDetails}>
-            <summary className={styles.paramsSummary}>
-              {t("approval.parameters", "Parameters")}
-            </summary>
-            <div className={styles.paramsCodeWrapper}>
-              <pre className={styles.paramsCode}>
-                {JSON.stringify(toolParams, null, 2)}
-              </pre>
-              <button
-                className={`${styles.copyButton} ${
-                  copiedField === "params" ? styles.copied : ""
-                }`}
-                onClick={() =>
-                  handleCopy(JSON.stringify(toolParams, null, 2), "params")
-                }
-                title={t("common.copy", "Copy")}
-                aria-label={t("common.copy", "Copy")}
-                type="button"
-              >
-                <Copy size={12} />
-              </button>
-            </div>
-          </details>
+          <Text className={styles.riskSummary}>{findingsSummary}</Text>
         )}
       </div>
 
@@ -346,57 +264,49 @@ export function ApprovalCard({
           </>
         ) : (
           <>
-            {onCancel && (
-              <Button
-                type="default"
-                onClick={() => {
-                  console.log("[ApprovalCard] Cancel task button clicked");
-                  onCancel();
-                }}
-                disabled={loading !== null}
-              >
-                {t("approval.cancelTask", "Cancel Task")}
-              </Button>
-            )}
             <Button
               danger
-              icon={<X size={14} />}
+              className={styles.denyButton}
               onClick={handleDeny}
               loading={loading === "deny"}
               disabled={loading !== null}
             >
               {t("approval.deny", "Deny")}
             </Button>
-            {isGeneralized ? (
-              <>
-                <Button
-                  onClick={() => handleApprove("exact")}
-                  loading={loading === "approve-exact"}
-                  disabled={loading !== null}
-                >
-                  {t("approval.approveExact", "Approve Exact")}
-                </Button>
-                <Button
-                  type="primary"
-                  icon={<Check size={14} />}
-                  onClick={() => handleApprove("similar")}
-                  loading={loading === "approve-pattern"}
-                  disabled={loading !== null}
-                >
-                  {t("approval.approvePattern", "Approve Pattern")}
-                </Button>
-              </>
-            ) : (
-              <Button
-                type="primary"
-                icon={<Check size={14} />}
-                onClick={() => handleApprove()}
-                loading={
-                  loading === "approve-exact" || loading === "approve-pattern"
-                }
+            {persistsApproval ? (
+              <Dropdown.Button
+                type="default"
+                className={styles.approveDropdown}
+                icon={<ChevronDown size={14} />}
+                menu={{
+                  items: [
+                    {
+                      key: isGeneralized ? "similar" : "exact",
+                      label: t(
+                        "approval.approvePattern",
+                        "Always allow matching operations",
+                      ),
+                    },
+                  ],
+                  onClick: ({ key }) => {
+                    void handleApprove(key as "exact" | "similar");
+                  },
+                }}
+                onClick={() => handleApprove("once")}
+                loading={loading === "approve-once"}
                 disabled={loading !== null}
               >
-                {t("approval.approve", "Approve")}
+                {t("approval.approveOnce", "Allow once")}
+              </Dropdown.Button>
+            ) : (
+              <Button
+                type="default"
+                className={styles.approveButton}
+                onClick={() => handleApprove("once")}
+                loading={loading === "approve-once"}
+                disabled={loading !== null}
+              >
+                {t("approval.approveOnce", "Allow once")}
               </Button>
             )}
           </>

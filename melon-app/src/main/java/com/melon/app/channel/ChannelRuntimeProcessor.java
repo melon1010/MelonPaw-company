@@ -103,7 +103,8 @@ public class ChannelRuntimeProcessor {
         String text = agentText(inbound);
         List<Map<String, Object>> frontendContext = new ArrayList<>();
         frontendContext.add(userMessage(inbound.getContent(), inbound.getAttachments()));
-        ChatSpec chat = chatManager.getOrCreateForSession(agentId, sessionId, userId, channel, title(text));
+        ChatSpec chat = chatManager.beginTurn(agentId, sessionId, userId, channel, title(text));
+        String turnId = chatManager.activeTurnId(agentId, chat.getId());
         Map<String, Object> channelMeta = inbound.getChannelMeta() != null ? inbound.getChannelMeta() : Map.of();
         String source = value(stringValue(channelMeta.get("source")), channel);
         Object triggerRaw = firstPresent(channelMeta, "message_id", "msg_id", "feishu_message_id",
@@ -112,12 +113,20 @@ public class ChannelRuntimeProcessor {
         String taskType = "cron".equalsIgnoreCase(source) || "heartbeat".equalsIgnoreCase(source)
                 ? "AUTOMATION" : "CHANNEL";
         String idempotencyKey = triggerRef.isBlank() ? "" : channel + ":" + triggerRef;
-        EnterpriseTaskService.TaskRun task = taskService != null
-                ? taskService.startForAgent(taskType, userId, agentId, chat.getName(), sessionId, source,
-                        triggerRef, chat.getId(), idempotencyKey)
-                : new EnterpriseTaskService.TaskRun("", "", true);
-        if (!task.created()) return outbound(inbound, "", "", task);
-        chatManager.setStatus(agentId, chat.getId(), "running");
+        EnterpriseTaskService.TaskRun task;
+        try {
+            task = taskService != null
+                    ? taskService.startForAgent(taskType, userId, agentId, chat.getName(), sessionId, source,
+                            triggerRef, chat.getId(), idempotencyKey)
+                    : new EnterpriseTaskService.TaskRun("", "", true);
+        } catch (RuntimeException e) {
+            chatManager.endTurn(agentId, chat.getId(), userId, turnId);
+            throw e;
+        }
+        if (!task.created()) {
+            chatManager.endTurn(agentId, chat.getId(), userId, turnId);
+            return outbound(inbound, "", "", task);
+        }
         MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId, task.taskId(), task.runId());
         Map<String, Object> env = new LinkedHashMap<>();
         env.put("agent_id", agentId);
@@ -147,9 +156,9 @@ public class ChannelRuntimeProcessor {
             if (taskService != null) taskService.fail(task, e);
             return outbound(inbound, e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(), "", task);
         } finally {
-            chatManager.setStatus(agentId, chat.getId(), "idle");
             chatManager.saveSessionShadowFromStateStore(agentId, channel, userId, sessionId,
                     sessionContext(frontendContext, envelope.outputStateMessagesSnapshot()), envelope.turnUsageSnapshot());
+            chatManager.endTurn(agentId, chat.getId(), userId, turnId);
         }
     }
 

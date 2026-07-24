@@ -26,6 +26,7 @@ export interface PoolSkillSpec {
   version_text?: string;
   content: string;
   source: string;
+  enabled?: boolean;
   protected: boolean;
   external?: boolean;
   external_path?: string;

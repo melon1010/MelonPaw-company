@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { renderWithProviders } from "@/test/common_setup";
 import ChatHeaderTitle from "./index";
 
@@ -19,6 +19,9 @@ describe("ChatHeaderTitle", () => {
     });
     renderWithProviders(<ChatHeaderTitle />);
     expect(screen.getAllByText("My Chat")[0]).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Recent chats" }),
+    ).toBeInTheDocument();
   });
 
   it('displays "New Chat" when session name is empty', () => {
@@ -59,5 +62,30 @@ describe("ChatHeaderTitle", () => {
     renderWithProviders(<ChatHeaderTitle />);
     expect(screen.getAllByText("Chat B")[0]).toBeInTheDocument();
     expect(screen.queryByText("Chat A")).not.toBeInTheDocument();
+  });
+
+  it("uses a compact conversation dropdown when multiple sessions exist", async () => {
+    mockUseChatAnywhereSessionsState.mockReturnValue({
+      sessions: [
+        { id: "sess-1", name: "Chat A" },
+        { id: "sess-2", name: "Chat B" },
+      ],
+      currentSessionId: "sess-1",
+      setCurrentSessionId: vi.fn(),
+    });
+
+    renderWithProviders(<ChatHeaderTitle />);
+
+    const trigger = screen.getByRole("button", {
+      name: "Recent chats",
+    });
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu");
+    expect(
+      trigger.querySelector(".lucide-message-square-text"),
+    ).toBeInTheDocument();
+    expect(trigger.querySelector(".lucide-chevron-down")).toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    expect(await screen.findByText("Chat B")).toBeInTheDocument();
   });
 });

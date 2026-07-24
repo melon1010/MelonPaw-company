@@ -17,7 +17,7 @@ import type { SkillSpec } from "../../../api/types";
 import { PageHeader } from "@/components/PageHeader";
 import { useSkillsPage } from "./useSkillsPage";
 import styles from "./index.module.less";
-import { useMemo, useCallback } from "react";
+import { useCallback } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { hasPermission } from "../../../auth/authorization";
 
@@ -27,12 +27,14 @@ function SkillsPage() {
   const canManageAgents = hasPermission(user, "agents:manage");
   const {
     skills,
-    visibleSkills,
+    enabledSkills,
+    visibleEnabledSkills,
+    disabledSkills,
     hasMore,
     sentinelRef,
     poolSkills,
     allTags,
-    sortedSkills,
+    filteredSkills,
     conflictRenameModal,
     loading,
     uploading,
@@ -99,13 +101,6 @@ function SkillsPage() {
       return next;
     });
   }, [setSearchParams]);
-
-  // Split skills into enabled and disabled groups
-  const { enabledSkills, disabledSkills } = useMemo(() => {
-    const enabled = visibleSkills.filter((skill) => skill.enabled);
-    const disabled = visibleSkills.filter((skill) => !skill.enabled);
-    return { enabledSkills: enabled, disabledSkills: disabled };
-  }, [visibleSkills]);
 
   // Shared renderer for SkillListItem (used by both enabled and disabled sections)
   const renderSkillListItem = useCallback(
@@ -196,139 +191,157 @@ function SkillsPage() {
         hint={t("skillPool.externalHubHint")}
       />
 
-      {!loading && skills.length > 0 && (
-        <SkillsToolbar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchTags={searchTags}
-          onTagsChange={setSearchTags}
-          allTags={allTags}
-          filterOpen={filterOpen}
-          onFilterOpenChange={setFilterOpen}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-        />
-      )}
+      <div className={styles.content}>
+        {!loading && skills.length > 0 && (
+          <SkillsToolbar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            searchTags={searchTags}
+            onTagsChange={setSearchTags}
+            allTags={allTags}
+            filterOpen={filterOpen}
+            onFilterOpenChange={setFilterOpen}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+          />
+        )}
 
-      {loading ? (
-        <div className={styles.loading}>
-          <span className={styles.loadingText}>{t("common.loading")}</span>
-        </div>
-      ) : skills.length === 0 ? (
-        <div className={styles.emptyState}>
-          <div className={styles.emptyStateBadge}>
-            {t("skills.emptyStateBadge")}
+        {loading ? (
+          <div className={styles.loading}>
+            <span className={styles.loadingText}>{t("common.loading")}</span>
           </div>
-          <h2 className={styles.emptyStateTitle}>
-            {t("skills.emptyStateTitle")}
-          </h2>
-          <p className={styles.emptyStateText}>{t("skills.emptyStateText")}</p>
-          <div className={styles.emptyStateActions}>
-            <Button type="default" onClick={() => setPoolModal("download")}>
-              {t("skills.emptyStateDownload")}
-            </Button>
-            <Button
-              type="primary"
-              className={styles.primaryActionButton}
-              onClick={handleCreate}
-              icon={<PlusOutlined />}
-            >
-              {t("skills.emptyStateCreate")}
-            </Button>
-          </div>
-        </div>
-      ) : sortedSkills.length === 0 ? (
-        <div className={styles.noSearchResults}>
-          <span className={styles.noSearchResultsIcon}>🔍</span>
-          <span className={styles.noSearchResultsText}>
-            {t("skills.noSearchResults")}
-          </span>
-        </div>
-      ) : (
-        <>
-          {/* Enabled Skills Section */}
-          {enabledSkills.length > 0 && (
-            <div className={styles.panelSection}>
-              <div className={styles.panelTitle}>
-                <span className={styles.panelDotGreen} />
-                {t("skills.enabledSkills")}
-                <span className={styles.panelCount}>
-                  {enabledSkills.length} {t("skills.active")}
-                </span>
-              </div>
-
-              {viewMode === "card" ? (
-                <div className={styles.skillsGrid}>
-                  {enabledSkills.map((skill) => (
-                    <SkillCard
-                      key={skill.name}
-                      skill={skill}
-                      selected={
-                        batchModeEnabled
-                          ? selectedSkills.has(skill.name)
-                          : undefined
-                      }
-                      onSelect={() => toggleSelect(skill.name)}
-                      onClick={() => handleEdit(skill)}
-                      onMouseEnter={() => {}}
-                      onMouseLeave={() => {}}
-                      onToggleEnabled={(e) => handleToggleEnabled(skill, e)}
-                      onDelete={(e) => handleDelete(skill, e)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className={styles.skillsList}>
-                  {enabledSkills.map(renderSkillListItem)}
-                </div>
-              )}
+        ) : skills.length === 0 ? (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyStateBadge}>
+              {t("skills.emptyStateBadge")}
             </div>
-          )}
+            <h2 className={styles.emptyStateTitle}>
+              {t("skills.emptyStateTitle")}
+            </h2>
+            <p className={styles.emptyStateText}>
+              {t("skills.emptyStateText")}
+            </p>
+            <div className={styles.emptyStateActions}>
+              <Button type="default" onClick={() => setPoolModal("download")}>
+                {t("skills.emptyStateDownload")}
+              </Button>
+              <Button
+                type="primary"
+                className={styles.primaryActionButton}
+                onClick={handleCreate}
+                icon={<PlusOutlined />}
+              >
+                {t("skills.emptyStateCreate")}
+              </Button>
+            </div>
+          </div>
+        ) : filteredSkills.length === 0 ? (
+          <div className={styles.noSearchResults}>
+            <span className={styles.noSearchResultsIcon}>🔍</span>
+            <span className={styles.noSearchResultsText}>
+              {t("skills.noSearchResults")}
+            </span>
+          </div>
+        ) : (
+          <>
+            {/* Enabled Skills Section */}
+            {enabledSkills.length > 0 && (
+              <div className={styles.panelSection}>
+                <div className={styles.panelTitle}>
+                  <span className={styles.panelDotGreen} />
+                  {t("skills.enabledSkills")}
+                  <span className={styles.panelCount}>
+                    {enabledSkills.length} {t("skills.active")}
+                  </span>
+                </div>
 
-          {/* Disabled Skills Section */}
-          {disabledSkills.length > 0 && (
-            <div className={styles.panelSectionDashed}>
-              <div className={styles.panelTitle}>
-                <span className={styles.panelDotGray} />
-                {t("skills.disabledSkills")}
+                {viewMode === "card" ? (
+                  <div className={styles.skillsGrid}>
+                    {visibleEnabledSkills.map((skill) => (
+                      <SkillCard
+                        key={skill.name}
+                        skill={skill}
+                        selected={
+                          batchModeEnabled
+                            ? selectedSkills.has(skill.name)
+                            : undefined
+                        }
+                        onSelect={() => toggleSelect(skill.name)}
+                        onClick={() => handleEdit(skill)}
+                        onMouseEnter={() => {}}
+                        onMouseLeave={() => {}}
+                        onToggleEnabled={(e) => handleToggleEnabled(skill, e)}
+                        onDelete={(e) => handleDelete(skill, e)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className={styles.skillsList}>
+                    {visibleEnabledSkills.map(renderSkillListItem)}
+                  </div>
+                )}
+
+                {hasMore && (
+                  <div
+                    ref={sentinelRef}
+                    className={styles.progressiveSentinel}
+                  />
+                )}
               </div>
-              {viewMode === "card" ? (
-                <div className={styles.disabledSkillsGrid}>
-                  {disabledSkills.map((skill) => (
-                    <div
-                      key={skill.name}
-                      className={styles.disabledSkillGridItem}
-                      onClick={() => handleEdit(skill)}
-                    >
-                      <span className={styles.disabledSkillGridIcon}>
-                        {getSkillVisual(skill.name, skill.emoji)}
-                      </span>
-                      <span className={styles.disabledSkillGridName}>
-                        {skill.name}
-                      </span>
-                      <span
-                        className={styles.disabledSkillGridAction}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleEnabled(skill, e);
-                        }}
+            )}
+
+            {/* Disabled Skills Section */}
+            {disabledSkills.length > 0 && (
+              <div className={styles.panelSectionDashed}>
+                <div className={styles.panelHeading}>
+                  <div className={styles.panelTitle}>
+                    <span className={styles.panelDotGray} />
+                    {t("skills.disabledSkills")}
+                    <span className={styles.panelCountMuted}>
+                      {disabledSkills.length}
+                    </span>
+                  </div>
+                  <p className={styles.panelHint}>
+                    {t("skills.disabledSkillsHint")}
+                  </p>
+                </div>
+
+                {viewMode === "card" ? (
+                  <div className={styles.disabledSkillsGrid}>
+                    {disabledSkills.map((skill) => (
+                      <div
+                        key={skill.name}
+                        className={styles.disabledSkillGridItem}
+                        onClick={() => handleEdit(skill)}
                       >
-                        {t("common.enable")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className={styles.skillsList}>
-                  {disabledSkills.map(renderSkillListItem)}
-                </div>
-              )}
-            </div>
-          )}
-
-          {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
-        </>
-      )}
+                        <span className={styles.disabledSkillGridIcon}>
+                          {getSkillVisual(skill.name, skill.emoji)}
+                        </span>
+                        <span className={styles.disabledSkillGridName}>
+                          {skill.name}
+                        </span>
+                        <span
+                          className={styles.disabledSkillGridAction}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleEnabled(skill, e);
+                          }}
+                        >
+                          {t("common.enable")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className={styles.skillsList}>
+                    {disabledSkills.map(renderSkillListItem)}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <PoolTransferModal
         mode={poolModal}

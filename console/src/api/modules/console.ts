@@ -49,8 +49,7 @@ export interface PendingApproval {
   tool_params: Record<string, unknown>;
   created_at: number;
   timeout_seconds: number;
-  // Approval-scope display fields (governance path). When is_generalized
-  // is true the console offers Approve Pattern vs Approve Exact.
+  rememberable?: boolean;
   is_generalized?: boolean;
   exact_target?: string;
   similar_target?: string;

@@ -6,26 +6,34 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/** Conservatively identifies filesystem writes performed through a shell command. */
+/** Conservatively identifies filesystem mutations performed through a shell command. */
 final class ShellCommandEffects {
 
+    private static final int MAX_NESTED_SHELL_DEPTH = 4;
     private static final Set<String> WRITERS = Set.of(
             "cp", "install", "mkdir", "mv", "tee", "touch", "truncate");
+    private static final Set<String> DELETERS = Set.of(
+            "rm", "rmdir", "unlink", "shred", "trash", "trash-put", "del", "erase", "rd");
     private static final Set<String> SEPARATORS = Set.of("&&", "||", ";", "|", "\n", "&");
 
     private ShellCommandEffects() {
     }
 
-    record Analysis(boolean writesFiles, boolean ambiguous, List<String> targets) {
+    record Analysis(boolean writesFiles, boolean deletesFiles, boolean ambiguous, List<String> targets) {
     }
 
     static Analysis analyze(String command) {
+        return analyze(command, 0);
+    }
+
+    private static Analysis analyze(String command, int depth) {
         if (command == null || command.isBlank()) {
-            return new Analysis(false, false, List.of());
+            return new Analysis(false, false, false, List.of());
         }
         List<String> tokens = tokenize(command);
         LinkedHashSet<String> targets = new LinkedHashSet<>();
         boolean writes = false;
+        boolean deletes = false;
         boolean ambiguous = false;
 
         for (int i = 0; i < tokens.size(); i++) {
@@ -48,39 +56,62 @@ final class ShellCommandEffects {
         int segmentStart = 0;
         for (int i = 0; i <= tokens.size(); i++) {
             if (i == tokens.size() || SEPARATORS.contains(tokens.get(i))) {
-                SegmentAnalysis segment = analyzeSegment(tokens.subList(segmentStart, i));
+                SegmentAnalysis segment = analyzeSegment(tokens.subList(segmentStart, i), depth);
                 writes |= segment.writes();
+                deletes |= segment.deletes();
                 ambiguous |= segment.ambiguous();
                 targets.addAll(segment.targets());
                 segmentStart = i + 1;
             }
         }
-        return new Analysis(writes, ambiguous, List.copyOf(targets));
+        return new Analysis(writes, deletes, ambiguous, List.copyOf(targets));
     }
 
-    private static SegmentAnalysis analyzeSegment(List<String> rawTokens) {
+    private static SegmentAnalysis analyzeSegment(List<String> rawTokens, int depth) {
         List<String> words = rawTokens.stream()
                 .filter(token -> !isOperator(token))
                 .filter(token -> !token.isBlank())
                 .toList();
         if (words.isEmpty()) return SegmentAnalysis.NONE;
 
-        int commandIndex = 0;
-        while (commandIndex < words.size() && isAssignment(words.get(commandIndex))) commandIndex++;
+        int commandIndex = effectiveCommandIndex(words);
         if (commandIndex >= words.size()) return SegmentAnalysis.NONE;
         String command = programName(words.get(commandIndex));
         List<String> args = words.subList(commandIndex + 1, words.size());
 
+        if (depth < MAX_NESTED_SHELL_DEPTH && isShellInterpreter(command)) {
+            String script = shellScript(args);
+            if (!script.isBlank()) {
+                Analysis nested = analyze(script, depth + 1);
+                return new SegmentAnalysis(nested.writesFiles(), nested.deletesFiles(),
+                        nested.ambiguous(), nested.targets());
+            }
+        }
+
+        if (DELETERS.contains(command)) {
+            List<String> targets = positionalArguments(args);
+            return new SegmentAnalysis(false, true, targets.isEmpty(), targets);
+        }
+        if ("gio".equals(command) && !args.isEmpty() && "trash".equalsIgnoreCase(args.get(0))) {
+            List<String> targets = positionalArguments(args.subList(1, args.size()));
+            return new SegmentAnalysis(false, true, targets.isEmpty(), targets);
+        }
+        if (("powershell".equals(command) || "pwsh".equals(command))
+                && String.join(" ", args).matches("(?is).*\\b(?:remove-item|del|erase|rd)\\b.*")) {
+            List<String> targets = positionalArguments(args);
+            return new SegmentAnalysis(false, true, targets.isEmpty(), targets);
+        }
+
         if ("sed".equals(command) && args.stream().anyMatch(ShellCommandEffects::isInPlaceSedFlag)) {
             List<String> targets = positionalArguments(args);
-            return new SegmentAnalysis(true, targets.isEmpty(), targets);
+            return new SegmentAnalysis(true, false, targets.isEmpty(), targets);
         }
         if ("dd".equals(command)) {
             List<String> targets = args.stream()
                     .filter(arg -> arg.startsWith("of=") && arg.length() > 3)
                     .map(arg -> arg.substring(3))
                     .toList();
-            return targets.isEmpty() ? SegmentAnalysis.NONE : new SegmentAnalysis(true, false, targets);
+            return targets.isEmpty() ? SegmentAnalysis.NONE : new SegmentAnalysis(true, false, false, targets);
         }
         if (!WRITERS.contains(command)) return SegmentAnalysis.NONE;
 
@@ -92,7 +123,40 @@ final class ShellCommandEffects {
                     ? List.of()
                     : List.of(positional.get(positional.size() - 1));
         }
-        return new SegmentAnalysis(true, positional.isEmpty(), positional);
+        return new SegmentAnalysis(true, false, positional.isEmpty(), positional);
+    }
+
+    private static int effectiveCommandIndex(List<String> words) {
+        int index = 0;
+        while (index < words.size() && isAssignment(words.get(index))) index++;
+        if (index >= words.size()) return index;
+
+        String wrapper = programName(words.get(index));
+        if ("command".equals(wrapper) || "nohup".equals(wrapper)) {
+            index++;
+            while (index < words.size() && words.get(index).startsWith("-")) index++;
+        } else if ("env".equals(wrapper)) {
+            index++;
+            while (index < words.size()
+                    && (words.get(index).startsWith("-") || isAssignment(words.get(index)))) {
+                index++;
+            }
+        }
+        return index;
+    }
+
+    private static boolean isShellInterpreter(String command) {
+        return Set.of("sh", "bash", "dash", "zsh", "ksh", "fish").contains(command);
+    }
+
+    private static String shellScript(List<String> args) {
+        for (int i = 0; i + 1 < args.size(); i++) {
+            String option = args.get(i);
+            if ("-c".equals(option) || option.matches("-[a-zA-Z]*c[a-zA-Z]*")) {
+                return args.get(i + 1);
+            }
+        }
+        return "";
     }
 
     private static List<String> positionalArguments(List<String> args) {
@@ -239,7 +303,7 @@ final class ShellCommandEffects {
         }
     }
 
-    private record SegmentAnalysis(boolean writes, boolean ambiguous, List<String> targets) {
-        private static final SegmentAnalysis NONE = new SegmentAnalysis(false, false, List.of());
+    private record SegmentAnalysis(boolean writes, boolean deletes, boolean ambiguous, List<String> targets) {
+        private static final SegmentAnalysis NONE = new SegmentAnalysis(false, false, false, List.of());
     }
 }

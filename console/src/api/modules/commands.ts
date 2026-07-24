@@ -26,7 +26,7 @@ export const commandsApi = {
     requestId: string,
     sessionId: string,
     reason?: string,
-    scope?: "exact" | "similar",
+    scope?: "once" | "exact" | "similar",
   ): Promise<ApprovalCommandResponse> => {
     console.log(
       `[commandsApi] Sending ${action} for request:`,

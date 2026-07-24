@@ -1,17 +1,21 @@
 # MelonPaw-Company
 
-MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务执行平台。后端基于 Java 17、Spring Boot WebFlux 和 AgentScope Java 2.0.0 GA，前端采用 React、TypeScript 与 Vite。
+> **全网首发 · Java 企业级“龙虾”**
+
+MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务执行平台。项目发布定位是“全网首发的 Java 企业级龙虾”：使用 Java 17、Spring Boot WebFlux 和 AgentScope Java 2.0.0 GA 构建可长期运行、具备工作区、记忆、技能、MCP、工具执行、自动化和国内渠道接入能力的 AI 助理，前端采用 React、TypeScript 与 Vite。“全网首发”是本项目的发布定位，不代表第三方排名或官方认证。
+
+这里的“龙虾”指中文 Agent 社区对这类可自主使用工具、持续积累上下文并完成任务的 AI 助理产品形态的通俗称呼，不表示兼容或从属于某个同名产品。项目参考 Hermes Agent 等开源 Agent 在持续工作区、Skills、MCP、Memory、ReAct 工具循环和任务执行方面的产品思路，但不是 Hermes Agent 的 Java 移植版，也没有使用其名称、代码或官方身份。
 
 企业角色、个人资源和管理边界见 [企业能力与权限矩阵](docs/ENTERPRISE_CAPABILITY_MATRIX.md)；尚未完成的生产能力及验收标准见 [企业化剩余工作](docs/ENTERPRISE_REMAINING_WORK.md)。
 
-项目由 QwenPaw 的交互基础演进而来，但作为独立项目维护，不是 QwenPaw 或 AgentScope 的官方发行版。上游来源和再分发边界见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。
+项目由 QwenPaw 的交互基础演进而来，Agent 运行时使用 AgentScope Java 2.0 官方能力，但作为独立项目维护，不是 QwenPaw、AgentScope、Hermes Agent 或其他参考项目的官方发行版。上游来源和再分发边界见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。
 
 ## 产品边界
 
 - 一个部署实例服务一家企业，不提供 SaaS 多租户、企业切换、订阅或计费能力。
 - 只交付响应式 Web 控制台，并兼容移动端浏览器；不包含桌面客户端、CLI 和 Coding 模式。
 - 支持直接运行 JAR 或使用常规进程服务部署；当前不提供 Kubernetes 部署方案。
-- 企业身份、角色、项目关系和个人资源映射保存在内嵌 SQLite 中，不要求安装 PostgreSQL。
+- 企业身份、角色、团队关系和个人资源映射保存在内嵌 SQLite 中，不要求安装 PostgreSQL。
 - 渠道只保留控制台以及钉钉、飞书、QQ、微信、企业微信五个国内平台；渠道配置归属具体用户。
 - 本地模型只接入部署环境独立运行的 Ollama；应用不内嵌、不安装也不更新 Ollama 或 llama.cpp。
 - `/mission` 可使用固定的 `researcher`、`executor`、`reviewer` 原生 Subagent；动态 Subagent、跨项目委派、嵌套委派和能力提升保持关闭。
@@ -20,17 +24,71 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 
 - 企业管理员、运营人员和普通员工的身份认证与权限控制。
 - 普通用户独立的个人 Agent、技能中心、MD 工作区、渠道配置和会话数据。
-- 项目成员关系及项目文档工作区，项目资源按成员角色授权。
+- 团队成员关系及团队文档工作区，团队资源按成员角色授权；内部数据模型继续使用稳定的 `PROJECT` scope 标识。
 - 基于 SSE 的流式对话，工具调用和执行结果沿用 `tool/result` 事件展示。
 - Agent、模型、工具、MCP、审计、备份和系统设置等管理能力按权限展示。
 - 工具审批、文件路径约束、技能扫描、密钥掩码和操作审计等安全边界。
 - 独立任务中心可直接创建 Agent、Goal、Mission 任务，不要求先进入聊天；任务沿用统一的配额、结果、取消和重试链路。
-- 项目 Agent 的技能、MCP、文档、会话和任务按项目空间隔离；个人 Agent 与项目 Agent 可在内容标题栏切换。
+- 团队 Agent 的技能、MCP、文档、会话、记忆、文件和任务结果在团队内共享，并与个人 Agent、其他团队 Agent 完全分开；个人 Agent 与团队 Agent 可在内容标题栏切换。
 - Agent 级 LLM 并发、QPM 和 429 暂停控制覆盖主对话、压缩、Rubric 与 Subagent 模型调用；它不替代企业 `/quotas` 的任务和 Token 配额。
 - 长期记忆当前支持 AgentScope 文件记忆和完全关闭两种模式；ReMeLight、ADBPG 未接入 Java 运行时，控制台不提供这些选项。
 - 远程 MCP 可显式配置 OAuth 2.0 Client Credentials；服务端会先向 Token Endpoint 验证凭据，成功后才替换旧配置，Client Secret 加密落盘且不回显。
 
-项目 Agent 只向项目成员开放，且任务记录项目范围、执行用户和 Agent 版本。当前 Subagent 只在同一 Agent 工作区内单层运行，不是任意 Agent 之间的互调。
+团队 Agent 只向有执行权限的团队成员开放，且任务记录团队范围、执行用户和 Agent 版本。当前 Subagent 只在同一 Agent 工作区内单层运行，不是任意 Agent 之间的互调。
+
+## 权限、共享与隔离边界
+
+权限判断采用四层边界：企业 RBAC 决定用户能否进入接口，Agent 所有权决定数据范围，工作区与 Docker 沙箱限制文件和进程可见范围，AgentScope Permission 加风险分类决定具体工具调用是直接允许、询问还是拒绝。前端隐藏菜单不是授权依据，客户端传入的 `X-Agent-Id` 也不能绕过服务端校验。
+
+### 个人空间与团队空间
+
+团队空间在代码和数据库中使用 `PROJECT` scope。团队内“共享”是指共享同一个团队 Agent 的资源，不是把成员的个人数据复制进团队空间。
+
+| 资源 | 个人 Agent | 团队 Agent |
+| --- | --- | --- |
+| 工作区、文件和生成结果 | 只属于本人 | 同一团队 Agent 的授权成员共享 |
+| 对话列表与历史 | 只属于本人 | `OWNER`、`MANAGER`、`MEMBER` 共享查看和继续；不同对话仍由 `sessionId` 区分 |
+| 会话运行状态 | 按本人和会话隔离 | 同一会话同一时间只允许一个执行者；成员交接时只复制对话上下文和摘要 |
+| 长期记忆 | 本人 Agent 独立记忆 | 团队 Agent 共用工作区记忆，与成员个人记忆隔离 |
+| Skills | 本人维护和使用 | 团队 Agent 共用；由 `OWNER`、`MANAGER` 或具备 `agents:manage` 的运营人员维护 |
+| MCP 配置与凭据 | 本人 Agent 独立配置 | 团队 Agent 共用；按团队成员角色管理，调用仍重新检查用户、渠道和工具策略 |
+| 任务与结果 | 本人可见和管理 | 记录 `PROJECT` scope，团队成员按角色读取，取消和重试继续校验任务管理权限 |
+| 渠道账号和个人自动化 | 属于本人，不与其他用户共享 | 不自动吸收成员的个人渠道、二维码、访问名单或个人定时任务 |
+| 工具授权记录 | 只对作出允许决定的本人有效 | 仍按执行用户隔离；成员 A 的记住授权不会传给成员 B |
+
+团队成员继续别人创建的对话时，系统会继承可见对话上下文和摘要，但会重置 Permission、Tool、Task、Plan 等运行状态。团队对话的创建者、参与执行者、当前执行者和最新状态执行者会记录在会话元数据中。任一有会话访问权的成员可以停止正在运行的共享会话，但中断会精确作用于实际执行者；旧执行回调不能结束后来启动的新一轮对话。
+
+上述对话能力还要求企业角色具备 `agents:use`；团队角色本身不会补发企业权限。`VIEWER` 可以查看被授权的团队资料和任务结果，但不能启动或继续团队 Agent 对话。团队成员资格失效后，不能再通过旧会话 ID、请求头或历史链接访问团队 Agent。
+
+### 企业权限码
+
+| 权限码 | 授权范围 | 不会自动获得 |
+| --- | --- | --- |
+| `agents:use` | 使用本人 Agent 和被分配的团队 Agent，发起对话和任务 | 个人资源维护、Agent 配置管理 |
+| `workspace:personal` | 本人工作区、Markdown、文件和记忆 | 他人个人空间、团队配置管理 |
+| `skills:personal` | 本人技能 | 团队技能管理、全局技能池管理 |
+| `mcp:personal` | 本人 MCP | 团队 MCP、MCP Server 和全局 OAuth 管理 |
+| `channels:personal` | 本人渠道连接、二维码和访问控制 | 他人渠道、系统渠道密钥 |
+| `automations:personal` | 本人定时任务和 Heartbeat | 他人自动化、系统调度管理 |
+| `agents:manage` | 非个人 Agent、团队 Agent 资源和运行配置 | 他人的 PERSONAL Agent 内容 |
+| `approvals:decide` | 审批被授权范围内的高风险工具调用 | 系统配置、他人数据读取 |
+| `audit:read` | 只读查看用量和审计记录 | 对话与资源写入 |
+| `system:manage` | 模型、插件、备份、全局安全和宿主环境管理 | 默认读取他人 PERSONAL Agent 内容 |
+| `data:breakglass` | 经审计的跨用户个人数据应急访问 | 常态化的数据访问权 |
+
+`SYSTEM_ADMIN` 也不会因为管理员身份自动读取他人的个人对话、记忆、技能、MCP 或渠道配置；这类访问必须显式具备 `data:breakglass` 并进入审计。完整角色矩阵、团队角色和接口归属以 [企业能力与权限矩阵](docs/ENTERPRISE_CAPABILITY_MATRIX.md) 为准。
+
+### 工具执行与授权记忆
+
+默认 `RISK_BASED` 模式按实际工具参数判断风险，而不是看到 `execute_shell_command` 就一律弹框。
+
+| 结果 | 典型情况 | 行为 |
+| --- | --- | --- |
+| `ALLOW` | 工作区内的普通读取、搜索、低风险系统工具、普通无写入 Shell、只读或未声明高风险副作用的 MCP | 在当前 Agent 工作区和沙箱内直接执行 |
+| `ASK` | Shell 写文件或删除文件、安装软件、修改权限、发布/上传/部署等外部副作用、高风险 MCP、删除技能 | 在输入框上方等待当前执行用户选择“拒绝”或“允许本次” |
+| `DENY` | 读取受保护凭据、逃逸工作区、显式 MCP 拒绝策略、未开放的 Subagent 或无效调用 | 服务端拒绝，不提供绕过入口 |
+
+只有用户明确允许时才可能保存授权；拒绝、取消、超时和永久拒绝都不会被记住。用户可以选择仅允许本次，或对可泛化的相同操作保存 `exact`/`similar` 授权。保存的授权绑定 `agentId + ownerUserId + 操作指纹`：个人空间不会跨用户，团队空间也不会把一个成员的授权传播给其他成员。组织 `STRICT` 策略和明确要求 `ask`/`deny` 的 MCP 策略不会被历史记住授权绕过。
 
 ## 文件分屏预览
 
@@ -135,7 +193,7 @@ Linux 和 macOS 可执行等价命令：
 docker build -t melonpaw-company-sandbox:latest docker/sandbox
 ```
 
-默认使用 Docker `bridge` 网络，使 `execute_shell_command` 能获取公开链接和技能依赖。生产环境应通过 `MELON_SANDBOX_NETWORK` 指定受限出口网络；禁止外网时可设为 `none`。每个执行上下文采用 AgentScope `USER` 隔离，只把受控工作区根目录下当前授权 Agent 的工作区挂载到容器，个人与项目 Agent 使用不同目录。
+默认使用 Docker `bridge` 网络，使 `execute_shell_command` 能获取公开链接和技能依赖。生产环境应通过 `MELON_SANDBOX_NETWORK` 指定受限出口网络；禁止外网时可设为 `none`。每个执行上下文采用 AgentScope `USER` 隔离，只把受控工作区根目录下当前授权 Agent 的工作区挂载到容器，个人与团队 Agent 使用不同目录。
 
 stdio MCP 默认跟随 `MELON_EXECUTION_SANDBOX`：Docker 模式下 MCP 进程也在独立的受限容器中运行，并且只挂载所属 Agent 的工作区。可用 `MELON_MCP_STDIO_MODE=local|docker|disabled` 单独覆盖；`local` 仅用于可信开发环境。MCP 容器默认复用沙箱镜像与网络，也可分别设置 `MELON_MCP_SANDBOX_IMAGE`、`MELON_MCP_SANDBOX_NETWORK`。
 

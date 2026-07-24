@@ -16,11 +16,17 @@ import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.event.ToolResultEndEvent;
 import io.agentscope.core.message.ContentBlock;
 import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.message.ToolResultState;
 import io.agentscope.core.message.ToolUseBlock;
 import io.agentscope.core.message.UserMessage;
 import io.agentscope.core.model.GenerateOptions;
+import io.agentscope.core.state.AgentState;
+import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.tool.ToolBase;
+import io.agentscope.core.tool.ToolResultMessageBuilder;
 import io.agentscope.harness.agent.HarnessAgent;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.agent.SubagentTaskCoordinator;
@@ -41,8 +47,11 @@ import org.reactivestreams.Subscription;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
@@ -66,6 +75,7 @@ public class AgentRunner {
     private final ConfigManager configManager;
     private final ToolRiskClassifier toolRiskClassifier;
     private final EnterpriseTaskService taskService;
+    private final ToolApprovalGrantService approvalGrantService;
     private final ConcurrentMap<String, java.util.Set<Subscription>> activeExecutions = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, EnterpriseTaskService.Delegation> activeDelegations = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, EnterpriseTaskService.Delegation> backgroundDelegations = new ConcurrentHashMap<>();
@@ -73,18 +83,20 @@ public class AgentRunner {
     private final ConcurrentMap<String, StringBuilder> toolResultBuffers = new ConcurrentHashMap<>();
 
     public AgentRunner(MultiAgentManager multiAgentManager, ApprovalService approvalService) {
-        this(multiAgentManager, approvalService, null, new ToolRiskClassifier(), null);
+        this(multiAgentManager, approvalService, null, new ToolRiskClassifier(), null, null);
     }
 
     @Autowired
     public AgentRunner(MultiAgentManager multiAgentManager, ApprovalService approvalService,
                        ConfigManager configManager, ToolRiskClassifier toolRiskClassifier,
-                       EnterpriseTaskService taskService) {
+                       EnterpriseTaskService taskService,
+                       ToolApprovalGrantService approvalGrantService) {
         this.multiAgentManager = multiAgentManager;
         this.approvalService = approvalService;
         this.configManager = configManager;
         this.toolRiskClassifier = toolRiskClassifier != null ? toolRiskClassifier : new ToolRiskClassifier();
         this.taskService = taskService;
+        this.approvalGrantService = approvalGrantService;
     }
 
     public enum LoopMode { GOAL, MISSION }
@@ -209,6 +221,49 @@ public class AgentRunner {
         return true;
     }
 
+    /**
+     * Marks approval-gated tool calls as denied after their owning execution is stopped.
+     * AgentScope persists ASKING calls, so cancelling only the Reactor subscription would leave
+     * the next user message unable to enter the same session.
+     */
+    public int abandonPendingConfirmations(String agentId, String userId, String sessionId) {
+        HarnessAgent agent = multiAgentManager.getAgent(agentId);
+        if (agent == null) return 0;
+
+        RuntimeContext context = RuntimeContext.builder()
+                .userId(userId)
+                .sessionId(value(sessionId, "default"))
+                .build();
+        List<ToolUseBlock> asking = closePendingConfirmations(agent, context,
+                "Permission denied because the previous response was stopped by the user");
+        if (!asking.isEmpty()) {
+            log.info("Closed pending tool confirmations after stop: agent={}, user={}, session={}, calls={}",
+                    agentId, userId, sessionId, asking.stream().map(ToolUseBlock::getId).toList());
+        }
+        return asking.size();
+    }
+
+    private List<ToolUseBlock> closePendingConfirmations(
+            HarnessAgent agent, RuntimeContext context, String reason) {
+        AgentState state = authoritativeAgentState(agent, context);
+        List<ToolUseBlock> asking;
+        synchronized (state) {
+            asking = unresolvedAsking(state);
+            for (ToolUseBlock call : asking) {
+                ToolResultBlock denied = ToolResultBlock
+                        .text(reason)
+                        .withIdAndName(call.getId(), call.getName())
+                        .withState(ToolResultState.DENIED);
+                state.contextMutable().add(ToolResultMessageBuilder.buildToolResultMsg(
+                        denied, call, agent.getName()));
+            }
+            if (!asking.isEmpty()) {
+                persistAgentState(agent, context, state);
+            }
+        }
+        return asking;
+    }
+
     private void registerExecution(String key, Subscription subscription) {
         activeExecutions.computeIfAbsent(key, ignored -> ConcurrentHashMap.newKeySet()).add(subscription);
     }
@@ -274,17 +329,14 @@ public class AgentRunner {
                     }
                     List<ToolUseBlock> staleAsking = pendingAsking(agent, ctx);
                     if (staleAsking.isEmpty()) return agent.streamEvents(msgs, ctx);
-                    List<ConfirmResult> recovered = recoverPendingConfirmations(agent, staleAsking, ctx, agentId);
-                    Msg confirmation = UserMessage.builder()
-                            .name("__internal__")
-                            .metadata(ConversationVisibility.modelOnlyMetadata(
-                                    Map.of(Msg.METADATA_CONFIRM_RESULTS, recovered), "approval_recovery"))
-                            .build();
-                    // A disconnected client can leave an ASKING tool call in the persisted
-                    // AgentScope state. Resolve that orphan first, then process the new input.
-                    return agent.streamEvents(List.of(confirmation), ctx)
-                            .filter(event -> !isPermissionStopEvent(event))
-                            .concatWith(Flux.defer(() -> agent.streamEvents(msgs, ctx)));
+                    List<ToolUseBlock> closed = closePendingConfirmations(agent, ctx,
+                            "Permission denied because its owning execution is no longer active");
+                    log.info("Recovered orphaned tool confirmations before new input: "
+                                    + "agent={}, session={}, calls={}",
+                            agentId, sid, closed.stream().map(ToolUseBlock::getId).toList());
+                    // Persist denial directly instead of resuming the old turn. This prevents a
+                    // stopped turn from generating or executing more work before the new input.
+                    return agent.streamEvents(msgs, ctx);
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .<AgentEvent>handle((event, sink) -> {
@@ -298,6 +350,8 @@ public class AgentRunner {
                         List<ConfirmResult> immediate = new ArrayList<>();
                         Path workspaceRoot = configManager != null
                                 ? configManager.resolveWorkspaceDir(agentId) : null;
+                        String ownerUserId = ctx != null && ctx.getUserId() != null
+                                ? ctx.getUserId() : "";
                         for (ToolUseBlock toolCall : confirm.getToolCalls()) {
                             if ("agent_spawn".equalsIgnoreCase(toolCall.getName())) {
                                 String role = stringValue(toolCall.getInput() != null
@@ -324,13 +378,19 @@ public class AgentRunner {
                                 case ALLOW -> immediate.add(new ConfirmResult(true, toolCall));
                                 case DENY -> immediate.add(new ConfirmResult(false, toolCall));
                                 case ASK -> {
-                                    approvalCalls.add(toolCall);
-                                    requests.add(normalizeApproval(agentId, sid, ctx, toolCall, assessment));
+                                    boolean remembered = !strict && !"ask".equals(mcpEffect)
+                                            && approvalGrantService != null
+                                            && approvalGrantService.isAllowed(
+                                                    agentId, ownerUserId, toolCall, assessment);
+                                    if (remembered) {
+                                        immediate.add(new ConfirmResult(true, toolCall));
+                                    } else {
+                                        approvalCalls.add(toolCall);
+                                        requests.add(normalizeApproval(agentId, sid, ctx, toolCall, assessment));
+                                    }
                                 }
                             }
                         }
-                        String ownerUserId = ctx != null && ctx.getUserId() != null
-                                ? ctx.getUserId() : "";
                         if (approvalCalls.isEmpty()) {
                             pending.set(Mono.just(List.copyOf(immediate)));
                         } else {
@@ -354,54 +414,124 @@ public class AgentRunner {
                     Mono<List<ConfirmResult>> wait = pending.get();
                     if (wait == null) return Flux.empty();
                     return wait.publishOn(Schedulers.boundedElastic()).flatMapMany(results -> {
-                        Msg confirm = UserMessage.builder()
-                                .name("__internal__")
-                                .metadata(ConversationVisibility.modelOnlyMetadata(
-                                        Map.of(Msg.METADATA_CONFIRM_RESULTS, results), "approval_resolution"))
-                                .build();
-                        return streamWithApprovals(agent, List.of(confirm), ctx, agentId, sid, false);
+                        List<ConfirmResult> aligned = alignConfirmations(agent, ctx, results);
+                        return resumeApproval(agent, ctx, agentId, sid, aligned);
                     });
                 }));
     }
 
+    private Flux<AgentEvent> resumeApproval(HarnessAgent agent, RuntimeContext ctx,
+                                            String agentId, String sessionId,
+                                            List<ConfirmResult> results) {
+        Msg confirm = approvalResolutionMessage(results);
+        return streamWithApprovals(agent, List.of(confirm), ctx, agentId, sessionId, false)
+                .onErrorResume(error -> {
+                    if (!isMissingConfirmationError(error)) return Flux.error(error);
+                    List<ToolUseBlock> asking = pendingAsking(agent, ctx);
+                    if (asking.isEmpty()) return Flux.error(error);
+                    List<ConfirmResult> retry = alignConfirmations(agent, ctx, results);
+                    log.warn("AgentScope did not accept approval confirmation; retrying once after lifecycle cleanup: "
+                                    + "agent={}, session={}, calls={}",
+                            agentId, sessionId, asking.stream().map(ToolUseBlock::getId).toList());
+                    // AgentScope's eager lifecycle cleanup completes before propagating this
+                    // error, so this one bounded retry enters a stable persisted ASKING state.
+                    return streamWithApprovals(agent, List.of(approvalResolutionMessage(retry)),
+                            ctx, agentId, sessionId, false);
+                });
+    }
+
+    private Msg approvalResolutionMessage(List<ConfirmResult> results) {
+        return UserMessage.builder()
+                .name("__internal__")
+                .metadata(ConversationVisibility.modelOnlyMetadata(
+                        Map.of(Msg.METADATA_CONFIRM_RESULTS, results), "approval_resolution"))
+                .build();
+    }
+
+    private boolean isMissingConfirmationError(Throwable error) {
+        if (!(error instanceof IllegalStateException) || error.getMessage() == null) return false;
+        String message = error.getMessage();
+        return message.contains("ASKING state") && message.contains("supplied no confirmation");
+    }
+
+    private List<ConfirmResult> alignConfirmations(HarnessAgent agent, RuntimeContext ctx,
+                                                    List<ConfirmResult> results) {
+        List<ToolUseBlock> asking = pendingAsking(agent, ctx);
+        if (asking.isEmpty()) return results != null ? List.copyOf(results) : List.of();
+
+        Map<String, ConfirmResult> byId = new java.util.HashMap<>();
+        if (results != null) {
+            for (ConfirmResult result : results) {
+                if (result != null && result.getToolCall() != null && result.getToolCall().getId() != null) {
+                    byId.put(result.getToolCall().getId(), result);
+                }
+            }
+        }
+        List<ConfirmResult> aligned = new ArrayList<>();
+        for (ToolUseBlock call : asking) {
+            ConfirmResult decision = byId.get(call.getId());
+            if (decision == null) {
+                log.warn("Missing approval decision for ASKING tool call {}; denying it safely", call.getId());
+                aligned.add(new ConfirmResult(false, call));
+            } else {
+                aligned.add(new ConfirmResult(decision.isConfirmed(), call, decision.getRules()));
+            }
+        }
+        return List.copyOf(aligned);
+    }
+
     private List<ToolUseBlock> pendingAsking(HarnessAgent agent, RuntimeContext ctx) {
         if (agent == null || agent.getDelegate() == null) return List.of();
-        List<Msg> context = agent.getDelegate().getAgentState(ctx).getContext();
+        return unresolvedAsking(authoritativeAgentState(agent, ctx));
+    }
+
+    private AgentState authoritativeAgentState(HarnessAgent agent, RuntimeContext ctx) {
+        String userId = ctx != null ? ctx.getUserId() : null;
+        String sessionId = value(ctx != null ? ctx.getSessionId() : null, agent.getDefaultSessionId());
+        AgentStateStore stateStore = agent.getStateStore();
+        if (stateStore != null) {
+            try {
+                Optional<AgentState> persisted = stateStore.get(
+                        userId, sessionId, "agent_state", AgentState.class);
+                if (persisted.isPresent()) return persisted.get();
+            } catch (RuntimeException e) {
+                log.warn("Failed to read persisted Agent state; using the local state: agent={}, session={}",
+                        agent.getAgentId(), sessionId, e);
+            }
+        }
+        return agent.getDelegate().getAgentState(ctx);
+    }
+
+    private List<ToolUseBlock> unresolvedAsking(AgentState state) {
+        if (state == null) return List.of();
+        List<Msg> context = state.getContext();
+        Set<String> resultIds = new HashSet<>();
+        for (Msg message : context) {
+            message.getContentBlocks(ToolResultBlock.class).stream()
+                    .map(ToolResultBlock::getId)
+                    .filter(java.util.Objects::nonNull)
+                    .forEach(resultIds::add);
+        }
         for (int i = context.size() - 1; i >= 0; i--) {
             Msg message = context.get(i);
-            List<ToolUseBlock> asking = message.getContentBlocks(ToolUseBlock.class).stream()
+            if (message.getRole() != MsgRole.ASSISTANT) continue;
+            return message.getContentBlocks(ToolUseBlock.class).stream()
                     .filter(call -> call.getState() == io.agentscope.core.message.ToolCallState.ASKING)
+                    .filter(call -> !resultIds.contains(call.getId()))
                     .toList();
-            if (!asking.isEmpty()) return asking;
-            if (message.getRole() == io.agentscope.core.message.MsgRole.ASSISTANT) return List.of();
         }
         return List.of();
     }
 
-    private List<ConfirmResult> recoverPendingConfirmations(HarnessAgent agent,
-                                                              List<ToolUseBlock> calls,
-                                                              RuntimeContext ctx,
-                                                              String agentId) {
-        String mode = approvalService != null ? approvalService.getApprovalMode(agentId) : "RISK_BASED";
-        boolean strict = "STRICT".equalsIgnoreCase(mode);
-        boolean disabled = "OFF".equalsIgnoreCase(mode);
-        Path workspaceRoot = configManager != null ? configManager.resolveWorkspaceDir(agentId) : null;
-        List<ConfirmResult> results = new ArrayList<>();
-        for (ToolUseBlock call : calls) {
-            String mcpEffect = mcpAccessEffect(agent, call.getName(), ctx);
-            ToolRiskClassifier.Assessment assessment = switch (mcpEffect) {
-                case "deny" -> toolRiskClassifier.forceDeny(call);
-                case "ask" -> toolRiskClassifier.forceStrict(call);
-                default -> disabled
-                        ? toolRiskClassifier.forceAllow(call)
-                        : (strict ? toolRiskClassifier.forceStrict(call)
-                                  : toolRiskClassifier.classify(call, workspaceRoot,
-                                          isMcpTool(agent, call.getName()),
-                                          isReadOnlyTool(agent, call.getName())));
-            };
-            results.add(new ConfirmResult(assessment.decision() == ToolRiskClassifier.Decision.ALLOW, call));
+    private void persistAgentState(HarnessAgent agent, RuntimeContext ctx, AgentState state) {
+        String userId = ctx != null ? ctx.getUserId() : null;
+        String sessionId = value(ctx != null ? ctx.getSessionId() : null, agent.getDefaultSessionId());
+        AgentStateStore stateStore = agent.getStateStore();
+        if (stateStore != null) {
+            stateStore.save(userId, sessionId, "agent_state", state);
+        } else {
+            agent.getDelegate().saveAgentState(userId, sessionId);
         }
-        return List.copyOf(results);
     }
 
     private boolean isPermissionStopEvent(AgentEvent event) {
@@ -459,6 +589,9 @@ public class AgentRunner {
         approval.put("effects", assessment.effects().stream().map(Enum::name).sorted().toList());
         if (!assessment.resource().isBlank()) approval.put("resource", assessment.resource());
         approval.put("tool_params", toolCall.getInput());
+        if (approvalGrantService != null) {
+            approval.putAll(approvalGrantService.approvalFields(toolCall, assessment));
+        }
         approval.put("created_at", System.currentTimeMillis() / 1000.0);
         approval.put("timeout_seconds", 300);
         Object taskId = ctx != null ? ctx.get("task_id") : null;

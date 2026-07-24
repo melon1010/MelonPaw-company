@@ -361,7 +361,7 @@ public class ConfigManager {
         if (!workspace.startsWith(root) || workspace.equals(root)) {
             throw new IllegalArgumentException("Invalid agent workspace: " + id);
         }
-        return workspace;
+        return validateManagedWorkspacePath(workspace.toString());
     }
 
     private String normalizeAgentId(String agentId) {
@@ -407,6 +407,9 @@ public class ConfigManager {
         Path candidate = expandPath(value).toAbsolutePath().normalize();
         if (candidate.equals(root) || !candidate.startsWith(root)) {
             throw new IllegalArgumentException("Workspace path must stay under the managed workspace root");
+        }
+        if (Files.isSymbolicLink(root)) {
+            throw new IllegalArgumentException("Managed workspace root cannot be a symbolic link");
         }
         Path current = root;
         for (Path segment : root.relativize(candidate)) {

@@ -40,6 +40,8 @@ class StdioMcpProcessLauncherTest {
 
         assertTrue(command.containsAll(List.of(
                 "--rm", "--init", "--user", "10001:10001",
+                "--read-only", "--tmpfs", "/tmp:rw,nosuid,nodev,size=256m",
+                "/home/melon:rw,nosuid,nodev,size=256m",
                 "--cap-drop", "ALL", "no-new-privileges:true",
                 "restricted-egress", "melon-mcp:test", "npx", "@example/mcp")));
         assertTrue(command.contains(

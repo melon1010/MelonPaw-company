@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { Layout, Result, Spin } from "antd";
 import {
   Routes,
@@ -12,11 +12,16 @@ import Sidebar from "../Sidebar";
 import ConsolePollService from "../../components/ConsolePollService";
 import { ChunkErrorBoundary } from "../../components/ChunkErrorBoundary";
 import styles from "../index.module.less";
-import { useRoutes } from "../../plugins/registry/hooks";
+import { useMenuItems, useRoutes } from "../../plugins/registry/hooks";
 import { Slot } from "../../plugins/registry/Slot";
 import { useAuth } from "../../contexts/AuthContext";
 import { canAccessRoute } from "../../auth/authorization";
 import MobileNavigation from "../MobileNavigation";
+import { flattenMenu, type FlatMenuEntry } from "../registry/adapter";
+import {
+  APP_PRIMARY_NAV_IDS,
+  shouldUseSettingsNavigation,
+} from "../navigationMode";
 
 const { Content } = Layout;
 
@@ -43,9 +48,29 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const currentPath = location.pathname;
   const routes = useRoutes();
+  const agentMenu = useMenuItems("primary.agentScoped");
   const { user } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [settingsMode, setSettingsMode] = useState(false);
+
+  const agentEntries = useMemo(
+    () => flattenMenu(agentMenu, routes, 18),
+    [agentMenu, routes],
+  );
+  const appPrimaryEntries = useMemo(() => {
+    const entriesById = new Map(
+      agentEntries.map((entry) => [entry.key, entry]),
+    );
+    return APP_PRIMARY_NAV_IDS.map((id) => entriesById.get(id)).filter(
+      (entry): entry is FlatMenuEntry => Boolean(entry),
+    );
+  }, [agentEntries]);
+  const routeUsesSettingsNavigation = useMemo(
+    () => shouldUseSettingsNavigation(currentPath, appPrimaryEntries),
+    [appPrimaryEntries, currentPath],
+  );
+  const [settingsMode, setSettingsMode] = useState(
+    () => routeUsesSettingsNavigation,
+  );
 
   const selectedKey = useMemo(
     () => pickSelectedKey(currentPath, routes),
@@ -54,6 +79,10 @@ export default function MainLayout() {
   const canPollConsole = canAccessRoute("core.inbox", user);
   const isChatRoute =
     currentPath === "/chat" || currentPath.startsWith("/chat/");
+
+  useEffect(() => {
+    setSettingsMode(routeUsesSettingsNavigation);
+  }, [currentPath, routeUsesSettingsNavigation]);
 
   return (
     <Layout className={`${styles.mainLayout} webui-shell`}>

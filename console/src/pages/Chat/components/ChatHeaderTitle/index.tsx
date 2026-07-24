@@ -1,12 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { Dropdown } from "antd";
 import { useChatAnywhereSessionsState } from "@agentscope-ai/chat";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { ChevronDown, MessageSquareText } from "lucide-react";
 import { useSessionListStore } from "../../../../stores/sessionListStore";
 import { getSessionIdFromPath } from "../../../../utils/sessionRoute";
 import styles from "./index.module.less";
-
-const MOBILE_BREAKPOINT_PX = 480;
 
 interface ChatHeaderTitleProps {
   hideUntitled?: boolean;
@@ -15,6 +15,7 @@ interface ChatHeaderTitleProps {
 const ChatHeaderTitle: React.FC<ChatHeaderTitleProps> = ({
   hideUntitled = false,
 }) => {
+  const { t } = useTranslation();
   const location = useLocation();
   const { sessions, currentSessionId, setCurrentSessionId } =
     useChatAnywhereSessionsState();
@@ -34,33 +35,6 @@ const ChatHeaderTitle: React.FC<ChatHeaderTitleProps> = ({
   const chatName = resolvedChatName || "New Chat";
 
   const [open, setOpen] = useState(false);
-
-  // Detect mobile + whether title overflows. On mobile + overflow, render as
-  // a horizontal marquee; otherwise keep the original ellipsis behavior.
-  const containerRef = useRef<HTMLSpanElement | null>(null);
-  const measureRef = useRef<HTMLSpanElement | null>(null);
-  const [shouldMarquee, setShouldMarquee] = useState(false);
-
-  useEffect(() => {
-    const check = () => {
-      const w =
-        typeof window !== "undefined" ? window.innerWidth : Number.MAX_VALUE;
-      const isMobile = w <= MOBILE_BREAKPOINT_PX;
-      if (!isMobile) {
-        setShouldMarquee(false);
-        return;
-      }
-      const containerWidth =
-        containerRef.current?.getBoundingClientRect().width ?? 0;
-      const textWidth = measureRef.current?.getBoundingClientRect().width ?? 0;
-      // Add a few px tolerance to avoid borderline jitter.
-      setShouldMarquee(textWidth > containerWidth + 2);
-    };
-
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, [chatName]);
 
   const handleSessionClick = (sessionId: string) => {
     setCurrentSessionId(sessionId);
@@ -82,44 +56,15 @@ const ChatHeaderTitle: React.FC<ChatHeaderTitleProps> = ({
     onClick: () => handleSessionClick(session.id),
   }));
 
-  const titleContent = (
-    <span className={styles.chatName} ref={containerRef}>
-      {shouldMarquee ? (
-        <span className={styles.marquee}>{chatName}</span>
-      ) : (
-        chatName
-      )}
-    </span>
-  );
-
-  // Hidden span used to measure intrinsic text width for the marquee decision.
-  // Placed outside .chatName so it does not duplicate text for screen readers
-  // or testing-library queries.
-  const measureSpan = (
-    <span
-      ref={measureRef}
-      aria-hidden="true"
-      style={{
-        position: "absolute",
-        visibility: "hidden",
-        whiteSpace: "nowrap",
-        pointerEvents: "none",
-      }}
-    >
-      {chatName}
-    </span>
-  );
+  const titleContent = <span className={styles.chatName}>{chatName}</span>;
 
   if (hideUntitled && !resolvedChatName.trim()) return null;
 
-  if (sessions.length <= 1) {
-    return (
-      <>
-        {titleContent}
-        {measureSpan}
-      </>
-    );
+  if (sessions.length === 0) {
+    return <span className={styles.singleTitle}>{titleContent}</span>;
   }
+
+  const dropdownLabel = t("chat.recentConversations", "Recent chats");
 
   return (
     <Dropdown
@@ -129,10 +74,28 @@ const ChatHeaderTitle: React.FC<ChatHeaderTitleProps> = ({
       trigger={["click"]}
       placement="bottomLeft"
     >
-      <span className={styles.trigger}>
+      <button
+        type="button"
+        className={styles.trigger}
+        aria-label={dropdownLabel}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title={dropdownLabel}
+      >
         {titleContent}
-        {measureSpan}
-      </span>
+        <MessageSquareText
+          className={styles.mobileConversationIcon}
+          size={17}
+          strokeWidth={1.8}
+          aria-hidden
+        />
+        <ChevronDown
+          className={styles.dropdownChevron}
+          size={15}
+          strokeWidth={1.9}
+          aria-hidden
+        />
+      </button>
     </Dropdown>
   );
 };

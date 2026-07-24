@@ -408,7 +408,8 @@
     "listView": "Tampilan daftar",
     "gridView": "Tampilan grid",
     "enabledSkills": "Skill Aktif",
-    "disabledSkills": "Skill Nonaktif",
+    "disabledSkills": "Dinonaktifkan di Workspace",
+    "disabledSkillsHint": "Skill ini tetap tersimpan di workspace saat ini. Kumpulan Skill adalah pustaka bersama yang terpisah dan harus diunggah secara terpisah.",
     "active": "aktif"
   },
   "skillPool": {
@@ -877,6 +878,7 @@
   },
   "preview": {
     "fileTitle": "Pratinjau file",
+    "code": "Kode",
     "downloadHint": "Gunakan tombol unduh di sudut kanan atas untuk menyimpan file ini.",
     "fullWidth": "Perluas pratinjau ke lebar penuh",
     "restoreSplit": "Pulihkan tampilan terbagi",
@@ -1213,7 +1215,19 @@
     "cancelTask": "Batalkan Tugas",
     "denyFailed": "Gagal menolak",
     "timeoutAutoDenied": "Waktu habis, otomatis ditolak",
-    "acknowledge": "Mengerti"
+    "acknowledge": "Mengerti",
+    "approvePattern": "Selalu Izinkan Operasi yang Sama",
+    "approveExact": "Izinkan dan Ingat",
+    "approveOnce": "Izinkan Sekali",
+    "denyOnce": "Tolak Sekali",
+    "rememberedScope": "Izin yang Diingat",
+    "rememberedScopeHint": "Hanya berlaku untuk Anda di ruang kerja saat ini",
+    "exactScope": "Izin Tepat",
+    "exactScopeHint": "Otomatis izinkan alat yang sama dengan parameter identik",
+    "similarScope": "Izin Operasi Serupa",
+    "similarScopeHint": "Otomatis izinkan operasi serupa dari alat yang sama",
+    "oneTimeScopeHint": "Keputusan ini tidak akan disimpan.",
+    "defaultApprovalHint": "Ingat operasi ini · Pengguna / ruang kerja saat ini"
   },
   "account": {
     "title": "Akun",

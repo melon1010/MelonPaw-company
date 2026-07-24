@@ -58,7 +58,7 @@ public class ToolRiskClassifier {
     }
 
     private static final Pattern DESTRUCTIVE_SHELL = Pattern.compile(
-            "(?is)(^|[\\s;&|()'\"])(sudo|su|rm|rmdir|unlink|shred|dd|mkfs(?:\\.[a-z0-9]+)?|"
+            "(?is)(^|[\\s;&|()'\"])(sudo|su|dd|mkfs(?:\\.[a-z0-9]+)?|"
                     + "chmod|chown|kill|pkill|killall|shutdown|reboot|halt|poweroff)\\b"
                     + "|\\bgit\\s+(?:reset\\s+--hard|clean\\s+-[^\\s]*f|push\\b)"
                     + "|\\b(?:drop|truncate)\\s+(?:table|database)\\b"
@@ -157,6 +157,13 @@ public class ToolRiskClassifier {
             return Assessment.deny("credential_access", "Command attempts to access credentials or protected secrets",
                     Set.of(Effect.READ_FILE, Effect.EXECUTE_PROCESS), "protected_credentials");
         }
+        ShellCommandEffects.Analysis shell = ShellCommandEffects.analyze(command);
+        if (shell.deletesFiles()) {
+            String resource = shell.targets().isEmpty() ? "shell_delete" : String.join(",", shell.targets());
+            return Assessment.ask("destructive_shell",
+                    "Command removes files or moves them out of the workspace",
+                    Set.of(Effect.EXECUTE_PROCESS, Effect.DELETE_FILE), resource);
+        }
         if (DESTRUCTIVE_SHELL.matcher(command).find()) {
             Set<Effect> effects = command.matches("(?is).*\\b(?:npm|pnpm|yarn|pip|brew|apt|apt-get|dnf|yum)\\s+(?:install|add|remove|uninstall)\\b.*")
                     ? Set.of(Effect.EXECUTE_PROCESS, Effect.INSTALL_SOFTWARE)
@@ -165,7 +172,6 @@ public class ToolRiskClassifier {
                     "Command may delete data, change privileges, install software, or affect an external system",
                     effects, "shell");
         }
-        ShellCommandEffects.Analysis shell = ShellCommandEffects.analyze(command);
         if (shell.writesFiles()) {
             String resource = shell.targets().isEmpty() ? "shell_write" : String.join(",", shell.targets());
             return Assessment.ask("shell_file_write",

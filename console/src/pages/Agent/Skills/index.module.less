@@ -3,6 +3,14 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .pageHeader {
@@ -1062,6 +1070,21 @@
   color: rgba(20, 20, 19, 0.65);
 }
 
+.panelHeading {
+  margin-bottom: 16px;
+
+  .panelTitle {
+    margin-bottom: 0;
+  }
+}
+
+.panelHint {
+  margin: 4px 0 0 16px;
+  color: var(--mp-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .panelDotGreen {
   width: 8px;
   height: 8px;
@@ -1081,6 +1104,17 @@
   font-size: 13px;
   font-weight: 400;
   color: #52c41a;
+}
+
+.panelCountMuted {
+  margin-left: auto;
+  color: var(--mp-text-tertiary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.progressiveSentinel {
+  height: 1px;
 }
 
 /* ─── Disabled Skills Compact List (list mode) ──────────────────────────── */

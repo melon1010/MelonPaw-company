@@ -906,9 +906,10 @@ public class FrontendCompatController {
                                                   @org.springframework.security.core.annotation.AuthenticationPrincipal EnterprisePrincipal principal) {
         String sessionId = body != null ? stringValue(body.get("session_id"), "default") : "default";
         String requestId = body != null ? stringValue(body.get("request_id"), "") : "";
+        String scope = body != null ? stringValue(body.get("scope"), "once") : "once";
         boolean elevated = principal.hasAnyPermission(APPROVALS_DECIDE, AGENTS_MANAGE);
         boolean accepted = approvalService.decidePendingApproval(agentId, sessionId, requestId,
-                principal.id(), elevated, true);
+                principal.id(), elevated, true, scope);
         return Mono.just(ResponseEntity.ok(Map.of("success", accepted, "message", accepted ? "approved" : "approval not found")));
     }
 

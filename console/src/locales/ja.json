@@ -320,7 +320,8 @@
     "filterByTag": "タグで絞り込み",
     "noTags": "利用可能なタグがありません",
     "enabledSkills": "有効なスキル",
-    "disabledSkills": "無効なスキル",
+    "disabledSkills": "ワークスペースで無効",
+    "disabledSkillsHint": "これらのスキルは現在のワークスペースに保持されています。スキルプールは別の共有ライブラリであり、個別にアップロードする必要があります。",
     "active": "個有効"
   },
   "skillPool": {
@@ -2329,9 +2330,19 @@
     "approveFailed": "承認に失敗しました",
     "cancelTask": "タスクをキャンセル",
     "denyFailed": "拒否に失敗しました",
-    "approvePattern": "パターンを承認",
-    "approveExact": "原文のみ承認",
-    "approvalScope": "承認スコープ"
+    "approvePattern": "一致する操作を常に許可",
+    "approveExact": "許可して記憶",
+    "approveOnce": "今回のみ許可",
+    "denyOnce": "今回のみ拒否",
+    "approvalScope": "承認スコープ",
+    "rememberedScope": "記憶される承認",
+    "rememberedScopeHint": "現在のワークスペース内のあなたにのみ適用されます",
+    "exactScope": "完全一致の承認",
+    "exactScopeHint": "同じツールと同一のパラメータを自動的に許可します",
+    "similarScope": "同種操作の承認",
+    "similarScopeHint": "同じツールによる同種の操作を自動的に許可します",
+    "oneTimeScopeHint": "この決定は保存されません。",
+    "defaultApprovalHint": "この操作を記憶 · 現在のユーザー / ワークスペース"
   },
   "pluginManager": {
     "title": "プラグインマネージャー",
@@ -2491,6 +2502,7 @@
   },
   "preview": {
     "fileTitle": "ファイルプレビュー",
+    "code": "コード",
     "downloadHint": "右上のダウンロードボタンからこのファイルを保存できます。",
     "fullWidth": "プレビューを全幅に拡大",
     "restoreSplit": "分割表示に戻す",

@@ -1,9 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@/i18n";
 import { renderWithProviders } from "@/test/common_setup";
 import ChatFilePreview from ".";
+
+vi.mock("@ant-design/x-markdown", () => ({
+  XMarkdown: ({ content }: { content: string }) => (
+    <article data-testid="markdown-preview">{content}</article>
+  ),
+}));
+
+vi.mock("@/components/MermaidCodeBlock", () => ({
+  mermaidComponents: {},
+}));
 
 vi.mock("docx-preview", () => ({
   renderAsync: vi.fn(async (_file: Blob, container: HTMLElement) => {
@@ -82,6 +92,104 @@ describe("ChatFilePreview", () => {
     );
 
     expect(await screen.findByText("const answer = 42;")).toBeInTheDocument();
+  });
+
+  it("switches Markdown files between rendered preview and source code", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: new Headers(),
+        blob: async () => new Blob(["# Release notes"], { type: "text/plain" }),
+      }),
+    );
+
+    renderWithProviders(
+      <ChatFilePreview
+        file={{ name: "notes.md", url: "/preview/notes.md" }}
+        fullWidth={false}
+        onClose={() => {}}
+        onToggleFullWidth={() => {}}
+      />,
+    );
+
+    expect(await screen.findByTestId("markdown-preview")).toHaveTextContent(
+      "# Release notes",
+    );
+    await user.click(screen.getByRole("button", { name: "Code" }));
+    expect(screen.getByText("# Release notes")).toBeInTheDocument();
+    expect(screen.queryByTestId("markdown-preview")).not.toBeInTheDocument();
+  });
+
+  it("switches HTML files between sandboxed preview and source code", async () => {
+    const user = userEvent.setup();
+    type MockFetchResponse = {
+      ok: boolean;
+      headers: Headers;
+      blob: () => Promise<Blob>;
+    };
+    let resolveFetch!: (response: MockFetchResponse) => void;
+    const pendingFetch = new Promise<MockFetchResponse>((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(pendingFetch));
+
+    const { container } = renderWithProviders(
+      <ChatFilePreview
+        file={{ name: "dashboard.html", url: "/preview/dashboard.html" }}
+        fullWidth={false}
+        onClose={() => {}}
+        onToggleFullWidth={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    await act(async () => {
+      resolveFetch({
+        ok: true,
+        headers: new Headers(),
+        blob: async () =>
+          new Blob(
+            [
+              '<h1>Dashboard</h1><script>localStorage.getItem("dashboard")</script>',
+            ],
+            { type: "text/html" },
+          ),
+      });
+    });
+    const frame = container.querySelector("iframe");
+    if (!frame) throw new Error("Expected the HTML preview iframe");
+    const srcDoc = frame.getAttribute("srcdoc") ?? "";
+    expect(frame).not.toHaveAttribute("src");
+    expect(srcDoc).toContain("<h1>Dashboard</h1>");
+    expect(srcDoc).toContain('data-melonpaw-preview-bootstrap="storage"');
+    expect(srcDoc.indexOf("createMemoryStorage")).toBeLessThan(
+      srcDoc.indexOf('localStorage.getItem("dashboard")'),
+    );
+    expect(srcDoc).toContain(
+      `<base href="${
+        new URL("/preview/dashboard.html", window.location.href).href
+      }">`,
+    );
+    expect(frame.getAttribute("sandbox")).not.toContain("allow-same-origin");
+    await user.click(screen.getByRole("button", { name: "Code" }));
+    expect(screen.getByRole("code")).toHaveTextContent("<h1>Dashboard</h1>");
+  });
+
+  it("does not offer source mode for raster images", () => {
+    renderWithProviders(
+      <ChatFilePreview
+        file={{ name: "diagram.png", url: "/preview/diagram.png" }}
+        fullWidth={false}
+        onClose={() => {}}
+        onToggleFullWidth={() => {}}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Code" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps download in the preview header for unsupported files", () => {

@@ -98,10 +98,12 @@ describe("MobileNavigation permissions", () => {
       hidden: true,
     });
     expect(trigger).toHaveAttribute("aria-expanded", "true");
+    const chatNavigationItem = within(navigation).getByRole("button", {
+      name: "nav.chat",
+    });
+    expect(chatNavigationItem).toBeInTheDocument();
     expect(
-      within(navigation).getByRole("button", {
-        name: "nav.chat",
-      }),
+      chatNavigationItem.querySelector(".lucide-square-pen"),
     ).toBeInTheDocument();
     expect(
       within(navigation).getByRole("button", {

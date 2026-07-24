@@ -644,10 +644,23 @@
     "denySuccess": "Đã từ chối",
     "expired": "Yêu cầu đã hết hạn",
     "tool": "Công cụ",
-    "arguments": "Tham số"
+    "arguments": "Tham số",
+    "approvePattern": "Luôn cho phép thao tác trùng khớp",
+    "approveExact": "Cho phép và ghi nhớ",
+    "approveOnce": "Chỉ cho phép lần này",
+    "denyOnce": "Chỉ từ chối lần này",
+    "rememberedScope": "Quyền được ghi nhớ",
+    "rememberedScopeHint": "Chỉ áp dụng cho bạn trong không gian làm việc hiện tại",
+    "exactScope": "Quyền chính xác",
+    "exactScopeHint": "Tự động cho phép cùng công cụ với tham số giống hệt",
+    "similarScope": "Quyền thao tác tương tự",
+    "similarScopeHint": "Tự động cho phép thao tác tương tự từ cùng công cụ",
+    "oneTimeScopeHint": "Quyết định này sẽ không được lưu.",
+    "defaultApprovalHint": "Ghi nhớ thao tác này · Người dùng / không gian làm việc hiện tại"
   },
   "preview": {
     "fileTitle": "Xem trước file",
+    "code": "Mã nguồn",
     "downloadHint": "Dùng nút tải xuống ở góc trên bên phải để lưu file này.",
     "fullWidth": "Mở rộng bản xem trước toàn chiều rộng",
     "restoreSplit": "Khôi phục chế độ chia đôi",
@@ -1173,7 +1186,8 @@
     "saveFailed": "Lưu kỹ năng thất bại",
     "emptyState": "Chưa có kỹ năng nào",
     "enabledSkills": "Kỹ năng đã kích hoạt",
-    "disabledSkills": "Kỹ năng chưa kích hoạt",
+    "disabledSkills": "Đã tắt trong Workspace",
+    "disabledSkillsHint": "Các kỹ năng này vẫn được giữ trong workspace hiện tại. Kho kỹ năng là thư viện dùng chung riêng biệt và cần được tải lên riêng.",
     "active": "kích hoạt"
   },
   "skillPool": {

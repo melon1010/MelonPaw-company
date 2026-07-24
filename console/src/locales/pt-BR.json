@@ -481,7 +481,8 @@
     "filterByTag": "Filtrar by tag",
     "noTags": "Nao Tags available",
     "enabledSkills": "Skills Ativadas",
-    "disabledSkills": "Skills Desativadas",
+    "disabledSkills": "Desativadas no Workspace",
+    "disabledSkillsHint": "Estas skills permanecem neste workspace. O Skill Pool é uma biblioteca compartilhada separada e exige upload separado.",
     "active": "ativas"
   },
   "skillPool": {
@@ -2387,7 +2388,19 @@
     "denied": "Tool call denied",
     "approveFailed": "Falhou to approve",
     "cancelTask": "Cancelar Task",
-    "denyFailed": "Falhou to deny"
+    "denyFailed": "Falhou to deny",
+    "approvePattern": "Sempre permitir operações correspondentes",
+    "approveExact": "Permitir e lembrar",
+    "approveOnce": "Permitir uma vez",
+    "denyOnce": "Negar uma vez",
+    "rememberedScope": "Autorização lembrada",
+    "rememberedScopeHint": "Aplica-se somente a você no espaço de trabalho atual",
+    "exactScope": "Autorização exata",
+    "exactScopeHint": "Permitir automaticamente a mesma ferramenta com parâmetros idênticos",
+    "similarScope": "Autorização semelhante",
+    "similarScopeHint": "Permitir automaticamente operações semelhantes da mesma ferramenta",
+    "oneTimeScopeHint": "Esta decisão não será salva.",
+    "defaultApprovalHint": "Lembrar esta operação · Usuário / espaço de trabalho atual"
   },
   "pluginManager": {
     "title": "Gerenciador de Plugins",
@@ -2547,6 +2560,7 @@
   },
   "preview": {
     "fileTitle": "Visualização do arquivo",
+    "code": "Código",
     "downloadHint": "Use o botão de download no canto superior direito para salvar este arquivo.",
     "fullWidth": "Expandir visualização para a largura total",
     "restoreSplit": "Restaurar visualização dividida",

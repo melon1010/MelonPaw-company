@@ -10,7 +10,7 @@ import {
   UnorderedListOutlined,
 } from "@ant-design/icons";
 import { Send } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { ImportHubModal } from "../../Agent/Skills/components/ImportHubModal";
@@ -29,6 +29,7 @@ import { useSkillPool } from "./useSkillPool";
 import { useProgressiveRender } from "../../../hooks/useProgressiveRender";
 import { PageHeader } from "@/components/PageHeader";
 import type { PoolSkillSpec } from "../../../api/types";
+import { SkillVisual } from "@/components/SkillVisual";
 import styles from "./index.module.less";
 
 function SkillPoolPage() {
@@ -39,7 +40,11 @@ function SkillPoolPage() {
     visibleItems: visibleSkills,
     hasMore,
     sentinelRef,
-  } = useProgressiveRender(pool.sortedSkills);
+  } = useProgressiveRender(pool.enabledPoolSkills);
+  const poolSkillNames = useMemo(
+    () => new Set(pool.skills.map((skill) => skill.name)),
+    [pool.skills],
+  );
 
   const [searchParams, setSearchParams] = useSearchParams();
   const marketView = searchParams.get("view") === "market";
@@ -273,39 +278,151 @@ function SkillPoolPage() {
               {t("skills.noSearchResults")}
             </span>
           </div>
-        ) : pool.viewMode === "card" ? (
-          <div className={`${styles.skillsGrid} responsive-grid`}>
-            {visibleSkills.map((skill: PoolSkillSpec) => (
-              <PoolSkillCard
-                key={skill.name}
-                skill={skill}
-                isSelected={pool.selectedPoolSkills.has(skill.name)}
-                batchModeEnabled={pool.batchModeEnabled}
-                onToggleSelect={pool.togglePoolSelect}
-                onEdit={pool.openEdit}
-                onDelete={pool.handleDelete}
-                onToggleAutoUpdate={pool.handleToggleAutoUpdate}
-                onBroadcast={pool.openBroadcast}
-              />
-            ))}
-            {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
-          </div>
         ) : (
-          <div className={styles.skillsList}>
-            {visibleSkills.map((skill: PoolSkillSpec) => (
-              <PoolSkillListItem
-                key={skill.name}
-                skill={skill}
-                isSelected={pool.selectedPoolSkills.has(skill.name)}
-                batchModeEnabled={pool.batchModeEnabled}
-                onToggleSelect={pool.togglePoolSelect}
-                onEdit={pool.openEdit}
-                onDelete={pool.handleDelete}
-                onBroadcast={pool.openBroadcast}
-              />
-            ))}
-            {hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
-          </div>
+          <>
+            {pool.viewMode === "card" ? (
+              <div className={`${styles.skillsGrid} responsive-grid`}>
+                {visibleSkills.map((skill: PoolSkillSpec) => (
+                  <PoolSkillCard
+                    key={skill.name}
+                    skill={skill}
+                    isSelected={pool.selectedPoolSkills.has(skill.name)}
+                    batchModeEnabled={pool.batchModeEnabled}
+                    onToggleSelect={pool.togglePoolSelect}
+                    onEdit={pool.openEdit}
+                    onDelete={pool.handleDelete}
+                    onToggleAutoUpdate={pool.handleToggleAutoUpdate}
+                    onBroadcast={pool.openBroadcast}
+                  />
+                ))}
+                {hasMore && (
+                  <div
+                    ref={sentinelRef}
+                    className={styles.progressiveSentinel}
+                  />
+                )}
+              </div>
+            ) : (
+              <div className={styles.skillsList}>
+                {visibleSkills.map((skill: PoolSkillSpec) => (
+                  <PoolSkillListItem
+                    key={skill.name}
+                    skill={skill}
+                    isSelected={pool.selectedPoolSkills.has(skill.name)}
+                    batchModeEnabled={pool.batchModeEnabled}
+                    onToggleSelect={pool.togglePoolSelect}
+                    onEdit={pool.openEdit}
+                    onDelete={pool.handleDelete}
+                    onBroadcast={pool.openBroadcast}
+                  />
+                ))}
+                {hasMore && (
+                  <div
+                    ref={sentinelRef}
+                    className={styles.progressiveSentinel}
+                  />
+                )}
+              </div>
+            )}
+
+            {pool.disabledPoolSkills.length > 0 && (
+              <section className={styles.disabledSection}>
+                <div className={styles.disabledSectionHeading}>
+                  <span className={styles.disabledSectionDot} />
+                  <span>
+                    {t("nav.skillPool")} · {t("common.disabled")}
+                  </span>
+                  <span className={styles.disabledSectionCount}>
+                    {pool.disabledPoolSkills.length}
+                  </span>
+                </div>
+                {pool.viewMode === "card" ? (
+                  <div className={`${styles.skillsGrid} responsive-grid`}>
+                    {pool.disabledPoolSkills.map((skill: PoolSkillSpec) => (
+                      <PoolSkillCard
+                        key={skill.name}
+                        skill={skill}
+                        isSelected={pool.selectedPoolSkills.has(skill.name)}
+                        batchModeEnabled={pool.batchModeEnabled}
+                        onToggleSelect={pool.togglePoolSelect}
+                        onEdit={pool.openEdit}
+                        onDelete={pool.handleDelete}
+                        onToggleAutoUpdate={pool.handleToggleAutoUpdate}
+                        onBroadcast={pool.openBroadcast}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className={styles.skillsList}>
+                    {pool.disabledPoolSkills.map((skill: PoolSkillSpec) => (
+                      <PoolSkillListItem
+                        key={skill.name}
+                        skill={skill}
+                        isSelected={pool.selectedPoolSkills.has(skill.name)}
+                        batchModeEnabled={pool.batchModeEnabled}
+                        onToggleSelect={pool.togglePoolSelect}
+                        onEdit={pool.openEdit}
+                        onDelete={pool.handleDelete}
+                        onBroadcast={pool.openBroadcast}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+          </>
+        )}
+
+        {!pool.loading && pool.disabledWorkspaceSkills.length > 0 && (
+          <section className={styles.disabledSection}>
+            <div className={styles.disabledSectionHeadingBlock}>
+              <div className={styles.disabledSectionHeading}>
+                <span className={styles.disabledSectionDot} />
+                <span>{t("skills.disabledSkills")}</span>
+                <span className={styles.disabledSectionCount}>
+                  {pool.disabledWorkspaceSkills.length}
+                </span>
+              </div>
+              <p className={styles.disabledSectionHint}>
+                {t("skills.disabledSkillsHint")}
+              </p>
+            </div>
+            <div className={styles.workspaceDisabledGrid}>
+              {pool.disabledWorkspaceSkills.map((skill) => {
+                const existsInPool = poolSkillNames.has(skill.name);
+                return (
+                  <div
+                    key={skill.name}
+                    className={styles.workspaceDisabledItem}
+                  >
+                    <span className={styles.workspaceDisabledIcon}>
+                      <SkillVisual name={skill.name} emoji={skill.emoji} />
+                    </span>
+                    <span className={styles.workspaceDisabledName}>
+                      {skill.name}
+                    </span>
+                    {existsInPool ? (
+                      <span className={styles.poolPresenceTag}>
+                        {t("skills.uploadedToPool")}
+                      </span>
+                    ) : (
+                      <Button
+                        size="small"
+                        type="text"
+                        onClick={() =>
+                          void pool.handleUploadDisabledWorkspaceSkill(
+                            skill.name,
+                          )
+                        }
+                      >
+                        {t("skills.uploadToPool")}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
       </div>
 

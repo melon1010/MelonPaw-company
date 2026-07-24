@@ -1,4 +1,6 @@
 .approvalCard {
+  width: 100%;
+  box-sizing: border-box;
   background: var(--mp-surface, #ffffff);
   border: 1px solid var(--mp-border, #e0e5eb);
   border-radius: 8px;
@@ -16,7 +18,7 @@
 
   :global(.ant-card-body),
   :global(.qwenpaw-card-body) {
-    padding: 16px 20px;
+    padding: 9px 12px;
   }
 }
 
@@ -48,8 +50,8 @@
 }
 
 .header {
-  margin-bottom: 14px;
-  padding-bottom: 12px;
+  margin-bottom: 7px;
+  padding-bottom: 6px;
   border-bottom: 1px solid #f0f2f5;
   display: flex;
   align-items: center;
@@ -101,8 +103,8 @@
 .content {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: 5px;
+  margin-bottom: 7px;
 }
 
 .infoRow {
@@ -165,159 +167,61 @@
   line-height: 20px;
 }
 
-.summaryBox {
-  background: var(--mp-surface-subtle, #f7f8fa);
-  border: 1px solid var(--mp-border, #e0e5eb);
-  padding: 10px 12px;
-  border-radius: 6px;
-  margin-top: 4px;
-  position: relative;
-
-  .summaryText {
-    font-size: 12px;
-    color: #555;
-    line-height: 1.7;
-    white-space: pre-wrap;
-    word-break: break-word;
-    padding-right: 28px;
-  }
-}
-
-.copyButton {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 24px;
-  height: 24px;
+.riskLine {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: #888;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  padding: 0;
-
-  &:hover {
-    background: rgba(0, 0, 0, 0.04);
-    border-color: #ccc;
-    color: #555;
-  }
-
-  &.copied {
-    color: #52c41a;
-    border-color: #b7eb8f;
-  }
+  gap: 7px;
+  min-width: 0;
 }
 
-.paramsCodeWrapper {
-  position: relative;
+.toolName {
+  min-width: 0;
+  overflow: hidden;
+  color: #20252b;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.paramsDetails {
-  background: #fafbfc;
-  border: 1px solid #eef0f3;
-  padding: 10px 14px;
-  border-radius: 6px;
-  margin-top: 4px;
-  cursor: pointer;
-
-  summary {
-    font-size: 12px;
-    font-weight: 500;
-    color: #666;
-    user-select: none;
-    outline: none;
-    transition: color 0.2s;
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-
-    &::before {
-      content: "▶";
-      font-size: 8px;
-      color: #999;
-      transition: transform 0.2s ease;
-      display: inline-block;
-      flex-shrink: 0;
-    }
-
-    // Hide default marker in Safari/WebKit
-    &::-webkit-details-marker {
-      display: none;
-    }
-
-    &:hover {
-      color: #333;
-    }
-  }
-
-  &[open] summary {
-    margin-bottom: 8px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #eef0f3;
-    color: #333;
-
-    &::before {
-      transform: rotate(90deg);
-    }
-  }
-}
-
-.paramsSummary {
-  list-style: none;
-}
-
-.paramsCode {
-  margin: 0;
-  padding: 10px 12px;
-  background: #ffffff;
-  border: 1px solid #eef0f3;
-  border-radius: 4px;
-  color: #444;
+.targetPreview {
+  display: block;
+  padding: 5px 8px;
+  overflow: hidden;
+  color: #29343e;
+  background: #f5f7f8;
+  border: 1px solid #e4e8ec;
+  border-radius: 5px;
   font-family: "SF Mono", "Monaco", "Consolas", monospace;
   font-size: 11px;
-  line-height: 1.6;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 200px;
-  overflow-y: auto;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 
-  &::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: #f5f5f5;
-    border-radius: 2px;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: #d4d4d4;
-    border-radius: 2px;
-
-    &:hover {
-      background: #aaa;
-    }
-  }
+.riskSummary {
+  display: block;
+  overflow: hidden;
+  color: #66717c;
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .actions {
   display: flex;
-  gap: 8px;
+  flex-wrap: nowrap;
+  gap: 10px;
   justify-content: flex-end;
   align-items: center;
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid #f0f2f5;
 
   button {
-    min-width: 88px;
-    height: 32px;
+    box-sizing: border-box;
+    min-width: 76px;
+    height: 30px;
     font-size: 13px;
     font-weight: 500;
     border-radius: 6px;
@@ -326,9 +230,12 @@
     justify-content: center;
     gap: 4px;
     transition: all 0.2s ease;
+    white-space: nowrap;
   }
 
   .denyButton {
+    width: 76px;
+    min-width: 76px;
     background: #ffffff;
     border: 1px solid #e0e0e0;
     color: #666;
@@ -341,14 +248,76 @@
   }
 
   .approveButton {
-    background: #f97316;
-    border: none;
-    color: #ffffff;
-    box-shadow: 0 1px 4px rgba(249, 115, 22, 0.2);
+    width: 76px;
+    min-width: 76px;
+    background: #ffffff;
+    border: 1px solid #2563eb;
+    color: #1d4ed8;
+    box-shadow: none;
 
     &:hover:not(:disabled) {
-      background: #ea6c0e;
-      box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
+      background: #eff6ff;
+      border-color: #1d4ed8;
+      color: #1d4ed8;
+    }
+  }
+
+  .approveDropdown {
+    display: inline-flex;
+    align-items: stretch;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 76px !important;
+    min-width: 76px;
+    overflow: hidden;
+    background: #ffffff;
+    border: 1px solid #2563eb;
+    border-radius: 6px;
+    box-shadow: none;
+
+    :global(.ant-btn),
+    :global(.qwenpaw-btn) {
+      min-width: auto;
+      height: 30px;
+      padding-inline: 0;
+      color: #1d4ed8;
+      background: transparent;
+      border: 0 !important;
+      border-radius: 0;
+      box-shadow: none;
+
+      &:hover:not(:disabled) {
+        color: #1d4ed8;
+        background: #eff6ff;
+      }
+    }
+
+    :global(.ant-btn:first-child),
+    :global(.qwenpaw-btn:first-child) {
+      flex: 1 1 auto;
+      width: 54px;
+      min-width: 0 !important;
+      padding-inline: 2px;
+      font-size: 12px;
+    }
+
+    :global(.ant-dropdown-trigger),
+    :global(.qwenpaw-dropdown-trigger) {
+      flex: 0 0 20px;
+      width: 20px !important;
+      min-width: 20px !important;
+      max-width: 20px;
+      padding: 0;
+      border-left: 1px solid #bfdbfe !important;
+    }
+
+    &:hover {
+      border-color: #1d4ed8;
+
+      :global(.ant-btn:not(:disabled)),
+      :global(.qwenpaw-btn:not(:disabled)) {
+        color: #1d4ed8;
+      }
     }
   }
 }
@@ -361,24 +330,27 @@
 }
 
 .composerCard {
-  border-color: color-mix(in srgb, var(--mp-warning, #b76a16) 34%, var(--mp-border, #e0e5eb));
+  border-color: color-mix(
+    in srgb,
+    var(--mp-warning, #b76a16) 34%,
+    var(--mp-border, #e0e5eb)
+  );
   box-shadow: 0 8px 22px rgba(23, 33, 43, 0.09);
 
   :global(.ant-card-body),
   :global(.qwenpaw-card-body) {
-    padding: 12px 14px;
+    padding: 9px 12px;
   }
 
   .header {
-    margin-bottom: 10px;
-    padding-bottom: 9px;
+    margin-bottom: 7px;
+    padding-bottom: 6px;
   }
 
   .content {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px 20px;
-    margin-bottom: 10px;
+    display: flex;
+    gap: 6px;
+    margin-bottom: 7px;
   }
 
   .infoRow {
@@ -390,14 +362,8 @@
     overflow-wrap: anywhere;
   }
 
-  .summaryBox,
-  .paramsDetails {
-    grid-column: 1 / -1;
-    margin-top: 0;
-  }
-
   .actions {
-    padding-top: 10px;
+    padding-top: 6px;
   }
 }
 
@@ -451,69 +417,18 @@
     }
   }
 
-  .summaryBox {
-    background: #252525;
-    border-color: #3a3a3a;
-
-    .summaryText {
-      color: #bbb;
-    }
+  .toolName {
+    color: #e2e7ec;
   }
 
-  .copyButton {
-    color: #777;
-    border-color: #444;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.06);
-      border-color: #555;
-      color: #bbb;
-    }
-
-    &.copied {
-      color: #52c41a;
-      border-color: #3a6b1e;
-    }
+  .targetPreview {
+    color: #ced6dd;
+    background: #25292d;
+    border-color: #373d43;
   }
 
-  .paramsDetails {
-    background: #252525;
-    border-color: #333;
-
-    summary {
-      color: #999;
-
-      &::before {
-        color: #666;
-      }
-
-      &:hover {
-        color: #ccc;
-      }
-    }
-
-    &[open] summary {
-      border-bottom-color: #333;
-      color: #ccc;
-    }
-  }
-
-  .paramsCode {
-    background: #1a1a1a;
-    border-color: #333;
-    color: #bbb;
-
-    &::-webkit-scrollbar-track {
-      background: #222;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      background: #444;
-
-      &:hover {
-        background: #555;
-      }
-    }
+  .riskSummary {
+    color: #929da7;
   }
 
   .actions {
@@ -536,13 +451,36 @@
     }
 
     .approveButton {
-      background: #f97316;
-      color: #ffffff;
-      box-shadow: 0 1px 4px rgba(249, 115, 22, 0.3);
+      background: #1e1e1e;
+      border-color: #60a5fa;
+      color: #93c5fd;
+      box-shadow: none;
 
       &:hover:not(:disabled) {
-        background: #ea6c0e;
-        box-shadow: 0 2px 8px rgba(249, 115, 22, 0.4);
+        background: #172554;
+        border-color: #93c5fd;
+        color: #bfdbfe;
+      }
+    }
+
+    .approveDropdown {
+      background: #1e1e1e;
+      border-color: #60a5fa;
+
+      :global(.ant-btn),
+      :global(.qwenpaw-btn) {
+        color: #93c5fd;
+        background: transparent;
+
+        &:hover:not(:disabled) {
+          color: #bfdbfe;
+          background: #172554;
+        }
+      }
+
+      :global(.ant-dropdown-trigger),
+      :global(.qwenpaw-dropdown-trigger) {
+        border-left-color: #3b82f6 !important;
       }
     }
   }
@@ -554,27 +492,18 @@
 
     :global(.ant-card-body),
     :global(.qwenpaw-card-body) {
-      padding: 14px 16px;
+      padding: 9px 10px;
     }
   }
 
   .header {
-    margin-bottom: 12px;
-    padding-bottom: 10px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
   }
 
   .content {
     gap: 6px;
-    margin-bottom: 12px;
-  }
-
-  .composerCard .content {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .composerCard .summaryBox,
-  .composerCard .paramsDetails {
-    grid-column: 1;
+    margin-bottom: 9px;
   }
 
   .label {
@@ -582,12 +511,24 @@
   }
 
   .actions {
-    flex-direction: column;
-    gap: 6px;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 10px;
 
     button {
-      width: 100%;
+      flex: 0 0 auto;
       min-width: auto;
+    }
+
+    .approveDropdown {
+      flex: 0 0 auto;
+      width: 76px !important;
+
+      :global(.ant-btn:first-child),
+      :global(.qwenpaw-btn:first-child) {
+        flex: 1 1 auto;
+      }
     }
   }
 }

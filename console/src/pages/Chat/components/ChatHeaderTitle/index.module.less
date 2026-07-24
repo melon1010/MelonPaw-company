@@ -15,46 +15,17 @@
     font-size: 14px;
   }
 
-  // ─── Mobile: replace ellipsis with horizontal marquee ───────────────────
-  // When the title is longer than its container, slide the full text from
-  // right to left so the user can still read it.
-  @media (max-width: 480px) {
-    max-width: min(42vw, 164px);
-    font-size: 13px;
-    overflow: hidden;
-    text-overflow: clip;
-
-    > .marquee {
-      display: inline-block;
-      padding-left: 100%;
-      animation: chatNameMarquee 12s linear infinite;
-    }
+  @media (max-width: 640px) {
+    display: none;
   }
 }
 
-.chatNameCoding {
-  max-width: 100px;
+.singleTitle {
+  min-width: 0;
+  display: inline-flex;
 
-  @media (max-width: 768px) {
-    max-width: 70px;
-  }
-
-  @media (max-width: 480px) {
-    max-width: 55px;
-  }
-}
-
-// Wrapper used in JSX only when the title overflows on mobile.
-.marquee {
-  display: inline-block;
-}
-
-@keyframes chatNameMarquee {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-100%);
+  @media (max-width: 640px) {
+    display: none;
   }
 }
 
@@ -66,9 +37,15 @@
 
 /* ---- Trigger button ---- */
 .trigger {
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
   cursor: pointer;
   user-select: none;
   max-width: 260px;
@@ -79,13 +56,50 @@
     }
   }
 
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--mp-focus-ring);
+  }
+
   @media (max-width: 768px) {
     max-width: min(42vw, 210px);
   }
 
-  @media (max-width: 480px) {
-    max-width: min(44vw, 172px);
+  @media (max-width: 640px) {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    justify-content: center;
+    padding: 0;
+    color: var(--mp-text-secondary);
+
+    &:active {
+      background: var(--mp-surface-subtle);
+    }
   }
+}
+
+.dropdownChevron {
+  flex: 0 0 auto;
+  transition: transform 180ms ease;
+
+  @media (max-width: 640px) {
+    width: 13px;
+    height: 13px;
+  }
+}
+
+.mobileConversationIcon {
+  display: none;
+
+  @media (max-width: 640px) {
+    display: block;
+    flex: 0 0 auto;
+  }
+}
+
+.trigger[aria-expanded="true"] .dropdownChevron {
+  transform: rotate(180deg);
 }
 
 /* ---- Dropdown menu items ---- */
@@ -108,4 +122,10 @@
   color: var(--colorPrimary, var(--mp-primary));
   font-size: 12px;
   flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dropdownChevron {
+    transition: none;
+  }
 }

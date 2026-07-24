@@ -378,12 +378,17 @@ public class MelonAgentFactory {
                 // Docker network when outbound access is not allowed by policy.
                 .network(envOr("MELON_SANDBOX_NETWORK", "bridge"))
                 .additionalRunArgs(
+                        "--user=10001:10001",
+                        "--init",
+                        "--read-only",
+                        "--tmpfs=/tmp:rw,nosuid,nodev,size=256m",
+                        "--tmpfs=/home/melon:rw,nosuid,nodev,size=256m",
                         "--cap-drop=ALL",
                         "--security-opt=no-new-privileges:true",
                         "--pids-limit=256");
         spec.isolationScope(IsolationScope.USER);
         // Keep the Web workspace and the Agent workspace consistent. Only the already validated
-        // per-user workspace is mounted; the project root and all other users remain outside.
+        // per-Agent workspace is mounted; the repository root and all other Agents remain outside.
         WorkspaceSpec workspaceSpec = new WorkspaceSpec();
         workspaceSpec.setRoot("/workspace");
         BindMountEntry workspaceMount = new BindMountEntry();
@@ -403,7 +408,7 @@ public class MelonAgentFactory {
                 .inheritEnv(false)
                 .executeTimeoutSeconds(shellTimeoutSeconds(agentConfig));
         spec.projectWritable(true);
-        // The application already assigns a dedicated workspace per personal Agent.
+        // The application already assigns a dedicated workspace per Agent.
         // Avoid a second user-id directory that would separate file tools from shell.
         spec.isolationScope(IsolationScope.AGENT);
         for (String name : localShellEnvironmentAllowlist()) {
@@ -539,6 +544,7 @@ public class MelonAgentFactory {
         // Workspace context, memory and skills are provided by HarnessAgent.
         list.add(new ToolRoutingMiddleware());
         list.add(new ToolFailureGuardMiddleware());
+        list.add(new ToolRejectionGuardMiddleware());
         list.add(new MediaFilterMiddleware());
 
         if (config.getRunning().isAutoContinueOnTextOnly()) {

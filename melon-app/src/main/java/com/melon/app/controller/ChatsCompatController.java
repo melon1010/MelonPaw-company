@@ -1,6 +1,7 @@
 package com.melon.app.controller;
 
 import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.runner.AgentSessionLogReader;
 import com.melon.app.runner.ChatManager;
 import com.melon.app.runner.ChatSpec;
@@ -22,10 +23,13 @@ public class ChatsCompatController {
 
     private final ChatManager chatManager;
     private final AgentSessionLogReader sessionLogReader;
+    private final EnterpriseAgentAccessService agentAccessService;
 
-    public ChatsCompatController(ChatManager chatManager, AgentSessionLogReader sessionLogReader) {
+    public ChatsCompatController(ChatManager chatManager, AgentSessionLogReader sessionLogReader,
+                                 EnterpriseAgentAccessService agentAccessService) {
         this.chatManager = chatManager;
         this.sessionLogReader = sessionLogReader;
+        this.agentAccessService = agentAccessService;
     }
 
     @GetMapping
@@ -33,7 +37,11 @@ public class ChatsCompatController {
                                              @RequestParam(value = "channel", required = false) String channel,
                                              @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                              @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> ResponseEntity.ok(chatManager.list(agentId, principal.id(), channel)));
+        return Mono.fromCallable(() -> {
+            String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+            String ownerFilter = agentAccessService.isProjectAgent(resolvedAgentId) ? null : principal.id();
+            return ResponseEntity.ok(chatManager.list(resolvedAgentId, ownerFilter, channel));
+        });
     }
 
     @PostMapping
@@ -41,10 +49,11 @@ public class ChatsCompatController {
                                               @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
+            String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
             String name = body != null ? stringValue(body.get("name"), stringValue(body.get("title"), "New Chat")) : "New Chat";
             String channel = body != null ? stringValue(body.get("channel"), "console") : "console";
             String sessionId = body != null ? stringValue(body.get("session_id"), null) : null;
-            return ResponseEntity.ok(chatManager.create(agentId, name, principal.id(), channel, sessionId));
+            return ResponseEntity.ok(chatManager.create(resolvedAgentId, name, principal.id(), channel, sessionId));
         });
     }
 
@@ -53,13 +62,14 @@ public class ChatsCompatController {
                                            @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                            @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
-            ChatSpec spec = chatManager.get(agentId, chatId);
+            String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+            ChatSpec spec = chatManager.get(resolvedAgentId, chatId);
             if (spec == null) {
                 return ResponseEntity.notFound().build();
             }
-            requireOwner(spec, principal);
+            requireChatAccess(resolvedAgentId, spec, principal);
             Map<String, Object> history = new LinkedHashMap<>();
-            history.put("messages", messagesFor(agentId, spec));
+            history.put("messages", messagesFor(resolvedAgentId, spec));
             history.put("status", spec.getStatus() != null ? spec.getStatus() : "idle");
             return ResponseEntity.ok(history);
         });
@@ -70,15 +80,16 @@ public class ChatsCompatController {
                                               @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
-            ChatSpec spec = chatManager.get(agentId, chatId);
+            String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+            ChatSpec spec = chatManager.get(resolvedAgentId, chatId);
             if (spec == null) {
                 return ResponseEntity.notFound().build();
             }
-            requireOwner(spec, principal);
+            requireChatAccess(resolvedAgentId, spec, principal);
             if (body.containsKey("title")) spec.setName(String.valueOf(body.get("title")));
             if (body.containsKey("name")) spec.setName(String.valueOf(body.get("name")));
             if (body.get("pinned") instanceof Boolean pinned) spec.setPinned(pinned);
-            return ResponseEntity.ok(chatManager.update(agentId, spec));
+            return ResponseEntity.ok(chatManager.update(resolvedAgentId, spec));
         });
     }
 
@@ -87,11 +98,12 @@ public class ChatsCompatController {
                                               @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
-            ChatSpec spec = chatManager.get(agentId, chatId);
+            String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+            ChatSpec spec = chatManager.get(resolvedAgentId, chatId);
             if (spec == null) return ResponseEntity.notFound().build();
-            requireOwner(spec, principal);
+            requireChatAccess(resolvedAgentId, spec, principal);
             return ResponseEntity.ok(Map.of(
-                    "success", chatManager.delete(agentId, chatId),
+                    "success", chatManager.delete(resolvedAgentId, chatId),
                     "chat_id", chatId,
                     "deleted_count", 1
             ));
@@ -103,13 +115,14 @@ public class ChatsCompatController {
                                                @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                                @AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.fromCallable(() -> {
+            String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
             int count = 0;
             if (chatIds != null) {
                 for (String chatId : chatIds) {
-                    ChatSpec spec = chatManager.get(agentId, chatId);
+                    ChatSpec spec = chatManager.get(resolvedAgentId, chatId);
                     if (spec != null) {
-                        requireOwner(spec, principal);
-                        if (chatManager.delete(agentId, chatId)) count++;
+                        requireChatAccess(resolvedAgentId, spec, principal);
+                        if (chatManager.delete(resolvedAgentId, chatId)) count++;
                     }
                 }
             }
@@ -121,8 +134,8 @@ public class ChatsCompatController {
         return sessionLogReader.readFrontendMessages(agentId, spec.getUserId(), spec.getChannel(), spec.getSessionId());
     }
 
-    private void requireOwner(ChatSpec spec, EnterprisePrincipal principal) {
-        if (!principal.id().equals(spec.getUserId())) {
+    private void requireChatAccess(String agentId, ChatSpec spec, EnterprisePrincipal principal) {
+        if (!agentAccessService.isProjectAgent(agentId) && !principal.id().equals(spec.getUserId())) {
             throw new SecurityException("The chat belongs to another user");
         }
     }

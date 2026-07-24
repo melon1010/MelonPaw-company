@@ -1,62 +1,65 @@
 .page {
   --auth-accent: #2f8f72;
-  --auth-grid: color-mix(in srgb, var(--mp-border) 56%, transparent);
+  --auth-panel: color-mix(in srgb, var(--mp-surface) 91%, transparent);
+  --auth-panel-border: color-mix(
+    in srgb,
+    var(--mp-border-strong) 78%,
+    transparent
+  );
   position: relative;
   width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 80px 24px 56px;
+  padding: 96px 28px 48px;
   overflow: auto;
   isolation: isolate;
   color: var(--mp-text);
-  background-color: var(--mp-canvas);
+  background: #f6f8f7;
 
   &::before {
     content: "";
     position: fixed;
-    z-index: -2;
+    z-index: 0;
     inset: 0;
     pointer-events: none;
-    background-image: linear-gradient(var(--auth-grid) 1px, transparent 1px),
-      linear-gradient(90deg, var(--auth-grid) 1px, transparent 1px);
-    background-position: center center;
-    background-size: 52px 52px;
-    opacity: 0.52;
-  }
-
-  &::after {
-    content: "";
-    position: fixed;
-    z-index: -1;
-    inset: 0;
-    pointer-events: none;
-    background: color-mix(in srgb, var(--mp-canvas) 78%, transparent);
+    background: url("/login-ai-topology-light.webp") center / cover no-repeat;
   }
 }
 
 .pageDark {
   --auth-accent: #67b79f;
-  --auth-grid: color-mix(in srgb, var(--mp-border-strong) 45%, transparent);
+  --auth-panel: color-mix(in srgb, var(--mp-surface) 88%, transparent);
+  --auth-panel-border: color-mix(
+    in srgb,
+    var(--mp-border-strong) 84%,
+    transparent
+  );
+  background: #111615;
+
+  &::before {
+    background-image: url("/login-ai-topology-dark.webp");
+  }
 }
 
 .themeToggle {
-  position: fixed;
-  z-index: 3;
-  top: 22px;
-  right: 24px;
-  width: 38px;
-  min-width: 38px;
-  height: 38px;
+  position: absolute;
+  z-index: 2;
+  top: 28px;
+  right: 32px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   padding: 0;
   color: var(--mp-text-secondary);
-  background: var(--mp-surface);
-  border: 1px solid var(--mp-border);
-  border-radius: 7px;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--mp-text) 7%, transparent);
+  background: var(--auth-panel);
+  border: 1px solid var(--auth-panel-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--mp-text) 7%, transparent);
+  backdrop-filter: blur(14px);
   cursor: pointer;
   transition:
     color 160ms ease,
@@ -67,8 +70,11 @@
   &:hover {
     color: var(--mp-text);
     background: var(--mp-surface-subtle);
-    border-color: var(--mp-border-strong);
-    transform: translateY(-1px);
+    border-color: var(--mp-text-tertiary);
+  }
+
+  &:active {
+    transform: translateY(1px);
   }
 
   &:focus-visible {
@@ -79,60 +85,28 @@
   }
 }
 
-.gridAxis {
-  position: fixed;
-  z-index: -1;
-  top: 50%;
-  left: 50%;
-  width: min(920px, calc(100vw - 48px));
-  height: min(720px, calc(100vh - 80px));
-  pointer-events: none;
-  border: 1px solid color-mix(in srgb, var(--mp-border-strong) 55%, transparent);
-  transform: translate(-50%, -50%);
-
-  &::before,
-  &::after {
-    content: "";
-    position: absolute;
-    background: color-mix(in srgb, var(--mp-border-strong) 60%, transparent);
-  }
-
-  &::before {
-    top: 50%;
-    right: 0;
-    left: 0;
-    height: 1px;
-  }
-
-  &::after {
-    top: 0;
-    bottom: 0;
-    left: 50%;
-    width: 1px;
-  }
-}
-
 .loginShell {
   position: relative;
   z-index: 1;
-  width: min(420px, 100%);
-  animation: login-in 380ms ease-out both;
+  width: min(416px, 100%);
 }
 
 .brandLockup {
+  position: absolute;
+  z-index: 2;
+  top: 28px;
+  left: 32px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 26px;
+  gap: 11px;
 }
 
 .brandMark {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
   border-radius: 8px;
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--mp-text) 12%, transparent);
+  box-shadow: 0 10px 28px rgba(26, 42, 37, 0.14);
 }
 
 .brandNameGroup {
@@ -146,86 +120,46 @@
     color: var(--mp-text);
     font-size: 17px;
     font-weight: 700;
-    line-height: 22px;
+    line-height: 21px;
   }
 
   span {
     color: var(--mp-text-tertiary);
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 600;
-    line-height: 15px;
+    line-height: 12px;
     text-transform: uppercase;
   }
 }
 
 .authPanel {
-  position: relative;
-  padding: 34px 36px 28px;
-  overflow: hidden;
-  background: var(--mp-surface-raised);
-  border: 1px solid var(--mp-border-strong);
-  border-radius: 8px;
-  box-shadow: var(--mp-shadow-popover);
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: -1px;
-    left: 34px;
-    width: 72px;
-    height: 2px;
-    background: var(--auth-accent);
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    top: 14px;
-    right: 14px;
-    width: 8px;
-    height: 8px;
-    border-top: 1px solid var(--mp-border-strong);
-    border-right: 1px solid var(--mp-border-strong);
-  }
-}
-
-.authEyebrow {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--mp-text-tertiary);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-}
-
-.statusDot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
-  border-radius: 50%;
-  background: var(--auth-accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--auth-accent) 12%, transparent);
+  width: 100%;
+  padding: 31px 32px 32px;
+  background: var(--auth-panel);
+  border: 1px solid var(--auth-panel-border);
+  border-radius: 16px;
+  box-shadow: 0 28px 80px color-mix(in srgb, var(--mp-text) 12%, transparent);
+  backdrop-filter: blur(22px) saturate(112%);
 }
 
 .heading {
-  margin: 17px 0 28px;
+  margin: 0 0 30px;
 }
 
 .heading h1 {
   margin: 0;
   color: var(--mp-text);
-  font-size: 28px;
-  font-weight: 650;
-  line-height: 36px;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 40px;
   letter-spacing: 0;
 }
 
 .heading p {
-  margin: 7px 0 0;
+  margin: 8px 0 0;
   color: var(--mp-text-secondary);
-  font-size: 13px;
-  line-height: 21px;
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .form :global(.ant-form-item),
@@ -242,19 +176,19 @@
 .form :global(.qwenpaw-form-item-label > label) {
   height: auto;
   color: var(--mp-text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  line-height: 18px;
+  line-height: 19px;
 }
 
 .form :global(.ant-input-affix-wrapper),
 .form :global(.qwenpaw-input-affix-wrapper) {
-  min-height: 48px;
-  padding: 0 13px;
+  min-height: 47px;
+  padding: 0 14px;
   color: var(--mp-text);
-  background: var(--mp-control-bg);
+  background: color-mix(in srgb, var(--mp-surface) 76%, transparent);
   border-color: var(--mp-border-strong);
-  border-radius: 7px !important;
+  border-radius: 8px !important;
   box-shadow: none !important;
   transition:
     border-color 160ms ease,
@@ -310,13 +244,14 @@
 
 .form :global(.ant-form-item-explain-error),
 .form :global(.qwenpaw-form-item-explain-error) {
-  margin-top: 4px;
+  margin-top: 5px;
   color: var(--mp-danger);
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .submitItem {
-  margin-top: 26px;
+  margin-top: 25px;
   margin-bottom: 0 !important;
 }
 
@@ -324,13 +259,14 @@
   height: 48px;
   display: inline-flex !important;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 9px;
   padding: 0 16px !important;
   color: var(--mp-primary-contrast) !important;
   background: var(--mp-primary) !important;
   border: 1px solid var(--mp-primary) !important;
-  border-radius: 7px !important;
-  font-size: 13px;
+  border-radius: 8px !important;
+  font-size: 14px;
   font-weight: 650;
   box-shadow: none !important;
   transition:
@@ -344,7 +280,10 @@
     background: var(--mp-primary-hover) !important;
     border-color: var(--mp-primary-hover) !important;
     outline: none;
-    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(1px);
   }
 
   &:focus-visible {
@@ -352,41 +291,16 @@
   }
 }
 
-.panelFooter {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 27px -36px -28px;
-  padding: 13px 18px;
-  color: var(--mp-text-tertiary);
-  background: var(--mp-surface-subtle);
-  border-top: 1px solid var(--mp-border);
-  font-size: 10px;
-  font-weight: 500;
-  line-height: 16px;
-
-  span:last-child {
-    font-variant-numeric: tabular-nums;
-  }
-}
-
-@keyframes login-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @media (max-width: 520px) {
   .page {
-    place-items: start center;
-    padding: 82px 16px 36px;
+    place-items: center;
+    padding: 92px 16px 28px;
+
+    &::before {
+      background-position: 32% center;
+      background-size: auto 100%;
+      opacity: 0.68;
+    }
   }
 
   .themeToggle {
@@ -394,61 +308,65 @@
     right: 16px;
   }
 
-  .gridAxis {
-    display: none;
-  }
-
   .brandLockup {
-    margin-bottom: 22px;
+    top: 16px;
+    left: 16px;
   }
 
   .brandMark {
-    width: 40px;
-    height: 40px;
-    flex-basis: 40px;
-  }
-
-  .authPanel {
-    padding: 28px 22px 24px;
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
   }
 
   .heading {
-    margin-bottom: 25px;
+    margin-bottom: 24px;
   }
 
   .heading h1 {
-    font-size: 26px;
-    line-height: 34px;
+    font-size: 29px;
+    line-height: 37px;
   }
 
-  .panelFooter {
-    margin: 25px -22px -24px;
+  .authPanel {
+    padding: 26px 20px 22px;
+    border-radius: 14px;
+    backdrop-filter: blur(20px) saturate(108%);
+  }
+}
+
+@media (max-width: 520px) and (max-height: 760px) {
+  .page {
+    place-items: start center;
+    padding-top: 92px;
   }
 }
 
 @media (max-height: 700px) and (min-width: 521px) {
   .page {
     place-items: start center;
-    padding-top: 54px;
-    padding-bottom: 36px;
+    padding-top: 90px;
+    padding-bottom: 32px;
   }
 
   .themeToggle {
     top: 16px;
   }
+}
 
-  .brandLockup {
-    margin-bottom: 18px;
+@media (prefers-reduced-transparency: reduce) {
+  .authPanel,
+  .themeToggle {
+    background: var(--mp-surface);
+    backdrop-filter: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loginShell {
-    animation: none;
-  }
-
   .themeToggle,
-  .submit {
+  .submit,
+  .form :global(.ant-input-affix-wrapper),
+  .form :global(.qwenpaw-input-affix-wrapper) {
     transition: none;
   }
 }

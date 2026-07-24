@@ -662,6 +662,15 @@ public class EnterpriseTaskService {
         return active;
     }
 
+    /** Cancels the active turn in a shared Agent conversation after controller authorization. */
+    public synchronized Map<String, Object> cancelActiveAgentSession(
+            String agentId, String sessionId, String reason) {
+        Map<String, Object> active = findActive(agentId, sessionId);
+        if (active.isEmpty()) return Map.of();
+        cancel(String.valueOf(active.get("task_id")), String.valueOf(active.get("run_id")), reason);
+        return active;
+    }
+
     public synchronized boolean hasActiveAgent(String agentId) {
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement("""
                 SELECT 1 FROM enterprise_tasks
@@ -1011,6 +1020,34 @@ public class EnterpriseTaskService {
                     "status", active.status());
         } catch (SQLException e) {
             throw databaseFailure("find active task", e);
+        }
+    }
+
+    private Map<String, Object> findActive(String agentId, String sessionId) {
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement("""
+                SELECT t.task_id, r.run_id, t.status
+                FROM enterprise_tasks t
+                JOIN enterprise_task_runs r ON r.task_id = t.task_id
+                WHERE t.agent_id = ? AND t.session_id = ?
+                  AND t.status IN ('RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED')
+                  AND r.attempt = (
+                      SELECT MAX(latest.attempt)
+                      FROM enterprise_task_runs latest
+                      WHERE latest.task_id = t.task_id
+                  )
+                ORDER BY t.updated_at DESC LIMIT 1
+                """)) {
+            statement.setString(1, required(agentId, "Agent"));
+            statement.setString(2, required(sessionId, "session"));
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) return Map.of();
+                return Map.of(
+                        "task_id", result.getString(1),
+                        "run_id", result.getString(2),
+                        "status", result.getString(3));
+            }
+        } catch (SQLException e) {
+            throw databaseFailure("find active shared task", e);
         }
     }
 

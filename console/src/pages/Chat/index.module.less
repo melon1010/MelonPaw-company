@@ -432,8 +432,13 @@
   }
 
   .chatConversationTitle {
-    width: 100%;
+    width: auto;
+    flex: 0 0 auto;
     justify-content: center;
+
+    &:empty {
+      display: none;
+    }
   }
 
   .chatHeaderActions {
@@ -545,7 +550,9 @@
 
 .approvalItem {
   flex: 0 0 auto;
+  width: 100%;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .approvalCardExit {

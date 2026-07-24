@@ -15,6 +15,7 @@ import type {
   BuiltinImportSpec,
   BuiltinUpdateNotice,
   PoolSkillSpec,
+  SkillSpec,
   WorkspaceSkillSummary,
 } from "../../../api/types";
 import { parseErrorDetail } from "../../../utils/error";
@@ -26,6 +27,8 @@ import {
 } from "../../Agent/Skills/components";
 import { useSkillFilter } from "../../Agent/Skills/useSkillFilter";
 import { useUploadLimitStore } from "../../../stores/uploadLimitStore";
+import { useAgentStore } from "../../../stores/agentStore";
+import { groupSkillsByEnabled } from "../../Agent/Skills/skillGroups";
 
 export type PoolMode = "broadcast" | "create" | "edit";
 
@@ -81,7 +84,9 @@ function writeBuiltinNoticeAcknowledgement(fingerprint: string): void {
 
 export function useSkillPool() {
   const { t, i18n } = useTranslation();
+  const selectedAgent = useAgentStore((state) => state.selectedAgent);
   const [skills, setSkills] = useState<PoolSkillSpec[]>([]);
+  const [workspaceSkills, setWorkspaceSkills] = useState<SkillSpec[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceSkillSummary[]>([]);
   const [builtinNotice, setBuiltinNotice] =
     useState<BuiltinUpdateNotice | null>(null);
@@ -127,9 +132,17 @@ export function useSkillPool() {
     ? "zh"
     : "en";
 
+  const {
+    enabledSkills: enabledPoolSkills,
+    disabledSkills: disabledPoolSkills,
+  } = useMemo(() => groupSkillsByEnabled(filteredSkills), [filteredSkills]);
+  const disabledWorkspaceSkills = useMemo(
+    () => groupSkillsByEnabled(workspaceSkills).disabledSkills,
+    [workspaceSkills],
+  );
   const sortedSkills = useMemo(
-    () => filteredSkills.slice().sort((a, b) => a.name.localeCompare(b.name)),
-    [filteredSkills],
+    () => [...enabledPoolSkills, ...disabledPoolSkills],
+    [disabledPoolSkills, enabledPoolSkills],
   );
   const hasUnseenBuiltinNotice = useMemo(
     () =>
@@ -188,7 +201,7 @@ export function useSkillPool() {
   const [showMarkdown, setShowMarkdown] = useState(true);
 
   // Use ref to cache data and avoid unnecessary reloads
-  const dataLoadedRef = useRef(false);
+  const loadedAgentRef = useRef<string | null>(null);
 
   const markBuiltinNoticeSeen = useCallback(
     (fingerprint?: string) => {
@@ -204,19 +217,22 @@ export function useSkillPool() {
 
   const loadData = useCallback(
     async (forceReload = false) => {
-      if (dataLoadedRef.current && !forceReload) return;
+      if (loadedAgentRef.current === selectedAgent && !forceReload) return;
 
       setLoading(true);
       try {
-        const [poolSkills, workspaceSummaries, notice] = await Promise.all([
-          api.listSkillPoolSkills(),
-          api.listSkillWorkspaces(),
-          api.getPoolBuiltinNotice(),
-        ]);
+        const [poolSkills, currentWorkspaceSkills, workspaceSummaries, notice] =
+          await Promise.all([
+            api.listSkillPoolSkills(),
+            api.listSkills(selectedAgent),
+            api.listSkillWorkspaces(),
+            api.getPoolBuiltinNotice(),
+          ]);
         setSkills(poolSkills);
+        setWorkspaceSkills(currentWorkspaceSkills);
         setWorkspaces(workspaceSummaries);
         setBuiltinNotice(notice);
-        dataLoadedRef.current = true;
+        loadedAgentRef.current = selectedAgent;
       } catch (error) {
         message.error(
           error instanceof Error ? error.message : "Failed to load skill pool",
@@ -225,22 +241,26 @@ export function useSkillPool() {
         setLoading(false);
       }
     },
-    [message],
+    [message, selectedAgent],
   );
 
   const handleRefresh = useCallback(async () => {
     setLoading(true);
     try {
       invalidateSkillCache({ pool: true, workspaces: true });
-      const [poolSkills, workspaceSummaries, notice] = await Promise.all([
-        api.refreshSkillPool(),
-        api.listSkillWorkspaces(),
-        api.getPoolBuiltinNotice(),
-      ]);
+      invalidateSkillCache({ agentId: selectedAgent });
+      const [poolSkills, currentWorkspaceSkills, workspaceSummaries, notice] =
+        await Promise.all([
+          api.refreshSkillPool(),
+          api.refreshSkills(selectedAgent),
+          api.listSkillWorkspaces(),
+          api.getPoolBuiltinNotice(),
+        ]);
       setSkills(poolSkills);
+      setWorkspaceSkills(currentWorkspaceSkills);
       setWorkspaces(workspaceSummaries);
       setBuiltinNotice(notice);
-      dataLoadedRef.current = true;
+      loadedAgentRef.current = selectedAgent;
     } catch (error) {
       message.error(
         error instanceof Error ? error.message : "Failed to refresh",
@@ -248,7 +268,26 @@ export function useSkillPool() {
     } finally {
       setLoading(false);
     }
-  }, [message]);
+  }, [message, selectedAgent]);
+
+  const handleUploadDisabledWorkspaceSkill = useCallback(
+    async (skillName: string) => {
+      try {
+        await api.uploadWorkspaceSkillToPool({
+          workspace_id: selectedAgent,
+          skill_name: skillName,
+        });
+        invalidateSkillCache({ pool: true });
+        setSkills(await api.refreshSkillPool());
+        message.success(t("skills.uploadedToPool"));
+      } catch (error) {
+        message.error(
+          error instanceof Error ? error.message : t("skills.uploadFailed"),
+        );
+      }
+    },
+    [message, selectedAgent, t],
+  );
 
   useEffect(() => {
     void loadData();
@@ -1089,6 +1128,9 @@ export function useSkillPool() {
     loading,
     skills,
     sortedSkills,
+    enabledPoolSkills,
+    disabledPoolSkills,
+    disabledWorkspaceSkills,
     workspaces,
     mode,
     activeSkill,
@@ -1127,6 +1169,7 @@ export function useSkillPool() {
     setFilterOpen,
     setViewMode,
     handleRefresh,
+    handleUploadDisabledWorkspaceSkill,
     closeModal,
     openCreate,
     openBroadcast,

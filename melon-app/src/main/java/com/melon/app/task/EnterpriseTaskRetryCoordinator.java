@@ -44,7 +44,8 @@ public class EnterpriseTaskRetryCoordinator {
         String sessionId = text(task.get("session_id"), "default");
         String chatId = text(task.get("chat_id"), "");
         String channel = text(retry.intent().env().get("channel"), "console");
-        launch(retry.intent(), run, agentId, ownerUserId, sessionId, chatId, channel);
+        String executionUserId = chatManager.isSharedAgent(agentId) ? actorUserId : ownerUserId;
+        launch(retry.intent(), run, agentId, executionUserId, sessionId, chatId, channel);
         return run;
     }
 
@@ -87,14 +88,20 @@ public class EnterpriseTaskRetryCoordinator {
 
     private void launch(EnterpriseTaskService.RetryIntent intent,
                         EnterpriseTaskService.TaskRun run,
-                        String agentId, String ownerUserId, String sessionId,
+                        String agentId, String executionUserId, String sessionId,
                         String chatId, String channel) {
+        String turnId = "";
         try {
-            if (!chatId.isBlank()) chatManager.setStatus(agentId, chatId, "running");
-            execute(intent, run, agentId, ownerUserId, sessionId)
+            if (!chatId.isBlank()) {
+                chatManager.beginExistingTurn(agentId, chatId, executionUserId);
+                turnId = chatManager.activeTurnId(agentId, chatId);
+            }
+            String activeTurnId = turnId;
+            execute(intent, run, agentId, executionUserId, sessionId)
                     .doOnSuccess(summary -> tasks.succeed(run, summary))
                     .doOnError(error -> tasks.fail(run, error))
-                    .doFinally(signal -> finishChat(agentId, chatId, channel, ownerUserId, sessionId))
+                    .doFinally(signal -> finishChat(
+                            agentId, chatId, channel, executionUserId, sessionId, activeTurnId))
                     .onErrorResume(error -> {
                         log.warn("Task retry failed: task={}, run={}", run.taskId(), run.runId(), error);
                         return Mono.empty();
@@ -102,7 +109,7 @@ public class EnterpriseTaskRetryCoordinator {
                     .subscribe();
         } catch (RuntimeException error) {
             tasks.fail(run, error);
-            finishChat(agentId, chatId, channel, ownerUserId, sessionId);
+            finishChat(agentId, chatId, channel, executionUserId, sessionId, turnId);
             log.warn("Task retry could not start: task={}, run={}", run.taskId(), run.runId(), error);
         }
     }
@@ -144,12 +151,16 @@ public class EnterpriseTaskRetryCoordinator {
     }
 
     private void finishChat(String agentId, String chatId, String channel,
-                            String ownerUserId, String sessionId) {
+                            String executionUserId, String sessionId, String turnId) {
         try {
-            if (!chatId.isBlank()) chatManager.setStatus(agentId, chatId, "idle");
-            chatManager.saveSessionShadowFromStateStore(agentId, channel, ownerUserId, sessionId);
+            chatManager.saveSessionShadowFromStateStore(
+                    agentId, channel, executionUserId, sessionId);
         } catch (RuntimeException e) {
             log.warn("Failed to refresh chat after task retry: agent={}, session={}", agentId, sessionId, e);
+        } finally {
+            if (!chatId.isBlank()) {
+                chatManager.endTurn(agentId, chatId, executionUserId, turnId);
+            }
         }
     }
 

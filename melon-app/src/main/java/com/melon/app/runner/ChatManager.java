@@ -1,11 +1,14 @@
 package com.melon.app.runner;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.melon.app.auth.AgentSharingPolicy;
 import com.melon.app.service.HistoryStore;
+import com.melon.core.agent.AgentScopedStateStore;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.ConfigManager;
 import com.melon.core.util.JsonUtils;
 import com.melon.core.util.SafePathUtil;
+import io.agentscope.core.state.AgentState;
 import io.agentscope.core.state.AgentStateStore;
 import io.agentscope.core.state.JsonFileAgentStateStore;
 import org.slf4j.Logger;
@@ -20,9 +23,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 
@@ -38,31 +43,43 @@ public class ChatManager {
     private final ConfigManager configManager;
     private final HistoryStore historyStore;
     private final AgentStateLookup stateLookup;
+    private final AgentStateStore stateStore;
+    private final Predicate<String> sharedAgent;
+    private final Map<String, String> activeTurns = new LinkedHashMap<>();
 
     public ChatManager(ConfigManager configManager) {
-        this(configManager, null, new JsonFileAgentStateStore(configManager.resolveStateDir()));
+        this(configManager, null, new JsonFileAgentStateStore(configManager.resolveStateDir()), ignored -> false);
     }
 
     public ChatManager(ConfigManager configManager, HistoryStore historyStore) {
-        this(configManager, historyStore, new JsonFileAgentStateStore(configManager.resolveStateDir()));
+        this(configManager, historyStore, new JsonFileAgentStateStore(configManager.resolveStateDir()), ignored -> false);
     }
 
     @Autowired
-    public ChatManager(ConfigManager configManager, HistoryStore historyStore, AgentStateStore stateStore) {
-        this.configManager = configManager;
-        this.historyStore = historyStore;
-        this.stateLookup = new AgentStateLookup(stateStore);
+    public ChatManager(ConfigManager configManager, HistoryStore historyStore,
+                       AgentStateStore stateStore, AgentSharingPolicy sharingPolicy) {
+        this(configManager, historyStore, stateStore, sharingPolicy::sharesAcrossUsers);
     }
 
-    public List<ChatSpec> list(String agentId, String userId, String channel) {
+    ChatManager(ConfigManager configManager, HistoryStore historyStore,
+                AgentStateStore stateStore, Predicate<String> sharedAgent) {
+        this.configManager = configManager;
+        this.historyStore = historyStore;
+        this.stateStore = stateStore;
+        this.stateLookup = new AgentStateLookup(stateStore);
+        this.sharedAgent = sharedAgent != null ? sharedAgent : ignored -> false;
+    }
+
+    public synchronized List<ChatSpec> list(String agentId, String userId, String channel) {
         List<ChatSpec> chats = load(agentId);
         Map<String, ChatSpec> unique = new LinkedHashMap<>();
+        boolean shared = isSharedAgent(agentId);
         for (ChatSpec chat : chats) {
-            if ((userId != null && !userId.isBlank() && !userId.equals(chat.getUserId()))
+            if ((userId != null && !userId.isBlank() && !shared && !userId.equals(chat.getUserId()))
                     || (channel != null && !channel.isBlank() && !channel.equals(chat.getChannel()))) {
                 continue;
             }
-            String key = valueOrDefault(chat.getUserId(), "default") + "\u0000"
+            String key = (shared ? "__shared__" : valueOrDefault(chat.getUserId(), "default")) + "\u0000"
                     + valueOrDefault(chat.getChannel(), "console") + "\u0000"
                     + valueOrDefault(chat.getSessionId(), chat.getId());
             ChatSpec existing = unique.get(key);
@@ -79,7 +96,7 @@ public class ChatManager {
         return a.compareTo(b);
     }
 
-    public ChatSpec create(String agentId, String name, String userId, String channel, String sessionId) {
+    public synchronized ChatSpec create(String agentId, String name, String userId, String channel, String sessionId) {
         ChatSpec spec = new ChatSpec(UUID.randomUUID().toString(), normalizeAgentId(agentId), nameOrDefault(name));
         spec.setSessionId(sessionId != null && !sessionId.isBlank() ? sessionId : newSessionId());
         spec.setUserId(valueOrDefault(userId, "default"));
@@ -90,7 +107,7 @@ public class ChatManager {
         return spec;
     }
 
-    public ChatSpec get(String agentId, String chatId) {
+    public synchronized ChatSpec get(String agentId, String chatId) {
         if (chatId == null || chatId.isBlank()) return null;
         return load(agentId).stream()
                 .filter(chat -> chatId.equals(chat.getId()))
@@ -98,7 +115,7 @@ public class ChatManager {
                 .orElse(null);
     }
 
-    public ChatSpec update(String agentId, ChatSpec spec) {
+    public synchronized ChatSpec update(String agentId, ChatSpec spec) {
         if (spec == null || spec.getId() == null || spec.getId().isBlank()) {
             throw new IllegalArgumentException("ChatSpec or id is null");
         }
@@ -107,7 +124,7 @@ public class ChatManager {
         return spec;
     }
 
-    public boolean delete(String agentId, String chatId) {
+    public synchronized boolean delete(String agentId, String chatId) {
         if (chatId == null || chatId.isBlank()) return false;
         List<ChatSpec> chats = new ArrayList<>(load(agentId));
         ChatSpec deleted = chats.stream()
@@ -115,19 +132,27 @@ public class ChatManager {
                 .findFirst()
                 .orElse(null);
         if (deleted == null) return false;
+        if (activeTurns.containsKey(turnLeaseKey(agentId, chatId))) return false;
+        for (String stateUserId : stateUsers(
+                agentId, deleted.getChannel(), deleted.getSessionId(), deleted.getUserId())) {
+            stateStore.delete(AgentScopedStateStore.scopedUserId(agentId, stateUserId),
+                    deleted.getSessionId());
+        }
         chats.remove(deleted);
         save(agentId, chats);
         clearSession(agentId, deleted.getChannel(), deleted.getUserId(), deleted.getSessionId());
         return true;
     }
 
-    public ChatSpec getOrCreateForSession(String agentId, String sessionId, String userId, String channel, String name) {
+    public synchronized ChatSpec getOrCreateForSession(
+            String agentId, String sessionId, String userId, String channel, String name) {
         String sid = valueOrDefault(sessionId, newSessionId());
         String uid = valueOrDefault(userId, "default");
         String ch = valueOrDefault(channel, "console");
+        boolean shared = isSharedAgent(agentId);
         ChatSpec existing = load(agentId).stream()
                 .filter(chat -> sid.equals(chat.getSessionId())
-                        && uid.equals(chat.getUserId())
+                        && (shared || uid.equals(chat.getUserId()))
                         && ch.equals(chat.getChannel()))
                 .findFirst()
                 .orElse(null);
@@ -135,11 +160,138 @@ public class ChatManager {
         return create(agentId, name, uid, ch, sid);
     }
 
-    public void setStatus(String agentId, String chatId, String status) {
-        ChatSpec spec = get(agentId, chatId);
-        if (spec == null) return;
-        spec.setStatus(valueOrDefault(status, "idle"));
-        update(agentId, spec);
+    /**
+     * Atomically opens one conversation turn and hands completed conversation context to a new
+     * project member without carrying over another member's approvals or tool runtime state.
+     */
+    public synchronized ChatSpec beginTurn(
+            String agentId, String sessionId, String userId, String channel, String name) {
+        ChatSpec chat = getOrCreateForSession(agentId, sessionId, userId, channel, name);
+        return beginTurn(agentId, chat, userId);
+    }
+
+    /** Opens a turn for an already persisted chat without relying on a possibly duplicated session id. */
+    public synchronized ChatSpec beginExistingTurn(String agentId, String chatId, String userId) {
+        ChatSpec chat = get(agentId, chatId);
+        if (chat == null) throw new IllegalStateException("Conversation no longer exists");
+        return beginTurn(agentId, chat, userId);
+    }
+
+    private ChatSpec beginTurn(String agentId, ChatSpec chat, String userId) {
+        String leaseKey = turnLeaseKey(agentId, chat.getId());
+        if (activeTurns.containsKey(leaseKey)) {
+            throw new IllegalStateException("This conversation already has a running turn");
+        }
+        if ("running".equalsIgnoreCase(chat.getStatus())) {
+            log.warn("Recovering stale running conversation: agent={}, chat={}, session={}",
+                    agentId, chat.getId(), chat.getSessionId());
+        }
+        String turnId = UUID.randomUUID().toString();
+        activeTurns.put(leaseKey, turnId);
+        try {
+            if (isSharedAgent(agentId)) {
+                handOffConversationState(agentId, chat, userId);
+                addStateUser(chat, userId);
+            }
+            chat.getMeta().put("active_user_id", valueOrDefault(userId, "default"));
+            chat.getMeta().put("active_turn_id", turnId);
+            chat.getMeta().put("active_turn_started_at", Instant.now().toString());
+            chat.setStatus("running");
+            return update(agentId, chat);
+        } catch (RuntimeException e) {
+            activeTurns.remove(leaseKey, turnId);
+            throw e;
+        }
+    }
+
+    /**
+     * Finishes only the matching execution lease. A late completion callback from a cancelled
+     * turn must never mark a newer turn idle or replace its active actor.
+     */
+    public synchronized void endTurn(String agentId, String chatId, String userId, String turnId) {
+        ChatSpec chat = get(agentId, chatId);
+        if (chat == null) return;
+        String leaseKey = turnLeaseKey(agentId, chatId);
+        String activeTurnId = stringValue(activeTurns.get(leaseKey));
+        String persistedTurnId = stringValue(chat.getMeta().get("active_turn_id"));
+        if (turnId != null && !turnId.isBlank()
+                && ((!activeTurnId.isBlank() && !turnId.equals(activeTurnId))
+                    || (!persistedTurnId.isBlank() && !turnId.equals(persistedTurnId)))) {
+            log.debug("Ignoring stale conversation completion: agent={}, chat={}, turn={}",
+                    agentId, chatId, turnId);
+            return;
+        }
+        String actor = valueOrDefault(userId, "default");
+        String activeUserId = stringValue(chat.getMeta().get("active_user_id"));
+        if (!activeUserId.isBlank() && !activeUserId.equals(actor)) {
+            log.debug("Ignoring conversation completion from non-active user: agent={}, chat={}, user={}",
+                    agentId, chatId, actor);
+            return;
+        }
+        if (isSharedAgent(agentId)
+                && stateLookup.find(agentId, actor, chat.getSessionId()).isPresent()) {
+            chat.getMeta().put("state_user_id", actor);
+            addStateUser(chat, actor);
+        }
+        if (turnId == null || turnId.isBlank()) activeTurns.remove(leaseKey);
+        else activeTurns.remove(leaseKey, turnId);
+        chat.getMeta().remove("active_user_id");
+        chat.getMeta().remove("active_turn_id");
+        chat.getMeta().remove("active_turn_started_at");
+        chat.setStatus("idle");
+        update(agentId, chat);
+    }
+
+    public synchronized String activeUserId(String agentId, String chatId, String fallback) {
+        ChatSpec chat = get(agentId, chatId);
+        return chat == null ? valueOrDefault(fallback, "default")
+                : stringValue(chat.getMeta().get("active_user_id"),
+                        valueOrDefault(fallback, chat.getUserId()));
+    }
+
+    public synchronized String activeTurnId(String agentId, String chatId) {
+        ChatSpec chat = get(agentId, chatId);
+        return chat == null ? "" : stringValue(chat.getMeta().get("active_turn_id"));
+    }
+
+    public boolean isSharedAgent(String agentId) {
+        return sharedAgent.test(normalizeAgentId(agentId));
+    }
+
+    public String stateUserId(String agentId, String channel, String sessionId, String fallback) {
+        if (!isSharedAgent(agentId)) return valueOrDefault(fallback, "default");
+        ChatSpec chat = findBySession(agentId, channel, sessionId);
+        if (chat == null) return valueOrDefault(fallback, "default");
+        return stringValue(chat.getMeta().get("state_user_id"), chat.getUserId());
+    }
+
+    public List<String> stateUsers(String agentId, String channel, String sessionId, String fallback) {
+        if (!isSharedAgent(agentId)) return List.of(valueOrDefault(fallback, "default"));
+        ChatSpec chat = findBySession(agentId, channel, sessionId);
+        if (chat == null) return List.of(valueOrDefault(fallback, "default"));
+        LinkedHashSet<String> users = new LinkedHashSet<>();
+        users.add(valueOrDefault(chat.getUserId(), "default"));
+        Object raw = chat.getMeta().get("state_user_ids");
+        if (raw instanceof List<?> list) {
+            list.stream().map(String::valueOf).filter(value -> !value.isBlank()).forEach(users::add);
+        }
+        return List.copyOf(users);
+    }
+
+    public String storageUserId(String agentId, String channel, String sessionId, String fallback) {
+        if (!isSharedAgent(agentId)) return valueOrDefault(fallback, "default");
+        ChatSpec chat = findBySession(agentId, channel, sessionId);
+        return chat != null ? valueOrDefault(chat.getUserId(), "default")
+                : valueOrDefault(fallback, "default");
+    }
+
+    public synchronized void resetSharedStateMetadata(
+            String agentId, String channel, String sessionId) {
+        ChatSpec chat = findBySession(agentId, channel, sessionId);
+        if (chat == null || !isSharedAgent(agentId)) return;
+        chat.getMeta().remove("state_user_id");
+        chat.getMeta().remove("state_user_ids");
+        update(agentId, chat);
     }
 
     public Path sessionFile(String agentId, String channel, String userId, String sessionId) {
@@ -152,6 +304,7 @@ public class ChatManager {
 
     public void saveSessionShadow(String agentId, String channel, String userId, String sessionId, Map<String, Object> state) {
         if (state == null || state.isEmpty()) return;
+        String storageUserId = storageUserId(agentId, channel, sessionId, userId);
         Map<String, Object> normalizedState = new LinkedHashMap<>(state);
         normalizeState(agentId, normalizedState);
         Map<String, Object> agent = new LinkedHashMap<>();
@@ -160,7 +313,7 @@ public class ChatManager {
             historyStore.appendSessionAsync(agentId, sessionId, normalizedState);
         }
         agent.put("scroll", stateScrollIndex(agentId, sessionId, normalizedState));
-        JsonUtils.save(sessionFile(agentId, channel, userId, sessionId), Map.of("agent", agent));
+        JsonUtils.save(sessionFile(agentId, channel, storageUserId, sessionId), Map.of("agent", agent));
     }
 
     public void saveSessionShadowFromStateStore(String agentId, String channel, String userId, String sessionId) {
@@ -193,7 +346,8 @@ public class ChatManager {
     }
 
     public Map<String, Object> loadSessionShadow(String agentId, String channel, String userId, String sessionId) {
-        Path file = sessionFile(agentId, channel, userId, sessionId);
+        String storageUserId = storageUserId(agentId, channel, sessionId, userId);
+        Path file = sessionFile(agentId, channel, storageUserId, sessionId);
         if (!Files.isRegularFile(file)) return Map.of();
         Map<String, Object> raw = JsonUtils.load(file, MAP_TYPE);
         return raw != null ? raw : Map.of();
@@ -203,7 +357,8 @@ public class ChatManager {
     public boolean clearSession(String agentId, String channel, String userId, String sessionId) {
         boolean deleted = false;
         try {
-            deleted = Files.deleteIfExists(sessionFile(agentId, channel, userId, sessionId));
+            String storageUserId = storageUserId(agentId, channel, sessionId, userId);
+            deleted = Files.deleteIfExists(sessionFile(agentId, channel, storageUserId, sessionId));
         } catch (IOException e) {
             log.warn("Failed to clear session shadow: agent={}, session={}", agentId, sessionId, e);
         }
@@ -239,12 +394,52 @@ public class ChatManager {
     }
 
     private Map<String, Object> previousShadowState(String agentId, String channel, String userId, String sessionId) {
-        Map<String, Object> shadow = loadSessionShadow(agentId, channel, userId, sessionId);
+        Map<String, Object> shadow = loadSessionShadow(agentId, channel,
+                storageUserId(agentId, channel, sessionId, userId), sessionId);
         Object agentRaw = shadow.get("agent");
         if (!(agentRaw instanceof Map<?, ?> agentMap)) return Map.of();
         Object stateRaw = asMap(agentMap).get("state");
         if (!(stateRaw instanceof Map<?, ?> stateMap)) return Map.of();
         return asMap(stateMap);
+    }
+
+    private void handOffConversationState(String agentId, ChatSpec chat, String targetUserId) {
+        String target = valueOrDefault(targetUserId, "default");
+        String source = stringValue(chat.getMeta().get("state_user_id"), chat.getUserId());
+        if (target.equals(source)) return;
+        stateLookup.find(agentId, source, chat.getSessionId()).ifPresent(state -> {
+            AgentState conversationState = AgentState.builder()
+                    .sessionId(chat.getSessionId())
+                    .userId(target)
+                    .summary(state.getSummary())
+                    .context(state.getContext())
+                    .build();
+            stateStore.save(AgentScopedStateStore.scopedUserId(agentId, target),
+                    chat.getSessionId(), "agent_state", conversationState);
+        });
+    }
+
+    private void addStateUser(ChatSpec chat, String userId) {
+        LinkedHashSet<String> users = new LinkedHashSet<>();
+        Object raw = chat.getMeta().get("state_user_ids");
+        if (raw instanceof List<?> list) {
+            list.stream().map(String::valueOf).filter(value -> !value.isBlank()).forEach(users::add);
+        }
+        users.add(valueOrDefault(userId, "default"));
+        chat.getMeta().put("state_user_ids", List.copyOf(users));
+    }
+
+    private ChatSpec findBySession(String agentId, String channel, String sessionId) {
+        String ch = valueOrDefault(channel, "console");
+        String sid = valueOrDefault(sessionId, "default");
+        return load(agentId).stream()
+                .filter(chat -> sid.equals(chat.getSessionId()) && ch.equals(chat.getChannel()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String turnLeaseKey(String agentId, String chatId) {
+        return normalizeAgentId(agentId) + "\u0000" + valueOrDefault(chatId, "default");
     }
 
     private List<ChatSpec> load(String agentId) {
@@ -265,7 +460,7 @@ public class ChatManager {
 
     private void save(String agentId, List<ChatSpec> chats) {
         List<Map<String, Object>> payload = chats.stream().map(this::payload).toList();
-        JsonUtils.save(chatsFile(agentId), Map.of("version", 1, "chats", payload));
+        JsonUtils.saveOrThrow(chatsFile(agentId), Map.of("version", 1, "chats", payload));
     }
 
     private void upsert(String agentId, ChatSpec spec) {

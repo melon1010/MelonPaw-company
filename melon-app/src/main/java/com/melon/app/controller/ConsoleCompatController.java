@@ -111,18 +111,26 @@ public class ConsoleCompatController {
         }
         List<Map<String, Object>> frontendContext = frontendUserMessages(agentId, body.get("input"));
         String text = modelFacingText(frontendContext);
-        ChatSpec chat = chatManager.getOrCreateForSession(agentId, sessionId, userId, channel, initialTitle(agentId, text));
+        ChatSpec chat = chatManager.beginTurn(
+                agentId, sessionId, userId, channel, initialTitle(agentId, text));
         String chatId = chat.getId();
+        String turnId = chatManager.activeTurnId(agentId, chatId);
         String requestId = stringValue(body.get("request_id"), stringValue(body.get("client_request_id"), ""));
-        EnterpriseTaskService.TaskRun task = taskService.startForAgent(
-                "AGENT", userId, agentId, chat.getName(), sessionId, "console",
-                requestId, chatId, requestId);
+        EnterpriseTaskService.TaskRun task;
+        try {
+            task = taskService.startForAgent(
+                    "AGENT", userId, agentId, chat.getName(), sessionId, "console",
+                    requestId, chatId, requestId);
+        } catch (RuntimeException e) {
+            chatManager.endTurn(agentId, chatId, userId, turnId);
+            throw e;
+        }
         if (!task.created()) {
+            chatManager.endTurn(agentId, chatId, userId, turnId);
             MelonPawEnvelopeMapper duplicate = new MelonPawEnvelopeMapper(sessionId, task.taskId(), task.runId());
             return Flux.fromIterable(duplicate.completeWithText(
                     "This request was already accepted.", Map.of("task_id", task.taskId(), "run_id", task.runId())));
         }
-        chatManager.setStatus(agentId, chatId, "running");
 
         CommandHandler.CommandResult command = commandDispatcher.dispatch(text);
         boolean loopCommand = command != null && command.isSuccess()
@@ -136,7 +144,7 @@ public class ConsoleCompatController {
                                 error.getMessage() != null ? error.getMessage() : "Command failed"));
                     })
                     .flatMapMany(outcome -> commandResponse(agentId, channel, userId, sessionId,
-                            chatId, frontendContext, outcome, task));
+                            chatId, turnId, frontendContext, outcome, task));
         }
 
         Map<String, Object> env = new LinkedHashMap<>();
@@ -187,7 +195,7 @@ public class ConsoleCompatController {
                             frontendContext, envelope, false);
                     taskService.succeed(task, envelope.visibleAssistantText());
                     taskSettled.set(true);
-                    markConsoleChatIdle(agentId, chatId, sessionId);
+                    markConsoleChatIdle(agentId, chatId, userId, sessionId, turnId);
                     return Flux.fromIterable(completedEvents);
                 }))
                 .startWith(envelope.start())
@@ -199,7 +207,7 @@ public class ConsoleCompatController {
                     if (taskSettled.compareAndSet(false, true)) {
                         taskService.fail(task, e);
                     }
-                    markConsoleChatIdle(agentId, chatId, sessionId);
+                    markConsoleChatIdle(agentId, chatId, userId, sessionId, turnId);
                     return Flux.fromIterable(errorEvents);
                 })
                 .doFinally(signal -> {
@@ -209,7 +217,7 @@ public class ConsoleCompatController {
                             persistConsoleSession(agentId, channel, userId, sessionId,
                                     frontendContext, envelope, true);
                             taskService.cancel(task, "execution cancelled");
-                            markConsoleChatIdle(agentId, chatId, sessionId);
+                            markConsoleChatIdle(agentId, chatId, userId, sessionId, turnId);
                         }
                     } finally {
                         Flux<ServerSentEvent<String>> detached = detachedRef.get();
@@ -247,9 +255,10 @@ public class ConsoleCompatController {
         }
     }
 
-    private void markConsoleChatIdle(String agentId, String chatId, String sessionId) {
+    private void markConsoleChatIdle(String agentId, String chatId, String userId,
+                                     String sessionId, String turnId) {
         try {
-            chatManager.setStatus(agentId, chatId, "idle");
+            chatManager.endTurn(agentId, chatId, userId, turnId);
         } catch (RuntimeException e) {
             log.warn("Failed to mark console chat idle: agent={}, session={}, chat={}",
                     agentId, sessionId, chatId, e);
@@ -257,7 +266,8 @@ public class ConsoleCompatController {
     }
 
     private String consoleStreamKey(String agentId, String userId, String channel, String sessionId) {
-        return agentId + "\u0000" + userId + "\u0000" + channel + "\u0000" + sessionId;
+        String scopeUser = agentAccessService.isProjectAgent(agentId) ? "__shared__" : userId;
+        return agentId + "\u0000" + scopeUser + "\u0000" + channel + "\u0000" + sessionId;
     }
 
     @PostMapping("/chat/stop")
@@ -273,12 +283,13 @@ public class ConsoleCompatController {
         String chatId = stringValue(payload.get("chat_id"), stringValue(chatIdParam, ""));
         ChatSpec chat = chatManager.get(effectiveAgentId, chatId);
         String userId = principal.id();
-        if (chat != null && !userId.equals(chat.getUserId())) {
+        boolean sharedChat = agentAccessService.isProjectAgent(effectiveAgentId);
+        if (chat != null && !sharedChat && !userId.equals(chat.getUserId())) {
             return Mono.error(new SecurityException("The chat belongs to another user"));
         }
         String requestedSessionId = stringValue(payload.get("session_id"), stringValue(sessionIdParam, ""));
         if (chat == null && !requestedSessionId.isBlank()) {
-            chat = chatManager.list(effectiveAgentId, userId, null).stream()
+            chat = chatManager.list(effectiveAgentId, sharedChat ? null : userId, null).stream()
                     .filter(item -> requestedSessionId.equals(item.getSessionId()))
                     .findFirst()
                     .orElse(null);
@@ -290,13 +301,15 @@ public class ConsoleCompatController {
         // A stop request is always scoped to the owned chat. Never let a caller
         // replace the session id after ownership has been established.
         String sessionId = chatSessionId;
+        String executionUserId = chatManager.activeUserId(effectiveAgentId, chat.getId(), chat.getUserId());
+        String activeTurnId = chatManager.activeTurnId(effectiveAgentId, chat.getId());
 
         boolean interrupted = false;
         String detail = "";
         try {
             HarnessAgent agent = multiAgentManager.getAgent(effectiveAgentId);
             if (agent != null) {
-                agent.getDelegate().interrupt(userId, sessionId);
+                agent.getDelegate().interrupt(executionUserId, sessionId);
                 interrupted = true;
             } else {
                 detail = "agent is not running";
@@ -307,26 +320,36 @@ public class ConsoleCompatController {
             return Mono.error(new IllegalStateException("Failed to interrupt chat", e));
         }
 
-        boolean executionCancelled = agentRunner.cancel(effectiveAgentId, userId, sessionId);
+        boolean executionCancelled = agentRunner.cancel(effectiveAgentId, executionUserId, sessionId);
 
-        boolean approvalCancelled = approvalService.cancelPendingApproval(effectiveAgentId, sessionId, userId);
+        boolean approvalCancelled = sharedChat
+                ? approvalService.cancelPendingApproval(effectiveAgentId, sessionId)
+                : approvalService.cancelPendingApproval(effectiveAgentId, sessionId, userId);
+        int pendingConfirmationsClosed = agentRunner.abandonPendingConfirmations(
+                effectiveAgentId, executionUserId, sessionId);
         boolean planCancelled = approvalService.cancelPendingPlan(effectiveAgentId, sessionId);
-        taskService.cancelActiveSession(userId, effectiveAgentId, sessionId, "cancelled from chat");
+        if (sharedChat) {
+            taskService.cancelActiveAgentSession(effectiveAgentId, sessionId, "cancelled from shared chat");
+        } else {
+            taskService.cancelActiveSession(userId, effectiveAgentId, sessionId, "cancelled from chat");
+        }
         int shellCancelled = 0;
         if (!chatId.isBlank()) {
-            chatManager.setStatus(effectiveAgentId, chatId, "idle");
+            chatManager.endTurn(effectiveAgentId, chatId, executionUserId, activeTurnId);
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("stopped", true);
         result.put("interrupted", interrupted);
         result.put("execution_cancelled", executionCancelled);
         result.put("approval_cancelled", approvalCancelled);
+        result.put("pending_confirmations_closed", pendingConfirmationsClosed);
         result.put("plan_cancelled", planCancelled);
         result.put("shell_cancelled", shellCancelled);
         result.put("chat_id", chatId);
         result.put("agent_id", effectiveAgentId);
         result.put("session_id", sessionId);
         result.put("user_id", userId);
+        result.put("execution_user_id", executionUserId);
         result.put("detail", detail);
         return Mono.just(ResponseEntity.ok(result));
     }
@@ -695,9 +718,21 @@ public class ConsoleCompatController {
                     removeSkill(agentId, stringValue(result.getData().get("skill"), ""))));
             case CLEAR_HISTORY -> Mono.fromCallable(() -> {
                 agentRunner.cancel(agentId, userId, sessionId);
-                approvalService.cancelPendingApproval(agentId, sessionId, userId);
-                multiAgentManager.clearSession(agentId, userId, sessionId);
-                chatManager.clearSession(agentId, channel, userId, sessionId);
+                boolean shared = agentAccessService.isProjectAgent(agentId);
+                if (shared) {
+                    approvalService.cancelPendingApproval(agentId, sessionId);
+                    for (String stateUserId : chatManager.stateUsers(
+                            agentId, channel, sessionId, userId)) {
+                        multiAgentManager.clearSession(agentId, stateUserId, sessionId);
+                    }
+                } else {
+                    approvalService.cancelPendingApproval(agentId, sessionId, userId);
+                    multiAgentManager.clearSession(agentId, userId, sessionId);
+                }
+                String storageUserId = chatManager.storageUserId(
+                        agentId, channel, sessionId, userId);
+                chatManager.clearSession(agentId, channel, storageUserId, sessionId);
+                chatManager.resetSharedStateMetadata(agentId, channel, sessionId);
                 return new CommandOutcome("Conversation context cleared.",
                         Map.of("clear_history", true), false);
             });
@@ -719,14 +754,14 @@ public class ConsoleCompatController {
     }
 
     private Flux<ServerSentEvent<String>> commandResponse(
-            String agentId, String channel, String userId, String sessionId, String chatId,
+            String agentId, String channel, String userId, String sessionId, String chatId, String turnId,
             List<Map<String, Object>> frontendContext, CommandOutcome outcome,
             EnterpriseTaskService.TaskRun task) {
         MelonPawEnvelopeMapper envelope = new MelonPawEnvelopeMapper(sessionId, task.taskId(), task.runId());
         if (outcome.persistShadow()) {
             saveCommandShadow(agentId, channel, userId, sessionId, frontendContext, outcome.text());
         }
-        chatManager.setStatus(agentId, chatId, "idle");
+        chatManager.endTurn(agentId, chatId, userId, turnId);
         taskService.succeed(task, outcome.text());
         return Flux.fromIterable(envelope.completeWithText(outcome.text(), outcome.metadata()))
                 .doFinally(signal -> log.info(

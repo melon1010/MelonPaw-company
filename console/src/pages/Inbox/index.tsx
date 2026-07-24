@@ -29,8 +29,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { ApprovalCard as GlobalApprovalCard } from "../../components/ApprovalCard/ApprovalCard";
 import { useApprovalContext } from "../../contexts/ApprovalContext";
 import { commandsApi } from "../../api/modules/commands";
-import { chatApi } from "../../api/modules/chat";
-import sessionApi from "../Chat/sessionApi";
 import { PushMessageCard } from "./components";
 import { useInboxData } from "./hooks/useInboxData";
 import { useTraceViewer } from "./hooks/useTraceViewer";
@@ -180,7 +178,7 @@ export default function InboxPage() {
   const handleApproveRequest = async (
     requestId: string,
     rootSessionId: string,
-    scope?: "exact" | "similar",
+    scope?: "once" | "exact" | "similar",
   ) => {
     await commandsApi.sendApprovalCommand(
       "approve",
@@ -206,14 +204,6 @@ export default function InboxPage() {
     message.success(t("approval.denied"));
   };
 
-  const handleCancelTask = async (rootSessionId: string) => {
-    const resolvedChatId =
-      sessionApi.getRealIdForSession(rootSessionId) ?? rootSessionId;
-    await chatApi.stopChat(resolvedChatId);
-    setApprovals((prev) =>
-      prev.filter((item) => item.root_session_id !== rootSessionId),
-    );
-  };
   const {
     detailOpen,
     selectedMessage,
@@ -316,7 +306,10 @@ export default function InboxPage() {
           <Bell size={16} />
           {t("inbox.tabPushMessages")}
           {summary.pushMessages.unread > 0 && (
-            <Badge count={summary.pushMessages.unread} color="var(--mp-accent)" />
+            <Badge
+              count={summary.pushMessages.unread}
+              color="var(--mp-accent)"
+            />
           )}
         </span>
       ),
@@ -461,6 +454,7 @@ export default function InboxPage() {
                   timeoutSeconds={approval.timeout_seconds}
                   sessionId={approval.session_id}
                   rootSessionId={approval.root_session_id}
+                  rememberable={approval.rememberable}
                   isGeneralized={approval.is_generalized}
                   exactTarget={approval.exact_target}
                   similarTarget={approval.similar_target}
@@ -477,9 +471,6 @@ export default function InboxPage() {
                       approval.root_session_id,
                     )
                   }
-                  onCancel={() => {
-                    void handleCancelTask(approval.root_session_id);
-                  }}
                   onAcknowledge={(requestId) => {
                     return commandsApi
                       .sendApprovalCommand(

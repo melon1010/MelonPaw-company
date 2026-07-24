@@ -5,7 +5,7 @@
 ## 分层原则
 
 1. 个人资源由用户本人管理，数据落在该用户绑定的 PERSONAL Agent 工作区。
-2. 项目资源按项目成员角色授权，不复用 PERSONAL Agent，也不允许通过请求头切换到他人空间。
+2. 团队资源按团队成员角色授权，不复用 PERSONAL Agent，也不允许通过请求头切换到其他团队或他人空间；内部 scope 名称保持为 `PROJECT`。
 3. 企业管理是非对话型能力。组织管理员和审计员不需要 `agents:use`，界面也不得自动发起聊天、会话或收件箱轮询。
 4. AI 服务运维管理共享 Agent、工具和运行配置，但不能进入任何用户的 PERSONAL Agent。
 5. 系统管理才允许接触宿主机环境、模型密钥、插件、备份和全局安全策略。
@@ -15,7 +15,7 @@
 | 角色 | 能力 | 明确不包含 |
 | --- | --- | --- |
 | `SYSTEM_ADMIN` | 平台配置、身份、模型、插件、备份和应急管理 | 默认不含他人 PERSONAL 内容；须显式授予 `data:breakglass` |
-| `ORG_ADMIN` | 用户、角色、项目空间和企业审计管理 | 聊天、个人空间、Agent 运维、模型密钥、插件、备份 |
+| `ORG_ADMIN` | 用户、角色、团队空间和企业审计管理 | 聊天、个人空间、Agent 运维、模型密钥、插件、备份 |
 | `SERVICE_OPERATOR` | 非个人 Agent、Agent 级工具/MCP、运行配置和高风险审批 | 用户与角色管理、MCP Server/OAuth、宿主机与全局密钥管理、他人 PERSONAL Agent |
 | `APPROVER` | 使用个人 Agent，并审批自己或被授权范围内的高风险操作 | 企业配置、共享 Agent 配置 |
 | `EMPLOYEE` | 工作台、任务与结果、个人对话及全部个人资源 | 用户、角色、共享 Agent、系统配置和企业审计 |
@@ -33,20 +33,24 @@
 | 个人自动化 | `automations:personal` | `/cron-jobs`、`/heartbeat` | `/api/cron/**`、`/api/config/heartbeat/**` | 任务定义、执行历史和结果写入本人工作区与收件箱 |
 | 个人资料 | 已认证用户 | 账号菜单 | `/api/auth/profile`、`/api/auth/update-profile` | 只能修改本人资料与密码 |
 
-`agents:use` 与四项个人管理权限相互独立。自定义角色可以只管理定时任务而不能聊天，也可以只维护渠道或知识文件。
+`agents:use` 与五项个人管理权限相互独立。自定义角色可以只管理定时任务而不能聊天，也可以只维护渠道、MCP 或知识文件。
 
-## 项目空间
+## 团队空间
 
-| 项目角色 | 项目元数据 | 项目文档 | 成员管理 |
-| --- | --- | --- | --- |
-| `OWNER` | 读写 | 读写 | 允许 |
-| `MANAGER` | 读写 | 读写 | 允许 |
-| `MEMBER` | 只读 | 仅可编辑 `KNOWLEDGE.md` | 禁止 |
-| `VIEWER` | 只读 | 只读 | 禁止 |
+| 团队角色 | 团队元数据 | 团队文档 | Agent 对话 | Skills / MCP 管理 | 成员管理 |
+| --- | --- | --- | --- | --- | --- |
+| `OWNER` | 读写 | 读写 | 查看、发起、继续和停止 | 允许 | 允许 |
+| `MANAGER` | 读写 | 读写 | 查看、发起、继续和停止 | 允许 | 允许 |
+| `MEMBER` | 只读 | 仅可编辑 `KNOWLEDGE.md` | 查看、发起、继续和停止 | 禁止 | 禁止 |
+| `VIEWER` | 只读 | 只读 | 禁止 | 禁止 | 禁止 |
 
-`projects:manage` 可以创建和管理全部项目；`projects:read` 只能查看自己被分配的项目。项目工作区当前包含 `PROJECT.md`、`KNOWLEDGE.md` 和 `POLICY.md`。
+`projects:manage` 可以创建和管理全部团队空间；`projects:read` 只能查看自己被分配的团队。团队工作区当前包含 `PROJECT.md`、`KNOWLEDGE.md` 和 `POLICY.md`。
 
-每个项目当前最多绑定一个已发布 Agent。`OWNER`、`MANAGER` 可以发布/回滚项目 Agent；二者和具有全局 `agents:manage` 的运营人员可以维护其技能和 MCP，运行中禁止修改这些资源。`OWNER`、`MANAGER`、`MEMBER` 可以发起独立的项目 Agent 会话，`VIEWER` 不能执行但可以读取仍有成员资格项目的任务结果。项目 Agent 不共享用户会话、个人 MCP、个人渠道或个人记忆。
+每个团队当前最多绑定一个已发布 Agent。`OWNER`、`MANAGER` 可以发布/回滚团队 Agent；二者和具有全局 `agents:manage` 的运营人员可以维护其技能和 MCP，运行中禁止修改这些资源。`OWNER`、`MANAGER`、`MEMBER` 共用团队 Agent 的 Skills、MCP、工作区文件、长期记忆、对话记录和任务结果，可以继续其他成员创建的会话；每个 `sessionId` 保持单写者，成员交接只继承对话上下文和摘要，不继承 Permission、Tool、Task、Plan 状态或已记住的工具授权。`VIEWER` 不能执行或读取 Agent 对话，但可以读取仍有成员资格团队的资料和任务结果。
+
+`OWNER`、`MANAGER`、`MEMBER` 的 Agent 对话能力同时要求企业角色具备 `agents:use`；团队角色不替代企业权限码。
+
+团队共享不包含成员的 PERSONAL Agent、个人 MCP、个人渠道、二维码、访问名单、个人自动化或个人记忆。团队 MCP 凭据属于团队 Agent；工具调用仍按当前执行用户和渠道重新检查策略。工具允许记录始终绑定作出决定的用户，拒绝、取消和超时不记忆，成员之间不传播允许记录。
 
 ## 企业与系统管理
 
@@ -54,7 +58,7 @@
 | --- | --- | --- |
 | 用户 | `users:read` / `users:manage` | 成员、账号状态、密码重置、角色分配 |
 | 角色 | `roles:read` / `roles:manage` | 角色与权限目录、自定义角色 |
-| 项目 | `projects:read` / `projects:manage` | 项目、成员、项目文档 |
+| 团队 | `projects:read` / `projects:manage` | 团队、成员、团队文档 |
 | 共享 Agent | `agents:manage` | 非个人 Agent 发布、Agent 级工具/MCP、运行配置、运行统计、共享技能池 |
 | 审批 | `approvals:decide` | 高风险工具与自动化审批 |
 | 审计 | `audit:read` | 用量和安全审计，只读 |
@@ -64,7 +68,7 @@
 
 - 客户端传入的 `X-Agent-Id` 不是授权依据，服务端必须按登录用户重新解析。
 - `agents:manage` 允许管理共享 Agent，但不能读取或修改他人的 PERSONAL Agent。
-- 普通用户的 `execute_shell_command` 显示名始终可用，但实际执行只走 AgentScope 官方 `ShellExecuteTool`；每个用户使用自己的 Docker 沙箱和自己的工作区挂载，技能提升、写入和高风险动作继续经过 AgentScope 权限确认。容器访问外部资料时，生产网络必须通过受控出口阻断企业内网和云元数据地址。
+- 普通用户的 `execute_shell_command` 显示名始终可用，但实际执行只走 AgentScope 官方 `ShellExecuteTool`；PERSONAL Agent 挂载本人工作区，PROJECT Agent 挂载该团队共用的 Agent 工作区，其他 Agent 和工作区不可见。每个执行用户使用独立运行上下文，写入、删除和高风险动作继续经过 AgentScope 权限确认，允许记录不跨用户传播。容器访问外部资料时，生产网络必须通过受控出口阻断企业内网和云元数据地址。
 - 渠道配置、二维码状态和访问控制均绑定个人 Agent；渠道客户端提交的 Agent 标识不能单独作为授权依据。
 - 定时任务、渠道回调和心跳都必须携带创建者/执行者身份；不能使用 `default` 作为无人值守任务的共享用户槽位。
 - 系统管理员拥有平台管理权，不自动拥有他人 PERSONAL 内容；跨用户内容访问必须单独授予 `data:breakglass` 并记录审计。

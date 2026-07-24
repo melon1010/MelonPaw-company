@@ -18,6 +18,7 @@ import {
 } from "../../../utils/scanError";
 import { useSkills } from "./useSkills";
 import { useSkillFilter } from "./useSkillFilter";
+import { groupSkillsByEnabled } from "./skillGroups";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -88,21 +89,16 @@ export function useSkillsPage() {
 
   // ── Derived ─────────────────────────────────────────────────────────────
 
-  const sortedSkills = useMemo(
-    () =>
-      filteredSkills.slice().sort((a, b) => {
-        if (a.enabled && !b.enabled) return -1;
-        if (!a.enabled && b.enabled) return 1;
-        return a.name.localeCompare(b.name);
-      }),
+  const { enabledSkills, disabledSkills } = useMemo(
+    () => groupSkillsByEnabled(filteredSkills),
     [filteredSkills],
   );
 
   const {
-    visibleItems: visibleSkills,
+    visibleItems: visibleEnabledSkills,
     hasMore,
     sentinelRef,
-  } = useProgressiveRender(sortedSkills);
+  } = useProgressiveRender(enabledSkills);
 
   // ── Effects ─────────────────────────────────────────────────────────────
 
@@ -678,8 +674,9 @@ export function useSkillsPage() {
 
   return {
     skills,
-    sortedSkills,
-    visibleSkills,
+    enabledSkills,
+    visibleEnabledSkills,
+    disabledSkills,
     hasMore,
     sentinelRef,
     poolSkills,

@@ -53,11 +53,12 @@ class ChannelRuntimeIdentityIsolationTest {
         ChannelConfigService channelConfigService = mock(ChannelConfigService.class);
         ChatSpec chat = new ChatSpec("chat-a", "agent-a", "Channel chat");
 
-        when(chatManager.getOrCreateForSession(
+        when(chatManager.beginTurn(
                 eq("agent-a"), eq("channel-session"),
                 org.mockito.ArgumentMatchers.anyString(), eq("feishu"),
                 org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(chat);
+        when(chatManager.activeTurnId("agent-a", "chat-a")).thenReturn("turn-a");
         when(configManager.resolveWorkspaceDir("agent-a")).thenReturn(Path.of(".").toAbsolutePath());
         when(channelConfigService.runtimeConfig("agent-a", "feishu")).thenReturn(Map.of());
         when(agentRunner.stream(

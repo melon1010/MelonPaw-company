@@ -130,6 +130,9 @@ public class CronExecutor {
                               Consumer<Msg> onSuccess,
                               Consumer<Throwable> onError) {
         EnterpriseTaskService.TaskRun task = null;
+        ChatSpec chat = null;
+        String turnId = "";
+        String executionUserId = userId == null || userId.isBlank() ? "default" : userId;
         try {
             // 构造消息 (近似 AgentScope API)
             Msg msg = new UserMessage(message);
@@ -140,11 +143,13 @@ public class CronExecutor {
             String ch = channel == null || channel.isBlank() ? "console" : channel;
             Map<String, Object> env = new LinkedHashMap<>(envInfo != null ? envInfo : Map.of());
             String trigger = taskId != null && taskId.startsWith("heartbeat-") ? "heartbeat" : "cron";
-            ChatSpec chat = chatManager.getOrCreateForSession(
+            chat = chatManager.beginTurn(
                     agentId, sid, uid, ch, trigger + " result: " + taskId);
+            turnId = chatManager.activeTurnId(agentId, chat.getId());
             task = taskService.startForAgent("AUTOMATION", uid, agentId, chat.getName(), sid,
                     trigger, taskId, chat.getId(), trigger + ":" + taskId);
             if (!task.created()) {
+                chatManager.endTurn(agentId, chat.getId(), uid, turnId);
                 log.info("Automation task {} was already accepted", taskId);
                 return;
             }
@@ -156,6 +161,8 @@ public class CronExecutor {
             }
             inboxStore.linkTask(taskId, task.taskId(), task.runId());
             EnterpriseTaskService.TaskRun activeTask = task;
+            String activeChatId = chat.getId();
+            String activeTurnId = turnId;
 
             // 非流式查询, 异步订阅结果
             agentRunner.query(agentId, msgs, uid, sid, env)
@@ -174,6 +181,8 @@ public class CronExecutor {
                         taskService.fail(activeTask, err);
                         onError.accept(err);
                     })
+                    .doFinally(signal -> chatManager.endTurn(
+                            agentId, activeChatId, uid, activeTurnId))
                     .subscribe(); // 异步, 不阻塞
 
         } catch (NoClassDefFoundError | Exception e) {
@@ -181,6 +190,7 @@ public class CronExecutor {
             log.warn("AgentScope Msg API unavailable, logging message instead: agent={}, task={}", agentId, taskId);
             log.info("Cron message for agent [{}]: {}", agentId, message);
             if (task != null) taskService.fail(task, e);
+            if (chat != null) chatManager.endTurn(agentId, chat.getId(), executionUserId, turnId);
             onError.accept(e);
         }
     }

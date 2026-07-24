@@ -27,6 +27,101 @@
   min-height: 0;
 }
 
+.progressiveSentinel {
+  height: 1px;
+}
+
+.disabledSection {
+  margin: 16px;
+  padding: 16px;
+  border: 1px dashed var(--color-border-secondary, #d9d9d9);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mp-surface) 72%, transparent);
+}
+
+.disabledSectionHeadingBlock {
+  margin-bottom: 12px;
+}
+
+.disabledSectionHeading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--mp-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.disabledSectionDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--mp-text-tertiary);
+}
+
+.disabledSectionCount {
+  margin-left: auto;
+  color: var(--mp-text-tertiary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.disabledSectionHint {
+  margin: 4px 0 0 16px;
+  color: var(--mp-text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.workspaceDisabledGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.workspaceDisabledItem {
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--color-border-secondary, #e5e7eb);
+  border-radius: 6px;
+  background: var(--mp-surface);
+}
+
+.workspaceDisabledIcon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+}
+
+.workspaceDisabledName {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--mp-text);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.poolPresenceTag {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: var(--mp-text-secondary);
+  background: var(--mp-hover);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .breadcrumbHeader {
   display: flex;
   align-items: center;
