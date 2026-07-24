@@ -417,11 +417,30 @@
 
 @media (max-width: 640px) {
   .chatHeaderContent {
-    gap: 4px;
+    position: relative;
+    height: 52px;
+    box-sizing: border-box;
+    justify-content: center;
+    gap: 0;
+    padding: 0 76px;
   }
 
   .chatHeaderLeading {
-    gap: 4px;
+    width: 100%;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .chatConversationTitle {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .chatHeaderActions {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
   }
 }
 

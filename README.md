@@ -12,7 +12,7 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 - 只交付响应式 Web 控制台，并兼容移动端浏览器；不包含桌面客户端、CLI 和 Coding 模式。
 - 支持直接运行 JAR 或使用常规进程服务部署；当前不提供 Kubernetes 部署方案。
 - 企业身份、角色、项目关系和个人资源映射保存在内嵌 SQLite 中，不要求安装 PostgreSQL。
-- 渠道只保留控制台、钉钉、飞书、QQ、微信、企业微信、元宝、小艺和 OneBot；渠道配置归属具体用户。
+- 渠道只保留控制台以及钉钉、飞书、QQ、微信、企业微信五个国内平台；渠道配置归属具体用户。
 - 本地模型只接入部署环境独立运行的 Ollama；应用不内嵌、不安装也不更新 Ollama 或 llama.cpp。
 - `/mission` 可使用固定的 `researcher`、`executor`、`reviewer` 原生 Subagent；动态 Subagent、跨项目委派、嵌套委派和能力提升保持关闭。
 
@@ -184,8 +184,6 @@ ${MELON_HOME}/enterprise.db
 `local` profile 默认不生成初始化令牌，首次打开控制台即可直接创建管理员。需要在本地复现生产保护时，可显式设置 `MELON_BOOTSTRAP_TOKEN`，或将 `MELON_GENERATE_BOOTSTRAP_TOKEN` 设为 `true`。
 
 这是应用内嵌的 SQLite 数据库，无需安装或启动 PostgreSQL。可通过 `MELON_ENTERPRISE_DATABASE_PATH` 覆盖数据库文件位置。备份时至少应同时保存 `enterprise.db`、`config.yaml` 和 `workspaces/`。
-
-OneBot 使用反向 WebSocket。个人渠道页会显示带当前 Agent 标识的连接 URL；OneBot 客户端必须把该渠道配置的 `access_token` 作为 `Authorization: Bearer <token>` 或 `X-Access-Token` 请求头发送。服务端按 Agent 独立校验 token，不接受仅靠 `X-Agent-Id` 切换工作区。
 
 生产环境应由反向代理终止 HTTPS，并限制应用端口只对受信网络开放。
 

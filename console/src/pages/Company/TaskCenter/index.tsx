@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Empty, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from "antd";
+import {
+  Button,
+  Empty,
+  Form,
+  Input,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Tag,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   Bot,
@@ -18,6 +28,7 @@ import api, {
   type CreateEnterpriseTaskInput,
 } from "../../../api";
 import { PageHeader } from "../../../components/PageHeader";
+import ResponsiveTable from "../../../components/ResponsiveTable";
 import { useAppMessage } from "../../../hooks/useAppMessage";
 import { isActiveTask, taskStatusColor } from "../taskPresentation";
 import styles from "../company.module.less";
@@ -50,9 +61,11 @@ export default function TaskCenter() {
       ]);
       if (taskResult.status === "rejected") throw taskResult.reason;
       setTasks(taskResult.value);
-      setAgents(agentResult.status === "fulfilled"
-        ? (agentResult.value.agents || []).filter((agent) => agent.enabled)
-        : []);
+      setAgents(
+        agentResult.status === "fulfilled"
+          ? (agentResult.value.agents || []).filter((agent) => agent.enabled)
+          : [],
+      );
     } catch (error) {
       message.error(
         error instanceof Error
@@ -136,23 +149,35 @@ export default function TaskCenter() {
     setCreateOpen(true);
   }, [agents, createForm]);
 
-  const createTask = useCallback(async (values: CreateEnterpriseTaskInput) => {
-    setCreating(true);
-    try {
-      await api.createTask({
-        ...values,
-        idempotency_key: globalThis.crypto?.randomUUID?.()
-          ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      });
-      message.success(t("enterprise.tasks.created", { defaultValue: "Task started" }));
-      setCreateOpen(false);
-      await load();
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : t("enterprise.tasks.createFailed", { defaultValue: "Failed to start task" }));
-    } finally {
-      setCreating(false);
-    }
-  }, [load, message, t]);
+  const createTask = useCallback(
+    async (values: CreateEnterpriseTaskInput) => {
+      setCreating(true);
+      try {
+        await api.createTask({
+          ...values,
+          idempotency_key:
+            globalThis.crypto?.randomUUID?.() ??
+            `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        });
+        message.success(
+          t("enterprise.tasks.created", { defaultValue: "Task started" }),
+        );
+        setCreateOpen(false);
+        await load();
+      } catch (error) {
+        message.error(
+          error instanceof Error
+            ? error.message
+            : t("enterprise.tasks.createFailed", {
+                defaultValue: "Failed to start task",
+              }),
+        );
+      } finally {
+        setCreating(false);
+      }
+    },
+    [load, message, t],
+  );
 
   const columns: ColumnsType<EnterpriseTask> = [
     {
@@ -162,8 +187,13 @@ export default function TaskCenter() {
         <div className={styles.nameCell}>
           <div className={styles.primaryText}>{title || row.session_id}</div>
           <div className={styles.secondaryText}>
-            {row.task_id} · {t("enterprise.tasks.attempt", { count: row.attempt })}
-            {row.parent_task_id ? ` · ${t("enterprise.tasks.child", { defaultValue: "Child task" })}` : ""}
+            {row.task_id} ·{" "}
+            {t("enterprise.tasks.attempt", { count: row.attempt })}
+            {row.parent_task_id
+              ? ` · ${t("enterprise.tasks.child", {
+                  defaultValue: "Child task",
+                })}`
+              : ""}
           </div>
         </div>
       ),
@@ -293,7 +323,7 @@ export default function TaskCenter() {
             style={{ width: 320, maxWidth: "100%" }}
           />
         </div>
-        <Table
+        <ResponsiveTable
           rowKey="task_id"
           size="middle"
           loading={loading}
@@ -321,31 +351,58 @@ export default function TaskCenter() {
             label={t("enterprise.tasks.agent", { defaultValue: "Agent" })}
             rules={[{ required: true }]}
           >
-            <Select options={agents.map((agent) => ({
-              value: agent.id,
-              label: `${agent.name || agent.id} · ${agent.scope || "SERVICE"}`,
-            }))} />
+            <Select
+              options={agents.map((agent) => ({
+                value: agent.id,
+                label: `${agent.name || agent.id} · ${
+                  agent.scope || "SERVICE"
+                }`,
+              }))}
+            />
           </Form.Item>
           <Form.Item
             name="mode"
-            label={t("enterprise.tasks.mode", { defaultValue: "Execution mode" })}
+            label={t("enterprise.tasks.mode", {
+              defaultValue: "Execution mode",
+            })}
             rules={[{ required: true }]}
           >
-            <Select options={[
-              { value: "agent", label: t("enterprise.tasks.modes.agent", { defaultValue: "Agent" }) },
-              { value: "goal", label: t("enterprise.tasks.modes.goal", { defaultValue: "Goal" }) },
-              { value: "mission", label: t("enterprise.tasks.modes.mission", { defaultValue: "Mission" }) },
-            ]} />
+            <Select
+              options={[
+                {
+                  value: "agent",
+                  label: t("enterprise.tasks.modes.agent", {
+                    defaultValue: "Agent",
+                  }),
+                },
+                {
+                  value: "goal",
+                  label: t("enterprise.tasks.modes.goal", {
+                    defaultValue: "Goal",
+                  }),
+                },
+                {
+                  value: "mission",
+                  label: t("enterprise.tasks.modes.mission", {
+                    defaultValue: "Mission",
+                  }),
+                },
+              ]}
+            />
           </Form.Item>
           <Form.Item
             name="title"
-            label={t("enterprise.tasks.taskTitle", { defaultValue: "Task title" })}
+            label={t("enterprise.tasks.taskTitle", {
+              defaultValue: "Task title",
+            })}
           >
             <Input maxLength={200} />
           </Form.Item>
           <Form.Item
             name="prompt"
-            label={t("enterprise.tasks.prompt", { defaultValue: "Task requirements" })}
+            label={t("enterprise.tasks.prompt", {
+              defaultValue: "Task requirements",
+            })}
             rules={[{ required: true, whitespace: true }]}
           >
             <Input.TextArea rows={8} maxLength={100000} showCount />

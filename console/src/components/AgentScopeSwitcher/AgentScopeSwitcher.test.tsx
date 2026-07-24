@@ -64,6 +64,21 @@ describe("AgentScopeSwitcher", () => {
     expect(useAgentStore.getState().selectedAgent).toBe("personal-1");
   });
 
+  it("renders direct workspace choices for the mobile account sheet", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    renderWithProviders(
+      <AgentScopeSwitcher variant="panel" onSelect={onSelect} />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Personal workspace" }),
+    );
+
+    expect(useAgentStore.getState().selectedAgent).toBe("personal-1");
+    expect(onSelect).toHaveBeenCalledOnce();
+  });
+
   it("never exposes the internal default template", async () => {
     const user = userEvent.setup();
     mockListAgents.mockResolvedValue({

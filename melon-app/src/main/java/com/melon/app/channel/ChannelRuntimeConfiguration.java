@@ -8,21 +8,16 @@ import com.melon.channels.ChannelQueueManager;
 import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.config.RuntimeConcurrencyProperties;
 import com.melon.core.config.ConfigManager;
-import org.springframework.core.Ordered;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.reactive.HandlerMapping;
-import org.springframework.web.reactive.handler.SimpleUrlHandlerMapping;
-import org.springframework.web.reactive.socket.server.support.WebSocketHandlerAdapter;
-
-import java.util.Map;
 
 @Configuration
 public class ChannelRuntimeConfiguration {
 
     @Bean
     public ChannelAdapterRegistry channelAdapterRegistry(RuntimeExecutors executors) {
-        return new ChannelAdapterRegistry(executors.channel(), executors.channelScheduler());
+        return new ChannelAdapterRegistry(
+                executors.channel(), executors.channelScheduler(), executors.channelLongPoll());
     }
 
     @Bean
@@ -53,23 +48,4 @@ public class ChannelRuntimeConfiguration {
         return new ChannelManager(registry, configService, accessControlStore, queueManager, processor::process);
     }
 
-    @Bean
-    public OneBotWebSocketHandler oneBotWebSocketHandler(ChannelAdapterRegistry registry,
-                                                         ChannelManager channelManager,
-                                                         ChannelConfigService configService) {
-        return new OneBotWebSocketHandler(registry, channelManager, configService);
-    }
-
-    @Bean
-    public HandlerMapping oneBotWebSocketMapping(OneBotWebSocketHandler handler) {
-        SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
-        mapping.setOrder(Ordered.HIGHEST_PRECEDENCE);
-        mapping.setUrlMap(Map.of("/api/channels/onebot/websocket", handler));
-        return mapping;
-    }
-
-    @Bean
-    public WebSocketHandlerAdapter webSocketHandlerAdapter() {
-        return new WebSocketHandlerAdapter();
-    }
 }

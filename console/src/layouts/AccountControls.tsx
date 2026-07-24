@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { Dropdown, Popover, Tooltip } from "antd";
-import type { MenuProps } from "antd";
+import type { DropdownProps, MenuProps } from "antd";
 import { Button } from "@agentscope-ai/design";
 import {
   Check,
+  ArrowLeft,
   ChevronDown,
   ChevronRight,
   Layers3,
@@ -41,6 +42,12 @@ const KNOWN_LANGUAGE_KEYS = new Set<string>(
   LANGUAGES.map((language) => language.key),
 );
 
+const ACCOUNT_SUBMENU_ALIGN = {
+  points: ["tl", "tr"],
+  offset: [8, 0],
+  overflow: { adjustX: false, adjustY: true },
+} satisfies NonNullable<DropdownProps["align"]>;
+
 interface AccountControlProps {
   variant: "header" | "sidebar";
   collapsed?: boolean;
@@ -50,6 +57,8 @@ interface AccountControlProps {
   onNavigationClick?: MenuProps["onClick"];
   onOpenSettings?: () => void;
 }
+
+type MobileAccountView = "main" | "workspace" | "theme" | "language";
 
 export function AccountControl({
   variant,
@@ -63,6 +72,8 @@ export function AccountControl({
   const { t, i18n } = useTranslation();
   const { user, status: authStatus, clearSession } = useAuth();
   const { themeMode, setThemeMode } = useTheme();
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  const [mobileView, setMobileView] = useState<MobileAccountView>("main");
   const selectedAgent = useAgentStore((state) => state.selectedAgent);
   const agents = useAgentStore((state) => state.agents);
   const role = user ? primaryRole(user) : "";
@@ -90,6 +101,9 @@ export function AccountControl({
   const currentLanguage = KNOWN_LANGUAGE_KEYS.has(rawLanguage)
     ? rawLanguage
     : shortLanguage;
+  const currentLanguageLabel =
+    LANGUAGES.find((language) => language.key === currentLanguage)?.label ||
+    currentLanguage;
 
   const themeOptions: Array<{
     key: ThemeMode;
@@ -115,8 +129,8 @@ export function AccountControl({
   const themeSubmenu = (
     <Dropdown
       trigger={mobile ? ["click"] : ["hover", "click"]}
-      placement={mobile ? "topLeft" : "bottomRight"}
-      align={mobile ? undefined : { offset: [210, -30] }}
+      placement={mobile ? "topLeft" : "bottomLeft"}
+      align={mobile ? undefined : ACCOUNT_SUBMENU_ALIGN}
       overlayClassName={`${styles.accountSubmenuPopup} ${
         mobile ? styles.accountSubmenuPopupMobile : ""
       }`}
@@ -142,8 +156,8 @@ export function AccountControl({
   const languageSubmenu = (
     <Dropdown
       trigger={mobile ? ["click"] : ["hover", "click"]}
-      placement={mobile ? "topLeft" : "bottomRight"}
-      align={mobile ? undefined : { offset: [210, -30] }}
+      placement={mobile ? "topLeft" : "bottomLeft"}
+      align={mobile ? undefined : ACCOUNT_SUBMENU_ALIGN}
       overlayClassName={`${styles.accountSubmenuPopup} ${
         mobile ? styles.accountSubmenuPopupMobile : ""
       }`}
@@ -258,6 +272,244 @@ export function AccountControl({
   };
 
   const isHeader = variant === "header";
+  const accountTrigger = (
+    <button
+      className={isHeader ? styles.headerAccount : styles.sidebarAccount}
+      type="button"
+      aria-expanded={mobile ? mobileSheetOpen : undefined}
+      aria-haspopup={mobile ? "dialog" : "menu"}
+    >
+      <span
+        className={
+          isHeader ? styles.headerAccountAvatar : styles.sidebarAccountAvatar
+        }
+      >
+        {displayName.slice(0, 1).toUpperCase()}
+      </span>
+      {!collapsed && (
+        <>
+          <span
+            className={
+              isHeader ? styles.headerAccountText : styles.sidebarAccountText
+            }
+          >
+            <strong title={identityTitle}>
+              {displayName}
+              {!isHeader && (
+                <span className={styles.sidebarAccountWorkspace}>
+                  {" · "}
+                  {workspaceName}
+                </span>
+              )}
+            </strong>
+            <span>{role}</span>
+          </span>
+          <ChevronDown
+            size={14}
+            className={
+              isHeader
+                ? styles.headerAccountChevron
+                : styles.sidebarAccountChevron
+            }
+          />
+        </>
+      )}
+    </button>
+  );
+
+  if (mobile) {
+    const viewTitle =
+      mobileView === "workspace"
+        ? t("chat.switchScope", "Switch workspace")
+        : mobileView === "theme"
+        ? t("sidebar.settings.theme", "Theme")
+        : mobileView === "language"
+        ? t("sidebar.settings.language", "Language")
+        : t("account.title");
+    const closeMobileSheet = () => {
+      setMobileSheetOpen(false);
+      setMobileView("main");
+    };
+
+    const mobilePanelBody =
+      mobileView === "main" ? (
+        <div className={styles.accountSheetMain}>
+          <div className={styles.accountSheetIdentity}>
+            <span>{displayName.slice(0, 1).toUpperCase()}</span>
+            <div>
+              <strong>{displayName}</strong>
+              <small>{workspaceName}</small>
+            </div>
+          </div>
+          <div className={styles.accountSheetActions}>
+            {onOpenSettings ? (
+              <button
+                type="button"
+                className={styles.accountSheetRow}
+                onClick={() => {
+                  closeMobileSheet();
+                  onOpenSettings();
+                }}
+              >
+                <span className={styles.accountSheetRowIcon}>
+                  <Settings size={18} aria-hidden />
+                </span>
+                <span className={styles.accountSheetRowCopy}>
+                  <strong>{t("nav.settings", "Settings")}</strong>
+                </span>
+                <ChevronRight size={17} aria-hidden />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={styles.accountSheetRow}
+              onClick={() => setMobileView("workspace")}
+            >
+              <span className={styles.accountSheetRowIcon}>
+                <Layers3 size={18} aria-hidden />
+              </span>
+              <span className={styles.accountSheetRowCopy}>
+                <strong>{t("chat.switchScope", "Switch workspace")}</strong>
+                <small>{workspaceName}</small>
+              </span>
+              <ChevronRight size={17} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className={styles.accountSheetRow}
+              onClick={() => setMobileView("theme")}
+            >
+              <span className={styles.accountSheetRowIcon}>
+                <Palette size={18} aria-hidden />
+              </span>
+              <span className={styles.accountSheetRowCopy}>
+                <strong>{t("sidebar.settings.theme", "Theme")}</strong>
+                <small>
+                  {themeOptions.find((option) => option.key === themeMode)
+                    ?.label || themeMode}
+                </small>
+              </span>
+              <ChevronRight size={17} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className={styles.accountSheetRow}
+              onClick={() => setMobileView("language")}
+            >
+              <span className={styles.accountSheetRowIcon}>
+                <Languages size={18} aria-hidden />
+              </span>
+              <span className={styles.accountSheetRowCopy}>
+                <strong>{t("sidebar.settings.language", "Language")}</strong>
+                <small>{currentLanguageLabel}</small>
+              </span>
+              <ChevronRight size={17} aria-hidden />
+            </button>
+          </div>
+          {authStatus?.enabled ? (
+            <button
+              type="button"
+              className={`${styles.accountSheetRow} ${styles.accountSheetLogout}`}
+              onClick={() => {
+                closeMobileSheet();
+                handleAccountAction({ key: "logout" } as Parameters<
+                  NonNullable<MenuProps["onClick"]>
+                >[0]);
+              }}
+            >
+              <span className={styles.accountSheetRowIcon}>
+                <LogOut size={18} aria-hidden />
+              </span>
+              <span className={styles.accountSheetRowCopy}>
+                <strong>{t("login.logout")}</strong>
+              </span>
+            </button>
+          ) : null}
+        </div>
+      ) : mobileView === "workspace" ? (
+        <AgentScopeSwitcher variant="panel" onSelect={closeMobileSheet} />
+      ) : mobileView === "theme" ? (
+        <div className={styles.accountSheetOptionList}>
+          {themeOptions.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={styles.accountSheetOption}
+              onClick={() => {
+                setThemeMode(option.key);
+                closeMobileSheet();
+              }}
+            >
+              <span className={styles.accountSheetRowIcon}>{option.icon}</span>
+              <strong>{option.label}</strong>
+              {themeMode === option.key ? (
+                <Check size={17} aria-hidden />
+              ) : null}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className={styles.accountSheetOptionList}>
+          {LANGUAGES.map((language) => (
+            <button
+              key={language.key}
+              type="button"
+              className={styles.accountSheetOption}
+              onClick={() => {
+                void i18n.changeLanguage(language.key);
+                localStorage.setItem("language", language.key);
+                void languageApi
+                  .updateLanguage(language.key)
+                  .catch(() => undefined);
+                closeMobileSheet();
+              }}
+            >
+              <span className={styles.accountSheetLanguageCode}>
+                {language.key.split("-")[0].toUpperCase()}
+              </span>
+              <strong>{language.label}</strong>
+              {currentLanguage === language.key ? (
+                <Check size={17} aria-hidden />
+              ) : null}
+            </button>
+          ))}
+        </div>
+      );
+
+    return (
+      <Popover
+        open={mobileSheetOpen}
+        placement="topLeft"
+        trigger="click"
+        arrow={false}
+        rootClassName={styles.accountPopoverRoot}
+        onOpenChange={(open) => {
+          setMobileSheetOpen(open);
+          if (!open) setMobileView("main");
+        }}
+        content={
+          <div className={styles.accountPopoverPanel}>
+            <div className={styles.accountSheetTitle}>
+              {mobileView !== "main" ? (
+                <button
+                  type="button"
+                  aria-label={t("common.back", "Back")}
+                  onClick={() => setMobileView("main")}
+                >
+                  <ArrowLeft size={19} aria-hidden />
+                </button>
+              ) : null}
+              <strong>{viewTitle}</strong>
+            </div>
+            <div className={styles.accountPopoverBody}>{mobilePanelBody}</div>
+          </div>
+        }
+      >
+        {accountTrigger}
+      </Popover>
+    );
+  }
+
   return (
     <Dropdown
       menu={{
@@ -270,46 +522,7 @@ export function AccountControl({
         mobile ? styles.accountMenuPopupMobile : ""
       }`}
     >
-      <button
-        className={isHeader ? styles.headerAccount : styles.sidebarAccount}
-        type="button"
-      >
-        <span
-          className={
-            isHeader ? styles.headerAccountAvatar : styles.sidebarAccountAvatar
-          }
-        >
-          {displayName.slice(0, 1).toUpperCase()}
-        </span>
-        {!collapsed && (
-          <>
-            <span
-              className={
-                isHeader ? styles.headerAccountText : styles.sidebarAccountText
-              }
-            >
-              <strong title={identityTitle}>
-                {displayName}
-                {!isHeader && (
-                  <span className={styles.sidebarAccountWorkspace}>
-                    {" · "}
-                    {workspaceName}
-                  </span>
-                )}
-              </strong>
-              <span>{role}</span>
-            </span>
-            <ChevronDown
-              size={14}
-              className={
-                isHeader
-                  ? styles.headerAccountChevron
-                  : styles.sidebarAccountChevron
-              }
-            />
-          </>
-        )}
-      </button>
+      {accountTrigger}
     </Dropdown>
   );
 }

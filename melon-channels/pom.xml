@@ -28,6 +28,14 @@
             <artifactId>javase</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.dingtalk.open</groupId>
+            <artifactId>app-stream-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.larksuite.oapi</groupId>
+            <artifactId>oapi-sdk</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>

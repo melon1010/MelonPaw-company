@@ -43,9 +43,6 @@ const CHANNEL_OPTIONS = [
   { label: "qq", value: "qq" },
   { label: "wechat", value: "wechat" },
   { label: "wecom", value: "wecom" },
-  { label: "yuanbao", value: "yuanbao" },
-  { label: "xiaoyi", value: "xiaoyi" },
-  { label: "onebot", value: "onebot" },
 ];
 
 export const MAX_TAGS = 8;

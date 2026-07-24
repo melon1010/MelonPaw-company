@@ -117,9 +117,14 @@ public class LifecycleConfig implements ApplicationRunner {
             if (agentConfig.getChannels() == null) return;
             agentConfig.getChannels().forEach((channel, cfg) -> {
                 if (!Boolean.TRUE.equals(cfg.get("enabled"))) return;
-                channelManager.start(agentId, channel).thenAccept(health ->
+                channelManager.start(agentId, channel).whenComplete((health, error) -> {
+                    if (error != null) {
+                        log.error("Channel startup failed: agent={}, channel={}", agentId, channel, error);
+                    } else {
                         log.info("Channel started: agent={}, channel={}, status={}",
-                                agentId, channel, health.getStatus()));
+                                agentId, channel, health.getStatus());
+                    }
+                });
             });
         });
     }

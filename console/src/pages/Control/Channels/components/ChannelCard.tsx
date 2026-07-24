@@ -1,6 +1,7 @@
 import { Card } from "@agentscope-ai/design";
 import { useTranslation } from "react-i18next";
 import React, { useState } from "react";
+import type { ChannelHealth } from "../../../../api";
 import { ChannelIcon } from "./ChannelIcon";
 import { getChannelLabel, type ChannelKey } from "./constants";
 import styles from "../index.module.less";
@@ -8,12 +9,14 @@ import styles from "../index.module.less";
 interface ChannelCardProps {
   channelKey: ChannelKey;
   config: Record<string, unknown>;
+  health?: ChannelHealth;
   onClick: () => void;
 }
 
 export const ChannelCard = React.memo(function ChannelCard({
   channelKey,
   config,
+  health,
   onClick,
 }: ChannelCardProps) {
   const { t } = useTranslation();
@@ -24,6 +27,19 @@ export const ChannelCard = React.memo(function ChannelCard({
   const getConfigString = (key: string) =>
     typeof config[key] === "string" ? config[key] : "";
   const botPrefix = getConfigString("bot_prefix");
+  const runtimeStatus = enabled ? health?.status || "configured" : "stopped";
+  const displayStatus =
+    runtimeStatus === "waiting_connection" ? "configured" : runtimeStatus;
+  const statusTone = runtimeStatus === "running"
+    ? "healthy"
+    : runtimeStatus === "starting" || runtimeStatus === "reconnecting"
+      ? "pending"
+      : runtimeStatus === "unhealthy" || runtimeStatus === "misconfigured"
+        ? "error"
+        : "disabled";
+  const statusLabel = t(`channels.runtimeStatus.${displayStatus}`, {
+    defaultValue: displayStatus,
+  });
 
   const getChannelIcon = () => (
     <ChannelIcon channelKey={channelKey} size={32} />
@@ -47,18 +63,14 @@ export const ChannelCard = React.memo(function ChannelCard({
       {/* Top section: Icon and Status */}
       <div className={styles.cardTopSection}>
         <div className={styles.channelIcon}>{getChannelIcon()}</div>
-        <div className={styles.statusIndicator}>
+        <div className={styles.statusIndicator} title={health?.detail}>
           <div
-            className={`${styles.statusDot} ${
-              enabled ? styles.enabled : styles.disabled
-            }`}
+            className={`${styles.statusDot} ${styles[statusTone]}`}
           />
           <span
-            className={`${styles.statusText} ${
-              enabled ? styles.enabled : styles.disabled
-            }`}
+            className={`${styles.statusText} ${styles[statusTone]}`}
           >
-            {enabled ? t("common.enabled") : t("common.disabled")}
+            {statusLabel}
           </span>
         </div>
       </div>

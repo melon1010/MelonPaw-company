@@ -5,22 +5,16 @@ export const CHANNEL_ICON_URLS: Record<string, string> = {
   qq: "https://gw.alicdn.com/imgextra/i3/O1CN014wGNgd27PsTzAyrcj_!!6000000007790-2-tps-400-400.png",
   feishu:
     "https://gw.alicdn.com/imgextra/i4/O1CN01jsn08m225euyUoaFN_!!6000000007069-2-tps-400-400.png",
-  xiaoyi:
-    "https://gw.alicdn.com/imgextra/i1/O1CN01EPS9Z81OKhIEcwpCd_!!6000000001687-2-tps-476-476.png",
   console:
     "https://gw.alicdn.com/imgextra/i3/O1CN01L3azqd1XIi7O2jumZ_!!6000000002901-2-tps-400-400.png",
   wecom:
     "https://gw.alicdn.com/imgextra/i1/O1CN01HWtzmr1hkK9beQICJ_!!6000000004315-2-tps-400-400.png",
   wechat:
     "https://gw.alicdn.com/imgextra/i4/O1CN01GsAob11fkfDWVIb3R_!!6000000004045-2-tps-400-400.png",
-  onebot:
-    "https://gw.alicdn.com/imgextra/i3/O1CN01xqM0EN1oKrRiAFX3K_!!6000000005207-2-tps-400-400.png",
-  yuanbao:
-    "https://img.alicdn.com/imgextra/i4/O1CN0164yBmJ1a2AftSglge_!!6000000003271-2-tps-225-225.png",
 };
 
 export const CHANNEL_DEFAULT_ICON_URL =
-  "https://gw.alicdn.com/imgextra/i3/O1CN01xqM0EN1oKrRiAFX3K_!!6000000005207-2-tps-400-400.png";
+  "https://gw.alicdn.com/imgextra/i3/O1CN01L3azqd1XIi7O2jumZ_!!6000000002901-2-tps-400-400.png";
 
 /** Get the CDN icon URL for a channel, with a default fallback. */
 export function getChannelIconUrl(channelKey: string): string {
@@ -30,14 +24,11 @@ export function getChannelIconUrl(channelKey: string): string {
 /** Predefined background colors for letter-avatar icons. */
 const LETTER_ICON_COLORS: Record<string, string> = {
   console: "#176B5D",
-  onebot: "#6ECB63",
   dingtalk: "#3370FF",
   feishu: "#3370FF",
   qq: "#12B7F5",
   wecom: "#07C160",
   wechat: "#07C160",
-  xiaoyi: "#CF1322",
-  yuanbao: "#1677FF",
 };
 
 /** A palette of fallback colors for channels without a predefined color. */

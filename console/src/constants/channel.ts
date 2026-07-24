@@ -5,9 +5,6 @@ export const CHANNELS = {
   qq: "qq",
   wechat: "wechat",
   wecom: "wecom",
-  xiaoyi: "xiaoyi",
-  yuanbao: "yuanbao",
-  onebot: "onebot",
 };
 
 export const CHANNEL_COLORS: Record<string, string> = {
@@ -17,7 +14,4 @@ export const CHANNEL_COLORS: Record<string, string> = {
   qq: "gold",
   wechat: "green",
   wecom: "olive",
-  xiaoyi: "cyan",
-  yuanbao: "lime",
-  onebot: "blue",
 };

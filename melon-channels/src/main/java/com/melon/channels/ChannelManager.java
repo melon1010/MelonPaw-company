@@ -7,6 +7,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import static com.melon.core.util.ValueUtils.booleanValue;
 import static com.melon.core.util.ValueUtils.stringValue;
@@ -20,6 +23,8 @@ public class ChannelManager {
     private final ChannelAccessControlStore accessControlStore;
     private final ChannelQueueManager queueManager;
     private final ChannelProcessor processor;
+    private final Map<String, CompletableFuture<Void>> lifecycleOperations = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, Object>> activeLifecycleConfigs = new ConcurrentHashMap<>();
 
     public ChannelManager(ChannelAdapterRegistry registry,
                           ChannelConfigService configService,
@@ -35,15 +40,47 @@ public class ChannelManager {
 
     public CompletableFuture<ChannelHealth> start(String agentId, String channel) {
         ChannelAdapter adapter = registry.get(channel);
-        return adapter.start(agentId, configService.runtimeConfig(agentId, channel), this::enqueue);
+        return serializeLifecycle(agentId, channel, () -> {
+            String lifecycleKey = lifecycleKey(agentId, channel);
+            Map<String, Object> runtime = new LinkedHashMap<>(
+                    configService.runtimeConfig(agentId, channel));
+            Map<String, Object> active = activeLifecycleConfigs.get(lifecycleKey);
+            if (runtime.equals(active)) {
+                return CompletableFuture.completedFuture(adapter.health(agentId, runtime));
+            }
+            activeLifecycleConfigs.remove(lifecycleKey);
+            CompletableFuture<?> stopped = active != null
+                    ? adapter.stop(agentId) : CompletableFuture.completedFuture(null);
+            return stopped.thenCompose(ignored -> adapter.start(agentId, runtime, this::enqueue))
+                    .thenApply(health -> {
+                        activeLifecycleConfigs.put(lifecycleKey, runtime);
+                        return health;
+                    });
+        });
     }
 
     public CompletableFuture<ChannelHealth> stop(String agentId, String channel) {
-        return registry.get(channel).stop(agentId);
+        ChannelAdapter adapter = registry.get(channel);
+        return serializeLifecycle(agentId, channel, () -> {
+            activeLifecycleConfigs.remove(lifecycleKey(agentId, channel));
+            return adapter.stop(agentId);
+        });
     }
 
     public CompletableFuture<ChannelHealth> restart(String agentId, String channel) {
-        return stop(agentId, channel).thenCompose(ignored -> start(agentId, channel));
+        ChannelAdapter adapter = registry.get(channel);
+        return serializeLifecycle(agentId, channel, () -> {
+            String lifecycleKey = lifecycleKey(agentId, channel);
+            Map<String, Object> runtime = new LinkedHashMap<>(
+                    configService.runtimeConfig(agentId, channel));
+            activeLifecycleConfigs.remove(lifecycleKey);
+            return adapter.stop(agentId)
+                    .thenCompose(ignored -> adapter.start(agentId, runtime, this::enqueue))
+                    .thenApply(health -> {
+                        activeLifecycleConfigs.put(lifecycleKey, runtime);
+                        return health;
+                    });
+        });
     }
 
     public ChannelHealth health(String agentId, String channel) {
@@ -84,6 +121,13 @@ public class ChannelManager {
             return registry.get(message.getChannel()).send(denied(message, config, "access_control"), config);
         }
         return queueManager.enqueue(message, priority, processor)
+                .handle((out, error) -> {
+                    if (error == null) return out;
+                    Throwable cause = unwrap(error);
+                    log.error("Channel inbound processing failed: agent={}, channel={}, user={}, session={}",
+                            message.getAgentId(), message.getChannel(), message.getUserId(), message.getSessionId(), cause);
+                    return failed(message, config, "processing_failed");
+                })
                 .thenCompose(out -> registry.get(message.getChannel()).send(out, config));
     }
 
@@ -146,6 +190,14 @@ public class ChannelManager {
         return out;
     }
 
+    private ChannelOutboundMessage failed(ChannelInboundMessage message, Map<String, Object> config, String reason) {
+        ChannelOutboundMessage out = baseOutbound(message);
+        String configured = stringValue(config.get("processing_error_message"));
+        out.setText(configured.isBlank() ? "消息处理失败，请稍后重试。" : configured);
+        out.setMeta(Map.of("failed", true, "reason", reason));
+        return out;
+    }
+
     private ChannelOutboundMessage baseOutbound(ChannelInboundMessage message) {
         ChannelOutboundMessage out = new ChannelOutboundMessage();
         out.setAgentId(message.getAgentId());
@@ -159,15 +211,6 @@ public class ChannelManager {
     private void normalizeSession(ChannelInboundMessage message, Map<String, Object> config) {
         Map<String, Object> meta = message.getChannelMeta() != null ? message.getChannelMeta() : Map.of();
         String channel = message.getChannel();
-        if ("onebot".equals(channel)) {
-            String groupId = stringValue(meta.get("group_id"));
-            if (!groupId.isBlank()) {
-                message.setSessionId(booleanValue(config.get("share_session_in_group"), false)
-                        ? "onebot:g:" + groupId
-                        : "onebot:" + groupId + ":" + message.getUserId());
-            }
-            return;
-        }
         if ("feishu".equals(channel)) {
             String chatType = stringValue(meta.get("feishu_chat_type"));
             String chatId = stringValue(meta.get("feishu_chat_id"));
@@ -194,6 +237,50 @@ public class ChannelManager {
             if (!conversation.isBlank()) {
                 message.setSessionId(shortId(conversation));
             }
+        }
+    }
+
+    private Throwable unwrap(Throwable error) {
+        Throwable current = error;
+        while ((current instanceof java.util.concurrent.CompletionException
+                || current instanceof java.util.concurrent.ExecutionException)
+                && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private <T> CompletableFuture<T> serializeLifecycle(
+            String agentId, String channel, Supplier<CompletableFuture<T>> operation) {
+        String operationKey = lifecycleKey(agentId, channel);
+        AtomicReference<CompletableFuture<T>> resultRef = new AtomicReference<>();
+        AtomicReference<CompletableFuture<Void>> tailRef = new AtomicReference<>();
+        lifecycleOperations.compute(operationKey, (ignored, previous) -> {
+            CompletableFuture<Void> gate = previous != null
+                    ? previous : CompletableFuture.completedFuture(null);
+            CompletableFuture<T> result = gate.handle((value, error) -> null)
+                    .thenCompose(value -> invokeLifecycle(operation));
+            CompletableFuture<Void> tail = result.handle((value, error) -> null);
+            resultRef.set(result);
+            tailRef.set(tail);
+            return tail;
+        });
+        CompletableFuture<Void> tail = tailRef.get();
+        tail.whenComplete((value, error) -> lifecycleOperations.remove(operationKey, tail));
+        return resultRef.get();
+    }
+
+    private String lifecycleKey(String agentId, String channel) {
+        return stringValue(agentId, "default") + "\u0000" + channel;
+    }
+
+    private <T> CompletableFuture<T> invokeLifecycle(Supplier<CompletableFuture<T>> operation) {
+        try {
+            CompletableFuture<T> result = operation.get();
+            return result != null ? result
+                    : CompletableFuture.failedFuture(new IllegalStateException("Channel lifecycle returned no result"));
+        } catch (Throwable error) {
+            return CompletableFuture.failedFuture(error);
         }
     }
 

@@ -1,18 +1,12 @@
 import { useMemo } from "react";
-import {
-  Table,
-  Tag,
-  Switch,
-  Button,
-  Tooltip,
-  Collapse,
-} from "@agentscope-ai/design";
+import { Tag, Switch, Button, Tooltip, Collapse } from "@agentscope-ai/design";
 import { Space } from "antd";
 import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { MergedRule } from "../useToolGuard";
 import { useTheme } from "../../../../contexts/ThemeContext";
 import styles from "../index.module.less";
+import ResponsiveTable from "../../../../components/ResponsiveTable";
 
 const SEVERITY_COLORS: Record<string, string> = {
   CRITICAL: "red",
@@ -238,7 +232,7 @@ export function RuleTable({
         </span>
       ),
       children: (
-        <Table
+        <ResponsiveTable
           dataSource={categoryRules}
           columns={columns}
           rowKey="id"

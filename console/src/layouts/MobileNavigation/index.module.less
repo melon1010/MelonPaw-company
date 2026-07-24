@@ -8,16 +8,16 @@
     top: max(8px, env(safe-area-inset-top));
     left: max(8px, env(safe-area-inset-left));
     z-index: 950;
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     display: grid;
     place-items: center;
     padding: 0;
     color: var(--mp-text-secondary);
-    background: color-mix(in srgb, var(--mp-surface) 94%, transparent);
-    border: 1px solid var(--mp-border);
-    border-radius: 8px;
-    box-shadow: var(--mp-shadow-card);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    box-shadow: none;
     cursor: pointer;
     transition:
       color 160ms ease,
@@ -103,12 +103,18 @@
   .drawerNavigation {
     min-height: 0;
     flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
     padding: 10px 8px 16px;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
     scrollbar-color: var(--mp-border-strong) transparent;
+  }
+
+  .drawerNavigationApp {
+    overflow-y: hidden;
   }
 
   .drawerSection {
@@ -130,6 +136,22 @@
     font-size: 11px;
     line-height: 16px;
     font-weight: 600;
+  }
+
+  .drawerHistory {
+    min-height: 132px;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    margin-top: 10px;
+    padding-top: 4px;
+    overflow: hidden;
+    border-top: 1px solid
+      color-mix(in srgb, var(--mp-sidebar-text) 10%, transparent);
+  }
+
+  .drawerHistoryLabel {
+    flex: 0 0 28px;
   }
 
   .drawerItem,

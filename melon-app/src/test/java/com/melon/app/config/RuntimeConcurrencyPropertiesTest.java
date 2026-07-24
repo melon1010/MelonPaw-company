@@ -19,6 +19,7 @@ class RuntimeConcurrencyPropertiesTest {
                 "melon.runtime.channel.max-threads", "12",
                 "melon.runtime.channel.queue-capacity", "128",
                 "melon.runtime.history-queue-capacity", "64",
+                "melon.runtime.channel-long-poll-threads", "24",
                 "melon.runtime.channel-pending-per-session", "8",
                 "melon.runtime.config-watcher-enabled", "false"));
 
@@ -30,6 +31,7 @@ class RuntimeConcurrencyPropertiesTest {
         assertEquals(12, properties.getChannel().getMaxThreads());
         assertEquals(128, properties.getChannel().getQueueCapacity());
         assertEquals(64, properties.getHistoryQueueCapacity());
+        assertEquals(24, properties.getChannelLongPollThreads());
         assertEquals(8, properties.getChannelPendingPerSession());
         assertFalse(properties.isConfigWatcherEnabled());
     }

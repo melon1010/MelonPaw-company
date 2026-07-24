@@ -17,6 +17,9 @@ import io.agentscope.core.message.UserMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
@@ -29,6 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -46,35 +50,40 @@ public class ChannelRuntimeProcessor {
     private final ChannelConfigService channelConfigService;
     private final EnterpriseTaskService taskService;
     private final Executor executor;
+    private final ChannelExecutionIdentityResolver executionIdentityResolver;
     private final ChannelMessageRenderer messageRenderer = new ChannelMessageRenderer();
 
     public ChannelRuntimeProcessor(AgentRunner agentRunner, ChatManager chatManager,
                                    ConfigManager configManager, ChannelConfigService channelConfigService) {
-        this(agentRunner, chatManager, configManager, channelConfigService, null, Runnable::run);
+        this(agentRunner, chatManager, configManager, channelConfigService, null, Runnable::run, null);
     }
 
     public ChannelRuntimeProcessor(AgentRunner agentRunner, ChatManager chatManager,
                                    ConfigManager configManager, ChannelConfigService channelConfigService,
                                    EnterpriseTaskService taskService) {
-        this(agentRunner, chatManager, configManager, channelConfigService, taskService, Runnable::run);
+        this(agentRunner, chatManager, configManager, channelConfigService, taskService, Runnable::run, null);
     }
 
     @Autowired
     public ChannelRuntimeProcessor(AgentRunner agentRunner, ChatManager chatManager,
                                    ConfigManager configManager, ChannelConfigService channelConfigService,
-                                   EnterpriseTaskService taskService, RuntimeExecutors executors) {
-        this(agentRunner, chatManager, configManager, channelConfigService, taskService, executors.channel());
+                                   EnterpriseTaskService taskService, RuntimeExecutors executors,
+                                   ChannelExecutionIdentityResolver executionIdentityResolver) {
+        this(agentRunner, chatManager, configManager, channelConfigService, taskService,
+                executors.channel(), executionIdentityResolver);
     }
 
     private ChannelRuntimeProcessor(AgentRunner agentRunner, ChatManager chatManager,
                                     ConfigManager configManager, ChannelConfigService channelConfigService,
-                                    EnterpriseTaskService taskService, Executor executor) {
+                                    EnterpriseTaskService taskService, Executor executor,
+                                    ChannelExecutionIdentityResolver executionIdentityResolver) {
         this.agentRunner = agentRunner;
         this.chatManager = chatManager;
         this.configManager = configManager;
         this.channelConfigService = channelConfigService;
         this.taskService = taskService;
         this.executor = executor;
+        this.executionIdentityResolver = executionIdentityResolver;
     }
 
     public CompletableFuture<ChannelOutboundMessage> process(ChannelInboundMessage inbound) {
@@ -85,7 +94,9 @@ public class ChannelRuntimeProcessor {
         String agentId = value(inbound.getAgentId(), "default");
         String channel = value(inbound.getChannel(), "console");
         String channelUserId = value(inbound.getUserId(), "default");
-        String userId = value(inbound.getExecutionUserId(), channelUserId);
+        String userId = executionIdentityResolver != null
+                ? executionIdentityResolver.resolve(agentId, inbound.getExecutionUserId())
+                : value(inbound.getExecutionUserId(), channelUserId);
         String sessionId = value(inbound.getSessionId(), channel + "-" + userId);
         Map<String, Object> channelConfig = channelConfigService.runtimeConfig(agentId, channel);
         inbound.setAttachments(normalizeAttachments(agentId, inbound));
@@ -236,7 +247,7 @@ public class ChannelRuntimeProcessor {
         String url = sourceUrl(copy);
         String path = "";
         if (isRemote(url)) {
-            path = downloadRemote(agentId, url, name);
+            path = downloadRemote(agentId, url, name, copy);
             copy.put("original_url", url);
         } else if (!url.isBlank()) {
             path = filePathText(url);
@@ -254,7 +265,8 @@ public class ChannelRuntimeProcessor {
         return block;
     }
 
-    private String downloadRemote(String agentId, String url, String name) {
+    private String downloadRemote(String agentId, String url, String name,
+                                  Map<String, Object> attachment) {
         Path target = null;
         try {
             URI remoteUri = validatedRemoteUri(url);
@@ -287,6 +299,7 @@ public class ChannelRuntimeProcessor {
                     }
                 }
             }
+            decryptAttachmentIfRequired(target, attachment);
             return target.toAbsolutePath().normalize().toString();
         } catch (Exception ignored) {
             if (target != null) {
@@ -298,6 +311,62 @@ public class ChannelRuntimeProcessor {
             }
             return url;
         }
+    }
+
+    void decryptAttachmentIfRequired(Path target, Map<String, Object> attachment) throws Exception {
+        String aesKey = stringValue(firstPresent(attachment, "aes_key", "aeskey"));
+        if (aesKey.isBlank()) return;
+        String encryption = stringValue(attachment.get("encryption"));
+        if (!"aes-256-cbc".equalsIgnoreCase(encryption)
+                && !"aes-ecb-pkcs7".equalsIgnoreCase(encryption)) {
+            throw new IllegalArgumentException("Unsupported channel attachment encryption: " + encryption);
+        }
+        boolean cbc = "aes-256-cbc".equalsIgnoreCase(encryption);
+        byte[] key = cbc ? Base64.getDecoder().decode(aesKey) : decodeAttachmentAesKey(aesKey);
+        if (cbc && key.length != 32) {
+            throw new IllegalArgumentException("AES-256-CBC channel attachment key must be 256 bits");
+        }
+        byte[] encrypted = Files.readAllBytes(target);
+        if (encrypted.length == 0 || encrypted.length % 16 != 0) {
+            throw new IllegalArgumentException("Encrypted channel attachment has invalid block length");
+        }
+        Cipher cipher;
+        if (cbc) {
+            cipher = Cipher.getInstance("AES/CBC/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"),
+                    new IvParameterSpec(key, 0, 16));
+        } else {
+            cipher = Cipher.getInstance("AES/ECB/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"));
+        }
+        byte[] decrypted = cipher.doFinal(encrypted);
+        int padding = Byte.toUnsignedInt(decrypted[decrypted.length - 1]);
+        if (padding < 1 || padding > 32 || padding > decrypted.length) {
+            throw new IllegalArgumentException("Encrypted channel attachment has invalid PKCS#7 padding");
+        }
+        for (int i = decrypted.length - padding; i < decrypted.length; i++) {
+            if (Byte.toUnsignedInt(decrypted[i]) != padding) {
+                throw new IllegalArgumentException("Encrypted channel attachment has invalid PKCS#7 padding");
+            }
+        }
+        Files.write(target, java.util.Arrays.copyOf(decrypted, decrypted.length - padding));
+    }
+
+    private byte[] decodeAttachmentAesKey(String value) {
+        String raw = value == null ? "" : value.trim();
+        if (raw.matches("(?i)[0-9a-f]{32}|[0-9a-f]{48}|[0-9a-f]{64}")) {
+            return java.util.HexFormat.of().parseHex(raw);
+        }
+        byte[] decoded = Base64.getDecoder().decode(raw);
+        String decodedText = new String(decoded, StandardCharsets.US_ASCII);
+        if ((decoded.length == 32 || decoded.length == 48 || decoded.length == 64)
+                && decodedText.matches("(?i)[0-9a-f]+")) {
+            return java.util.HexFormat.of().parseHex(decodedText);
+        }
+        if (decoded.length != 16 && decoded.length != 24 && decoded.length != 32) {
+            throw new IllegalArgumentException("Channel attachment AES key has invalid length");
+        }
+        return decoded;
     }
 
     URI validatedRemoteUri(String url) {

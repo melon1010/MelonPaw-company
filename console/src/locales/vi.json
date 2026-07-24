@@ -1027,6 +1027,16 @@
     "loading": "Đang tải kênh...",
     "configSaved": "Đã lưu cấu hình",
     "configFailed": "Lưu cấu hình thất bại",
+    "runtimeStatus": {
+      "running": "Đã kết nối",
+      "starting": "Đang kết nối",
+      "reconnecting": "Đang kết nối lại",
+      "configured": "Chưa kết nối",
+      "unhealthy": "Lỗi kết nối",
+      "misconfigured": "Cấu hình chưa đầy đủ",
+      "stopped": "Đã tắt",
+      "unsupported": "Không khả dụng"
+    },
     "channelType": "Loại kênh",
     "status": "Trạng thái",
     "totalItems": "Tổng {{count}} mục",

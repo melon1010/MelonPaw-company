@@ -507,7 +507,7 @@ export default function InboxPage() {
 
   return (
     <div className={styles.inboxPage}>
-      <PageHeader items={[{ title: t("inbox.title") }]} extra={null} />
+      <PageHeader parent={t("nav.settings")} current={t("nav.inbox")} />
 
       <div className={styles.pageContent}>
         <Tabs

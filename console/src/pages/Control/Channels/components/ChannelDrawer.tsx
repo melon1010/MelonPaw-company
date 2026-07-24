@@ -9,30 +9,19 @@ import {
 } from "@agentscope-ai/design";
 import { useAppMessage } from "../../../../hooks/useAppMessage";
 import { Alert, ConfigProvider } from "antd";
-import { LinkOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import { getChannelLabel, type ChannelKey } from "./constants";
 import { QrcodeAuthBlock } from "./QrcodeAuthBlock";
 import styles from "../index.module.less";
-import { openExternalLink } from "../../../../utils/openExternalLink";
-import { useAgentStore } from "../../../../stores/agentStore";
 
 const CHANNELS_WITH_ACCESS_CONTROL: ChannelKey[] = [
   "dingtalk",
   "feishu",
   "wecom",
   "wechat",
-  "onebot",
   "qq",
-  "xiaoyi",
-  "yuanbao",
 ];
-
-const CHANNEL_VENDOR_DOC_URLS: Partial<Record<ChannelKey, string>> = {
-  xiaoyi:
-    "https://developer.huawei.com/consumer/cn/doc/service/openclaw-0000002518410344",
-};
 
 const BASE_FIELDS = [
   "enabled",
@@ -68,13 +57,6 @@ export function ChannelDrawer({
   const { t } = useTranslation();
   const label = activeKey ? getChannelLabel(activeKey, t) : activeLabel;
   const { message } = useAppMessage();
-  const selectedAgent = useAgentStore((state) => state.selectedAgent);
-  const oneBotWebSocketUrl = `${window.location.origin.replace(
-    /^http/i,
-    "ws",
-  )}/api/channels/onebot/websocket?agent_id=${encodeURIComponent(
-    selectedAgent,
-  )}`;
 
   // ── Access control fields (shared across multiple channels) ──────────────
 
@@ -434,41 +416,6 @@ export function ChannelDrawer({
           </>
         );
 
-      case "xiaoyi":
-        return (
-          <>
-            <ConfigProvider prefixCls="ant">
-              <Alert
-                type="info"
-                showIcon
-                message={t("channels.xiaoyiSetupGuide")}
-                style={{ marginBottom: 16 }}
-              />
-            </ConfigProvider>
-            <Form.Item
-              name="ak"
-              label="Access Key (AK)"
-              rules={[{ required: true, message: "Please input Access Key" }]}
-            >
-              <Input placeholder="Access Key from Huawei Developer Platform" />
-            </Form.Item>
-            <Form.Item
-              name="sk"
-              label="Secret Key (SK)"
-              rules={[{ required: true, message: "Please input Secret Key" }]}
-            >
-              <Input.Password placeholder="Secret Key from Huawei Developer Platform" />
-            </Form.Item>
-            <Form.Item
-              name="agent_id"
-              label="Agent ID"
-              rules={[{ required: true, message: "Please input Agent ID" }]}
-            >
-              <Input placeholder="Agent ID from XiaoYi platform" />
-            </Form.Item>
-          </>
-        );
-
       case "wechat":
         return (
           <>
@@ -575,58 +522,6 @@ export function ChannelDrawer({
           </>
         );
 
-      case "yuanbao":
-        return (
-          <>
-            <Form.Item
-              name="app_id"
-              label="App ID"
-              rules={[{ required: true, message: "Please input App ID" }]}
-            >
-              <Input placeholder="App ID from Yuanbao platform" />
-            </Form.Item>
-            <Form.Item
-              name="app_secret"
-              label="App Secret"
-              rules={[{ required: true, message: "Please input App Secret" }]}
-            >
-              <Input.Password placeholder="App Secret from Yuanbao platform" />
-            </Form.Item>
-            <Form.Item
-              name="accept_bot_messages"
-              label={t("channels.acceptBotMessages")}
-              valuePropName="checked"
-              tooltip={t("channels.acceptBotMessagesTooltip")}
-            >
-              <Switch />
-            </Form.Item>
-          </>
-        );
-
-      case "onebot":
-        return (
-          <>
-            <Form.Item label="Reverse WebSocket URL">
-              <Input readOnly value={oneBotWebSocketUrl} />
-            </Form.Item>
-            <Form.Item
-              name="access_token"
-              label="Access Token"
-              rules={[{ required: true }]}
-            >
-              <Input.Password placeholder="Access token for authentication" />
-            </Form.Item>
-            <Form.Item
-              name="share_session_in_group"
-              label={t("channels.shareSessionInGroup")}
-              valuePropName="checked"
-              tooltip={t("channels.shareSessionInGroupTooltip")}
-            >
-              <Switch />
-            </Form.Item>
-          </>
-        );
-
       default:
         return null;
     }
@@ -666,29 +561,9 @@ export function ChannelDrawer({
 
   // ── Drawer title ─────────────────────────────────────────────────────────
 
-  const drawerTitle = (
-    <div className={styles.drawerTitle}>
-      <span>
-        {label
-          ? `${label} ${t("channels.settings")}`
-          : t("channels.channelSettings")}
-      </span>
-      {activeKey && CHANNEL_VENDOR_DOC_URLS[activeKey] && (
-          <Button
-            type="text"
-            size="small"
-            icon={<LinkOutlined />}
-            onClick={() =>
-              openExternalLink(CHANNEL_VENDOR_DOC_URLS[activeKey]!)
-            }
-            className={styles.dingtalkDocBtn}
-            style={{ color: "var(--mp-primary)" }}
-          >
-            {label} Doc
-          </Button>
-        )}
-    </div>
-  );
+  const drawerTitle = label
+    ? `${label} ${t("channels.settings")}`
+    : t("channels.channelSettings");
 
   // ── Render ───────────────────────────────────────────────────────────────
 

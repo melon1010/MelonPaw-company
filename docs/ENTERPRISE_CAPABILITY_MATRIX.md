@@ -65,7 +65,7 @@
 - 客户端传入的 `X-Agent-Id` 不是授权依据，服务端必须按登录用户重新解析。
 - `agents:manage` 允许管理共享 Agent，但不能读取或修改他人的 PERSONAL Agent。
 - 普通用户的 `execute_shell_command` 显示名始终可用，但实际执行只走 AgentScope 官方 `ShellExecuteTool`；每个用户使用自己的 Docker 沙箱和自己的工作区挂载，技能提升、写入和高风险动作继续经过 AgentScope 权限确认。容器访问外部资料时，生产网络必须通过受控出口阻断企业内网和云元数据地址。
-- 渠道配置、二维码状态、访问控制和 OneBot token 均绑定个人 Agent；渠道客户端提交的 Agent 标识不能单独作为授权依据。
+- 渠道配置、二维码状态和访问控制均绑定个人 Agent；渠道客户端提交的 Agent 标识不能单独作为授权依据。
 - 定时任务、渠道回调和心跳都必须携带创建者/执行者身份；不能使用 `default` 作为无人值守任务的共享用户槽位。
 - 系统管理员拥有平台管理权，不自动拥有他人 PERSONAL 内容；跨用户内容访问必须单独授予 `data:breakglass` 并记录审计。
 - 页面隐藏只改善体验，最终授权必须由后端 SecurityFilter、方法权限和资源所有权共同执行。

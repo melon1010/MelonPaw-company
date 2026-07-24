@@ -1,9 +1,26 @@
 package com.melon.channels;
 
+import com.dingtalk.open.app.api.OpenDingTalkClient;
+import com.dingtalk.open.app.api.OpenDingTalkStreamClientBuilder;
+import com.dingtalk.open.app.api.callback.DingTalkStreamTopics;
+import com.dingtalk.open.app.api.callback.OpenDingTalkCallbackListener;
+import com.dingtalk.open.app.api.models.bot.ChatbotMessage;
+import com.dingtalk.open.app.api.security.AuthClientCredential;
+import com.lark.oapi.event.EventDispatcher;
+import com.lark.oapi.service.im.ImService;
+import com.lark.oapi.service.im.v1.model.EventMessage;
+import com.lark.oapi.service.im.v1.model.EventSender;
+import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
+import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1Data;
+import com.lark.oapi.service.im.v1.model.UserId;
+import com.lark.oapi.ws.Client;
+import com.lark.oapi.ws.ClientLifecycle;
 import com.melon.core.util.JsonUtils;
 import com.melon.core.util.OutboundNetworkPolicy;
 import com.melon.core.util.ExecutorUtils;
 import com.melon.core.util.NamedThreadFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -17,17 +34,32 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import static com.melon.core.util.ValueUtils.stringValue;
 
-/** HTTP adapter shared by the DingTalk and Feishu integrations. */
+/** Official long-connection receiver plus HTTP sender for DingTalk and Feishu. */
 public class HttpChannelAdapter extends BasicChannelAdapter {
+
+    private static final Logger log = LoggerFactory.getLogger(HttpChannelAdapter.class);
+    private static final int PROCESSED_LIMIT = 2000;
+    private static final Duration FEISHU_READY_TIMEOUT = Duration.ofSeconds(15);
+    private static final String STARTING = "starting";
+    private static final String RUNNING = "running";
+    private static final String RECONNECTING = "reconnecting";
 
     private final ExecutorService worker;
     private final boolean ownsWorker;
+    private final Map<String, OpenDingTalkClient> dingtalkClients = new ConcurrentHashMap<>();
+    private final Map<String, Client> feishuClients = new ConcurrentHashMap<>();
+    private final Map<String, String> connectionErrors = new ConcurrentHashMap<>();
+    private final Map<String, String> connectionStates = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, String>> activeConnectionConfigs = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, Long>> processed = new ConcurrentHashMap<>();
 
     public HttpChannelAdapter(String type, boolean qrcode, boolean streaming, boolean webhook) {
         this(type, qrcode, streaming, webhook, standaloneWorker(), true);
@@ -50,11 +82,44 @@ public class HttpChannelAdapter extends BasicChannelAdapter {
     public CompletableFuture<ChannelHealth> start(String agentId,
                                                   Map<String, Object> config,
                                                   ChannelInboundDispatcher dispatcher) {
-        List<String> missing = missingRequired(config != null ? config : Map.of());
-        if (!missing.isEmpty()) {
-            return CompletableFuture.completedFuture(health(agentId, config));
+        Map<String, Object> runtime = new LinkedHashMap<>(config != null ? config : Map.of());
+        List<String> missing = missingRequired(runtime);
+        if (!Boolean.TRUE.equals(runtime.get("enabled")) || !missing.isEmpty()) {
+            stopConnection(agentId);
+            return CompletableFuture.completedFuture(health(agentId, runtime));
         }
-        return super.start(agentId, config).thenApply(ignored -> health(agentId, config));
+        if (matchesActiveConnection(agentId, runtime)) {
+            return CompletableFuture.completedFuture(health(agentId, runtime));
+        }
+        return CompletableFuture.supplyAsync(() -> {
+            stopConnection(agentId);
+            try {
+                connectionStates.put(key(agentId), STARTING);
+                if ("dingtalk".equals(type())) {
+                    startDingTalk(agentId, runtime, dispatcher);
+                } else {
+                    startFeishu(agentId, runtime, dispatcher);
+                }
+                super.start(agentId, runtime).join();
+                activeConnectionConfigs.put(key(agentId), connectionConfig(runtime));
+                connectionErrors.remove(key(agentId));
+                return health(agentId, runtime);
+            } catch (Exception error) {
+                stopConnection(agentId);
+                String detail = error.getMessage() != null
+                        ? error.getMessage() : error.getClass().getSimpleName();
+                connectionErrors.put(key(agentId), detail);
+                throw new CompletionException(error);
+            }
+        }, worker);
+    }
+
+    @Override
+    public CompletableFuture<ChannelHealth> stop(String agentId) {
+        stopConnection(agentId);
+        connectionErrors.remove(key(agentId));
+        processed.remove(key(agentId));
+        return super.stop(agentId);
     }
 
     @Override
@@ -68,7 +133,21 @@ public class HttpChannelAdapter extends BasicChannelAdapter {
             return ChannelHealth.of(type(), "misconfigured", false, false, true,
                     "Missing required config: " + String.join(", ", missing));
         }
-        return super.health(agentId, config);
+        String error = connectionErrors.get(key(agentId));
+        if (error != null && !error.isBlank()) {
+            return ChannelHealth.of(type(), "unhealthy", false, false, true, error);
+        }
+        String state = connectionStates.getOrDefault(key(agentId), STARTING);
+        boolean connected = "dingtalk".equals(type())
+                ? RUNNING.equals(state)
+                : ClientLifecycle.connected(feishuClients.get(key(agentId)));
+        if (connected) state = RUNNING;
+        return ChannelHealth.of(type(), state, connected,
+                connected, true, connected
+                        ? displayName() + " long connection is active."
+                        : RECONNECTING.equals(state)
+                                ? displayName() + " long connection is reconnecting."
+                                : displayName() + " long connection is starting.");
     }
 
     @Override
@@ -96,7 +175,9 @@ public class HttpChannelAdapter extends BasicChannelAdapter {
                     case "dingtalk" -> sendDingTalk(message, config);
                     default -> throw new IllegalStateException("Unsupported HTTP channel: " + type());
                 };
-                mark(message, response.statusCode() >= 200 && response.statusCode() < 300 ? "sent" : "failed",
+                boolean sent = response.statusCode() >= 200 && response.statusCode() < 300
+                        && platformAccepted(response.body());
+                mark(message, sent ? "sent" : "failed",
                         response.statusCode() + " " + response.body());
             } catch (Exception e) {
                 mark(message, "failed",
@@ -108,6 +189,12 @@ public class HttpChannelAdapter extends BasicChannelAdapter {
 
     @Override
     public void close() {
+        dingtalkClients.values().forEach(this::stopDingTalk);
+        dingtalkClients.clear();
+        feishuClients.values().forEach(ClientLifecycle::stop);
+        feishuClients.clear();
+        connectionStates.clear();
+        activeConnectionConfigs.clear();
         if (ownsWorker) ExecutorUtils.shutdownGracefully(worker, Duration.ofSeconds(5));
     }
 
@@ -115,6 +202,210 @@ public class HttpChannelAdapter extends BasicChannelAdapter {
         return new ThreadPoolExecutor(
                 2, 4, 60L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(64),
                 new NamedThreadFactory("melon-http-channel"), new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    private void startDingTalk(String agentId, Map<String, Object> config,
+                               ChannelInboundDispatcher dispatcher) throws Exception {
+        OpenDingTalkCallbackListener<ChatbotMessage, Void> listener = message -> {
+            try {
+                connectionStates.put(key(agentId), RUNNING);
+                Map<String, Object> payload = dingTalkPayload(message);
+                dispatch(agentId, parseDingTalk(agentId, payload, Map.of()), dispatcher,
+                        stringValue(payload.get("msgId")));
+            } catch (Exception error) {
+                log.error("DingTalk inbound callback failed: agent={}", agentId, error);
+            }
+            return null;
+        };
+        OpenDingTalkClient client = OpenDingTalkStreamClientBuilder.custom()
+                .credential(new AuthClientCredential(
+                        stringValue(config.get("client_id")),
+                        stringValue(config.get("client_secret"))))
+                .registerCallbackListener(DingTalkStreamTopics.BOT_MESSAGE_TOPIC, listener)
+                .build();
+        dingtalkClients.put(key(agentId), client);
+        client.start();
+        log.info("DingTalk Stream client started: agent={}", agentId);
+    }
+
+    private void startFeishu(String agentId, Map<String, Object> config,
+                              ChannelInboundDispatcher dispatcher) throws Exception {
+        EventDispatcher eventDispatcher = EventDispatcher.newBuilder(
+                        stringValue(config.get("verification_token")),
+                        stringValue(config.get("encrypt_key")))
+                .onP2MessageReceiveV1(new ImService.P2MessageReceiveV1Handler() {
+                    @Override
+                    public void handle(P2MessageReceiveV1 event) {
+                        try {
+                            Map<String, Object> payload = feishuPayload(event, config);
+                            Map<?, ?> message = map(map(payload.get("event")).get("message"));
+                            dispatch(agentId, parseFeishu(agentId, payload, Map.of()), dispatcher,
+                                    stringValue(message.get("message_id")));
+                        } catch (Exception error) {
+                            log.error("Feishu inbound callback failed: agent={}", agentId, error);
+                        }
+                    }
+                })
+                .build();
+        String domain = "lark".equalsIgnoreCase(stringValue(config.get("domain")))
+                ? "https://open.larksuite.com" : "https://open.feishu.cn";
+        Client client = new Client.Builder(
+                stringValue(config.get("app_id")), stringValue(config.get("app_secret")))
+                .domain(domain)
+                .autoReconnect(true)
+                .onReconnecting(() -> connectionStates.put(key(agentId), RECONNECTING))
+                .onReconnected(() -> connectionStates.put(key(agentId), RUNNING))
+                .eventHandler(eventDispatcher)
+                .build();
+        feishuClients.put(key(agentId), client);
+        client.start();
+        ClientLifecycle.awaitReady(client, FEISHU_READY_TIMEOUT);
+        connectionStates.put(key(agentId), RUNNING);
+        log.info("Feishu WebSocket connected: agent={}, domain={}", agentId, domain);
+    }
+
+    private Map<String, Object> dingTalkPayload(ChatbotMessage message) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("conversationId", stringValue(message.getConversationId()));
+        payload.put("conversationType", stringValue(message.getConversationType()));
+        payload.put("senderStaffId", stringValue(message.getSenderStaffId()));
+        payload.put("senderId", stringValue(message.getSenderId()));
+        payload.put("senderNick", stringValue(message.getSenderNick()));
+        payload.put("sessionWebhook", stringValue(message.getSessionWebhook()));
+        payload.put("sessionWebhookExpiredTime", message.getSessionWebhookExpiredTime());
+        payload.put("msgId", stringValue(message.getMsgId()));
+        payload.put("msgtype", stringValue(message.getMsgtype()));
+        payload.put("isInAtList", Boolean.TRUE.equals(message.getInAtList()));
+        String text = message.getText() != null ? stringValue(message.getText().getContent()) : "";
+        if (text.isBlank() && message.getContent() != null) {
+            text = stringValue(message.getContent().getContent(), message.getContent().getRecognition());
+        }
+        payload.put("text", Map.of("content", text));
+        return payload;
+    }
+
+    private Map<String, Object> feishuPayload(P2MessageReceiveV1 event,
+                                               Map<String, Object> config) {
+        P2MessageReceiveV1Data data = event != null ? event.getEvent() : null;
+        EventMessage sourceMessage = data != null ? data.getMessage() : null;
+        EventSender sourceSender = data != null ? data.getSender() : null;
+        UserId sourceId = sourceSender != null ? sourceSender.getSenderId() : null;
+        Map<String, Object> message = new LinkedHashMap<>();
+        if (sourceMessage != null) {
+            message.put("message_id", stringValue(sourceMessage.getMessageId()));
+            message.put("chat_id", stringValue(sourceMessage.getChatId()));
+            message.put("chat_type", stringValue(sourceMessage.getChatType()));
+            message.put("message_type", stringValue(sourceMessage.getMessageType()));
+            message.put("content", stringValue(sourceMessage.getContent()));
+            message.put("mentions", sourceMessage.getMentions() == null
+                    ? List.of() : List.of(sourceMessage.getMentions()));
+        }
+        Map<String, Object> senderId = new LinkedHashMap<>();
+        if (sourceId != null) {
+            senderId.put("open_id", stringValue(sourceId.getOpenId()));
+            senderId.put("user_id", stringValue(sourceId.getUserId()));
+            senderId.put("union_id", stringValue(sourceId.getUnionId()));
+        }
+        Map<String, Object> sender = new LinkedHashMap<>();
+        sender.put("sender_id", senderId);
+        sender.put("sender_type", sourceSender != null
+                ? stringValue(sourceSender.getSenderType()) : "");
+        return Map.of(
+                "app_id", stringValue(config.get("app_id")),
+                "event", Map.of("message", message, "sender", sender));
+    }
+
+    private void dispatch(String agentId, ChannelInboundMessage inbound,
+                          ChannelInboundDispatcher dispatcher, String messageId) {
+        if (dispatcher == null || duplicate(agentId, messageId)) return;
+        dispatcher.dispatch(inbound, 20).whenComplete((ignored, error) -> {
+            if (error != null) {
+                log.error("{} inbound processing failed: agent={}, message={}",
+                        displayName(), agentId, messageId, error);
+            }
+        });
+    }
+
+    private boolean duplicate(String agentId, String messageId) {
+        if (messageId == null || messageId.isBlank()) return false;
+        Map<String, Long> ids = processed.computeIfAbsent(key(agentId),
+                ignored -> new ConcurrentHashMap<>());
+        Long previous = ids.putIfAbsent(messageId, System.currentTimeMillis());
+        if (ids.size() > PROCESSED_LIMIT) {
+            ids.entrySet().stream()
+                    .sorted(Map.Entry.comparingByValue())
+                    .limit(ids.size() - PROCESSED_LIMIT)
+                    .map(Map.Entry::getKey)
+                    .toList()
+                    .forEach(ids::remove);
+        }
+        return previous != null;
+    }
+
+    private void stopConnection(String agentId) {
+        stopDingTalk(dingtalkClients.remove(key(agentId)));
+        ClientLifecycle.stop(feishuClients.remove(key(agentId)));
+        connectionStates.remove(key(agentId));
+        activeConnectionConfigs.remove(key(agentId));
+    }
+
+    private void stopDingTalk(OpenDingTalkClient client) {
+        if (client == null) return;
+        try {
+            client.stop();
+        } catch (Exception error) {
+            log.warn("DingTalk Stream stop failed", error);
+        }
+    }
+
+    private boolean platformAccepted(String body) {
+        try {
+            Map<String, Object> parsed = JsonUtils.fromJson(body, Map.class);
+            if (parsed == null || parsed.isEmpty()) return true;
+            if ("feishu".equals(type()) && parsed.containsKey("code")) {
+                return number(parsed.get("code")) == 0;
+            }
+            if ("dingtalk".equals(type()) && parsed.containsKey("errcode")) {
+                return number(parsed.get("errcode")) == 0;
+            }
+            return true;
+        } catch (Exception ignored) {
+            return true;
+        }
+    }
+
+    private int number(Object value) {
+        if (value instanceof Number number) return number.intValue();
+        try {
+            return Integer.parseInt(stringValue(value));
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
+    }
+
+    private String displayName() {
+        return "dingtalk".equals(type()) ? "DingTalk" : "Feishu";
+    }
+
+    private String key(String agentId) {
+        return agentId == null || agentId.isBlank() ? "default" : agentId.trim();
+    }
+
+    private boolean matchesActiveConnection(String agentId, Map<String, Object> config) {
+        String agentKey = key(agentId);
+        boolean clientExists = "dingtalk".equals(type())
+                ? dingtalkClients.containsKey(agentKey)
+                : feishuClients.containsKey(agentKey);
+        return clientExists && connectionConfig(config).equals(activeConnectionConfigs.get(agentKey));
+    }
+
+    private Map<String, String> connectionConfig(Map<String, Object> config) {
+        List<String> keys = "dingtalk".equals(type())
+                ? List.of("client_id", "client_secret")
+                : List.of("app_id", "app_secret", "verification_token", "encrypt_key", "domain");
+        Map<String, String> result = new LinkedHashMap<>();
+        keys.forEach(name -> result.put(name, stringValue(config.get(name))));
+        return result;
     }
 
     @Override
@@ -210,7 +501,7 @@ public class HttpChannelAdapter extends BasicChannelAdapter {
             if (deviceCode.isBlank() || scanUrl.isBlank()) {
                 return failedQrcode("Feishu missing device_code or QR URL: " + begin.body());
             }
-            scanUrl += scanUrl.contains("?") ? "&source=melon" : "?source=melon";
+            scanUrl += scanUrl.contains("?") ? "&source=MelonPaw" : "?source=MelonPaw";
             return Map.of(
                     "qrcode_img", ChannelHttpSupport.qrPngBase64(scanUrl),
                     "poll_token", deviceCode,
@@ -323,6 +614,7 @@ public class HttpChannelAdapter extends BasicChannelAdapter {
         meta.put("feishu_sender_id", inbound.getUserId());
         meta.put("feishu_message_id",
                 stringValue(message.get("message_id"), stringValue(message.get("messageId"))));
+        meta.put("message_id", meta.get("feishu_message_id"));
         meta.put("is_group", "group".equals(chatType));
         meta.put("feishu_receive_id", "group".equals(chatType) ? chatId : inbound.getUserId());
         meta.put("feishu_receive_id_type", "group".equals(chatType) ? "chat_id" : "open_id");
@@ -362,6 +654,7 @@ public class HttpChannelAdapter extends BasicChannelAdapter {
         meta.put("sender_staff_id", sender);
         meta.put("sender_id", sender);
         meta.put("user_name", senderName);
+        meta.put("message_id", first(payload, "msgId", "msg_id", "message_id"));
         meta.put("is_group", "group".equals(conversationType));
         if (Boolean.TRUE.equals(payload.get("isInAtList"))
                 || Boolean.TRUE.equals(payload.get("is_in_at_list"))) {
@@ -396,7 +689,7 @@ public class HttpChannelAdapter extends BasicChannelAdapter {
     private List<String> missingRequired(Map<String, Object> config) {
         return switch (type()) {
             case "feishu" -> missing(config, "app_id", "app_secret");
-            case "dingtalk" -> List.of();
+            case "dingtalk" -> missing(config, "client_id", "client_secret");
             default -> throw new IllegalStateException("Unsupported HTTP channel: " + type());
         };
     }

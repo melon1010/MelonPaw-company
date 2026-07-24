@@ -13,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -24,6 +25,7 @@ public class RuntimeExecutors {
     private final ExecutorService channel;
     private final ExecutorService history;
     private final ExecutorService skillInstall;
+    private final ExecutorService channelLongPoll;
     private final ScheduledExecutorService channelScheduler;
     private final ScheduledExecutorService mcpLifecycle;
     private final ScheduledExecutorService cron;
@@ -35,6 +37,7 @@ public class RuntimeExecutors {
         history = bounded("melon-history", 1, 1, properties.getHistoryQueueCapacity(),
                 new RunCallerOnSaturationPolicy());
         skillInstall = bounded("melon-skill-install", properties.getSkillInstall(), new ThreadPoolExecutor.AbortPolicy());
+        channelLongPoll = directHandoff("melon-channel-long-poll", properties.getChannelLongPollThreads());
         channelScheduler = scheduled("melon-channel-scheduler", properties.getChannelSchedulerThreads());
         mcpLifecycle = scheduled("melon-mcp-lifecycle", properties.getMcpLifecycleThreads());
         cron = scheduled("melon-cron", properties.getCronThreads());
@@ -62,6 +65,10 @@ public class RuntimeExecutors {
         return channelScheduler;
     }
 
+    public ExecutorService channelLongPoll() {
+        return channelLongPoll;
+    }
+
     public ScheduledExecutorService cron() {
         return cron;
     }
@@ -73,7 +80,7 @@ public class RuntimeExecutors {
     @PreDestroy
     public void shutdown() {
         for (ExecutorService executor : List.of(
-                channel, history, skillInstall, channelScheduler, mcpLifecycle, cron, heartbeat)) {
+                channel, history, skillInstall, channelLongPoll, channelScheduler, mcpLifecycle, cron, heartbeat)) {
             ExecutorUtils.shutdownGracefully(executor, shutdownTimeout);
         }
     }
@@ -103,6 +110,15 @@ public class RuntimeExecutors {
         executor.setRemoveOnCancelPolicy(true);
         executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
         executor.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
+        return executor;
+    }
+
+    private static ThreadPoolExecutor directHandoff(String name, int maxThreads) {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                0, maxThreads, 60L, TimeUnit.SECONDS,
+                new SynchronousQueue<>(), new NamedThreadFactory(name),
+                new ThreadPoolExecutor.AbortPolicy());
+        executor.allowCoreThreadTimeOut(true);
         return executor;
     }
 

@@ -58,6 +58,14 @@ vi.mock("../AccountControls", () => ({
   ),
 }));
 
+vi.mock("../SidebarSessionList", () => ({
+  default: ({ historyOnly }: { historyOnly?: boolean }) => (
+    <div data-history-only={historyOnly ? "true" : "false"}>
+      sidebar-session-list
+    </div>
+  ),
+}));
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: mockT }),
 }));
@@ -78,7 +86,7 @@ describe("MobileNavigation permissions", () => {
 
   it("keeps chat, project spaces, and scheduled tasks in primary navigation", async () => {
     renderWithProviders(<MobileNavigation />, {
-      initialEntries: ["/workbench"],
+      initialEntries: ["/chat"],
     });
 
     const trigger = screen.getByLabelText("nav.menu", { selector: "button" });
@@ -111,6 +119,10 @@ describe("MobileNavigation permissions", () => {
         name: "nav.workspace",
       }),
     ).not.toBeInTheDocument();
+    expect(screen.getByText("sidebar-session-list")).toHaveAttribute(
+      "data-history-only",
+      "true",
+    );
 
     const accountControl = screen.getByRole("button", {
       name: "account-control",
@@ -135,7 +147,7 @@ describe("MobileNavigation permissions", () => {
 
   it("closes from the mask without rendering a drawer close button", async () => {
     renderWithProviders(<MobileNavigation />, {
-      initialEntries: ["/workbench"],
+      initialEntries: ["/chat"],
     });
 
     const trigger = screen.getByLabelText("nav.menu", { selector: "button" });
@@ -159,7 +171,7 @@ describe("MobileNavigation permissions", () => {
     mockAuthState.permissions = ["audit:read"];
 
     renderWithProviders(<MobileNavigation />, {
-      initialEntries: ["/workbench"],
+      initialEntries: ["/chat"],
     });
 
     fireEvent.click(screen.getByLabelText("nav.menu", { selector: "button" }));
@@ -182,6 +194,30 @@ describe("MobileNavigation permissions", () => {
     ).not.toBeInTheDocument();
     expect(
       within(navigation).queryByRole("button", { name: "nav.security" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens settings navigation directly on a settings route", async () => {
+    renderWithProviders(<MobileNavigation />, {
+      initialEntries: ["/workspace"],
+    });
+
+    fireEvent.click(screen.getByLabelText("nav.menu", { selector: "button" }));
+    const navigation = await screen.findByRole("navigation", {
+      name: "nav.menu",
+      hidden: true,
+    });
+
+    expect(
+      within(navigation).getByRole("button", {
+        name: "sidebar.settings.returnApp",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(navigation).getByRole("button", { name: "nav.workspace" }),
+    ).toBeInTheDocument();
+    expect(
+      within(navigation).queryByRole("button", { name: "nav.chat" }),
     ).not.toBeInTheDocument();
   });
 });

@@ -83,7 +83,8 @@ function SkillPoolPage() {
   return (
     <div className={styles.skillsPage}>
       <PageHeader
-        items={[{ title: t("nav.settings") }, { title: t("nav.skillPool") }]}
+        parent={t("nav.settings")}
+        current={t("nav.skillPool")}
         extra={
           <div className={styles.headerRight}>
             <input

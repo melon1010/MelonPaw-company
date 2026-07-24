@@ -8,7 +8,13 @@ import styles from "./index.module.less";
 
 const MOBILE_BREAKPOINT_PX = 480;
 
-const ChatHeaderTitle: React.FC = () => {
+interface ChatHeaderTitleProps {
+  hideUntitled?: boolean;
+}
+
+const ChatHeaderTitle: React.FC<ChatHeaderTitleProps> = ({
+  hideUntitled = false,
+}) => {
   const location = useLocation();
   const { sessions, currentSessionId, setCurrentSessionId } =
     useChatAnywhereSessionsState();
@@ -24,7 +30,8 @@ const ChatHeaderTitle: React.FC = () => {
           session.sessionId === sessionId),
     ),
   );
-  const chatName = sidebarSession?.name || currentSession?.name || "New Chat";
+  const resolvedChatName = sidebarSession?.name || currentSession?.name || "";
+  const chatName = resolvedChatName || "New Chat";
 
   const [open, setOpen] = useState(false);
 
@@ -102,6 +109,8 @@ const ChatHeaderTitle: React.FC = () => {
       {chatName}
     </span>
   );
+
+  if (hideUntitled && !resolvedChatName.trim()) return null;
 
   if (sessions.length <= 1) {
     return (

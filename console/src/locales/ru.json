@@ -787,6 +787,16 @@
     "loading": "Загрузка каналов...",
     "configSaved": "Конфигурация успешно сохранена",
     "configFailed": "Не удалось сохранить конфигурацию",
+    "runtimeStatus": {
+      "running": "Подключено",
+      "starting": "Подключение",
+      "reconnecting": "Переподключение",
+      "configured": "Не подключено",
+      "unhealthy": "Ошибка подключения",
+      "misconfigured": "Неполная конфигурация",
+      "stopped": "Отключено",
+      "unsupported": "Недоступно"
+    },
     "channelType": "Тип канала",
     "status": "Статус",
     "totalItems": "Всего {{count}} элементов",

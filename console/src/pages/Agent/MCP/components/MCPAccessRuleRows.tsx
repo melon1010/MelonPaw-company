@@ -106,9 +106,6 @@ const CHANNEL_SOURCE_FALLBACK_LABELS: Record<string, string> = {
   wechat: "WeChat",
   wecom: "WeCom",
   qq: "QQ",
-  onebot: "OneBot",
-  xiaoyi: "XiaoYi",
-  yuanbao: "Yuanbao",
 };
 
 function channelSourceOptions(

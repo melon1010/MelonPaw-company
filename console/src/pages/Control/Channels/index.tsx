@@ -27,7 +27,7 @@ function ChannelsPage() {
   const canManageAccess =
     hasPermission(user, "channels:personal") ||
     hasPermission(user, "agents:manage");
-  const { channels, orderedKeys, isBuiltin, loading, fetchChannels } =
+  const { channels, health, orderedKeys, isBuiltin, loading, fetchChannels } =
     useChannels();
   const [saving, setSaving] = useState(false);
   const [activeKey, setActiveKey] = useState<ChannelKey | null>(null);
@@ -139,14 +139,8 @@ function ChannelsPage() {
     <div className={styles.channelsPage}>
       <PageHeader
         className={styles.pageHeader}
-        items={[
-          {
-            title: canManageAccess
-              ? t("nav.control")
-              : t("enterprise.nav.mySpace", "我的空间"),
-          },
-          { title: t("channels.title") },
-        ]}
+        parent={t("nav.settings")}
+        current={t("nav.channels")}
         extra={canManageAccess ? (
           <Space size={8}>
             <Badge dot={pendingCount > 0} offset={[-4, 4]}>
@@ -190,6 +184,7 @@ function ChannelsPage() {
                       key={key}
                       channelKey={key}
                       config={config}
+                      health={health[key]}
                       onClick={() => handleCardClick(key)}
                     />
                   ))}

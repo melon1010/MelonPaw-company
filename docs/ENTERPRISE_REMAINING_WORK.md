@@ -4,7 +4,7 @@
 
 ## P0：生产安全与核心闭环
 
-当前已落地的运行基线：Web 请求按用户解析 PERSONAL Agent；AgentScope `IsolationScope.USER` + DockerFilesystemSpec 隔离技能、文件和命令；官方 execute 是唯一 Shell 实现；普通用户工具页可见但不能切换到他人 Agent；个人模型从全局 ProviderManager 继承；定时任务记录执行者身份；请求上下文不能覆盖认证用户、Agent、会话或工作目录；工具审批按 Agent、用户、会话三层归属隔离。工作区上传、转写、渠道附件和技能远程下载已有大小上限、临时文件清理和公网 URL 策略；MCP 工具默认允许低风险调用、对高风险操作审批，并在每次调用时优先执行 Agent、用户、渠道和工具显式策略；远程 MCP OAuth 只开放 Client Credentials，凭据会先验证再以加密配置替换旧授权；OneBot 反向 WebSocket 使用个人 Agent token 绑定。
+当前已落地的运行基线：Web 请求按用户解析 PERSONAL Agent；AgentScope `IsolationScope.USER` + DockerFilesystemSpec 隔离技能、文件和命令；官方 execute 是唯一 Shell 实现；普通用户工具页可见但不能切换到他人 Agent；个人模型从全局 ProviderManager 继承；定时任务记录执行者身份；请求上下文不能覆盖认证用户、Agent、会话或工作目录；工具审批按 Agent、用户、会话三层归属隔离。工作区上传、转写、渠道附件和技能远程下载已有大小上限、临时文件清理和公网 URL 策略；MCP 工具默认允许低风险调用、对高风险操作审批，并在每次调用时优先执行 Agent、用户、渠道和工具显式策略；远程 MCP OAuth 只开放 Client Credentials，凭据会先验证再以加密配置替换旧授权。
 
 ### 1. 首次初始化部署验收
 
@@ -38,7 +38,7 @@
 
 ### 5. 外部渠道入口信任边界
 
-现状：轮询和 WebSocket 渠道可运行；OneBot 已按个人 Agent 的渠道 token 验证握手。统一 webhook 入口已按渠道配置密钥校验签名、时间戳和 nonce，提供五分钟重放缓存及 Agent 级速率限制；签名通过后才进入现有 ChannelManager，入口不再依赖应用 Bearer 登录。
+现状：轮询和 WebSocket 渠道可运行。统一 webhook 入口已按渠道配置密钥校验签名、时间戳和 nonce，提供五分钟重放缓存及 Agent 级速率限制；签名通过后才进入现有 ChannelManager，入口不再依赖应用 Bearer 登录。
 
 验收：使用钉钉、飞书和企业微信正式应用回调样本验证各厂商签名格式；生产反向代理继续配置来源限制和失败日志告警。
 

@@ -3,6 +3,7 @@ package com.melon.channels;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.ConfigManager;
 
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,9 +16,16 @@ public class ChannelConfigService {
     private static final Set<String> SERVER_MANAGED_KEYS = Set.of(
             "type", "isBuiltin", "implemented", "available", "supports_qrcode",
             "supports_streaming", "requires_webhook", INTERNAL_STATE_DIR, "bot_token_file",
-            "endpoint", "base_url", "api_base", "portal_host", "ws_url", "backup_ws_url",
-            "send_url", "websocket_url", "api_domain", "reply_url", "webhook_url",
+            "endpoint", "base_url", "api_base", "portal_host", "ws_url",
+            "reply_url", "webhook_url",
             "outgoing_webhook", "http_proxy", "proxy", "media_dir", "domain"
+    );
+    private static final Map<String, Set<String>> AUTHORIZED_CREDENTIAL_KEYS = Map.of(
+            "dingtalk", Set.of("client_id", "client_secret"),
+            "feishu", Set.of("app_id", "app_secret"),
+            "qq", Set.of("app_id", "client_secret", "user_openid"),
+            "wechat", Set.of("bot_token", "base_url"),
+            "wecom", Set.of("bot_id", "secret")
     );
 
     private final ConfigManager configManager;
@@ -79,6 +87,7 @@ public class ChannelConfigService {
         Map<String, Map<String, Object>> channels = new LinkedHashMap<>(
                 agent.getChannels() != null ? agent.getChannels() : Map.of());
         Map<String, Object> previous = new LinkedHashMap<>(channels.getOrDefault(channel, defaultConfig(channel)));
+        Map<String, Object> trustedServerValues = trustedServerValues(channel, previous);
         Map<String, Object> merged = new LinkedHashMap<>(previous);
         SERVER_MANAGED_KEYS.forEach(merged::remove);
         if (body != null) {
@@ -89,6 +98,34 @@ public class ChannelConfigService {
             });
         }
         migrateLegacyAccessFields(agentId, channel, merged, body != null ? body : Map.of());
+        merged.putAll(trustedServerValues);
+        merged.put("type", channel);
+        channels.put(channel, merged);
+        agent.setChannels(channels);
+        configManager.save();
+        return publicConfig(channel, merged);
+    }
+
+    public Map<String, Object> updateAuthorizedCredentials(
+            String agentId, String channel, Map<String, Object> credentials) {
+        requireSupported(channel);
+        Set<String> allowed = AUTHORIZED_CREDENTIAL_KEYS.getOrDefault(channel, Set.of());
+        if (allowed.isEmpty()) {
+            throw new IllegalArgumentException("Channel does not support QR-code credentials: " + channel);
+        }
+        AgentConfig agent = agent(agentId);
+        if (agent == null) return publicConfig(channel, credentials);
+        Map<String, Map<String, Object>> channels = new LinkedHashMap<>(
+                agent.getChannels() != null ? agent.getChannels() : Map.of());
+        Map<String, Object> merged = new LinkedHashMap<>(
+                channels.getOrDefault(channel, defaultConfig(channel)));
+        if (credentials != null) {
+            credentials.forEach((key, value) -> {
+                if (!allowed.contains(key) || value == null || String.valueOf(value).isBlank()) return;
+                merged.put(key, trustedCredential(channel, key, value));
+            });
+        }
+        merged.put("enabled", true);
         merged.put("type", channel);
         channels.put(channel, merged);
         agent.setChannels(channels);
@@ -102,7 +139,9 @@ public class ChannelConfigService {
         Map<String, Object> runtime = agent == null || agent.getChannels() == null
                 ? defaultConfig(channel)
                 : new LinkedHashMap<>(agent.getChannels().getOrDefault(channel, defaultConfig(channel)));
+        Map<String, Object> trustedServerValues = trustedServerValues(channel, runtime);
         SERVER_MANAGED_KEYS.forEach(runtime::remove);
+        runtime.putAll(trustedServerValues);
         runtime.put(INTERNAL_STATE_DIR, channelStateDir(agentId, channel));
         return runtime;
     }
@@ -199,21 +238,6 @@ public class ChannelConfigService {
                 config.put("bot_token", ""); config.put("base_url", "");
                 config.put("media_dir", ""); config.put("message_merge_enabled", false); config.put("message_merge_delay_ms", 0);
             }
-            case "onebot" -> {
-                config.put("access_token", "");
-                config.put("share_session_in_group", false);
-            }
-            case "xiaoyi" -> {
-                config.put("ak", ""); config.put("sk", ""); config.put("agent_id", "");
-                config.put("ws_url", "wss://hag.cloud.huawei.com/openclaw/v1/ws/link");
-                config.put("backup_ws_url", "wss://116.63.174.231/openclaw/v1/ws/link");
-                config.put("task_timeout_ms", 3600000); config.put("media_dir", "");
-            }
-            case "yuanbao" -> {
-                config.put("app_id", ""); config.put("app_secret", ""); config.put("api_domain", "bot.yuanbao.tencent.com");
-                config.put("media_dir", ""); config.put("accept_bot_messages", false);
-                config.put("send_url", ""); config.put("websocket_url", "wss://bot-wss.yuanbao.tencent.com/wss/connection");
-            }
             default -> { }
         }
     }
@@ -223,6 +247,37 @@ public class ChannelConfigService {
             return previous.getOrDefault(key, "");
         }
         return value;
+    }
+
+    private Map<String, Object> trustedServerValues(String channel, Map<String, Object> config) {
+        if (!"wechat".equals(channel) || config == null) return Map.of();
+        Object baseUrl = config.get("base_url");
+        if (baseUrl == null || String.valueOf(baseUrl).isBlank()) return Map.of();
+        try {
+            return Map.of("base_url", trustedCredential(channel, "base_url", baseUrl));
+        } catch (IllegalArgumentException ignored) {
+            return Map.of();
+        }
+    }
+
+    private Object trustedCredential(String channel, String key, Object value) {
+        if (!"wechat".equals(channel) || !"base_url".equals(key)) return value;
+        String text = String.valueOf(value).trim();
+        URI uri;
+        try {
+            uri = URI.create(text);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid WeChat base URL", e);
+        }
+        String host = uri.getHost() != null ? uri.getHost().toLowerCase() : "";
+        if (!"https".equalsIgnoreCase(uri.getScheme())
+                || uri.getUserInfo() != null
+                || uri.getQuery() != null
+                || uri.getFragment() != null
+                || !("weixin.qq.com".equals(host) || host.endsWith(".weixin.qq.com"))) {
+            throw new IllegalArgumentException("Untrusted WeChat base URL");
+        }
+        return text.replaceAll("/+$", "");
     }
 
     private void migrateLegacyAccessFields(String agentId, String channel,

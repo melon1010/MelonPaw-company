@@ -39,6 +39,15 @@ describe("ChatHeaderTitle", () => {
     expect(screen.getAllByText("New Chat")[0]).toBeInTheDocument();
   });
 
+  it("can hide an untitled empty conversation", () => {
+    mockUseChatAnywhereSessionsState.mockReturnValue({
+      sessions: [],
+      currentSessionId: null,
+    });
+    renderWithProviders(<ChatHeaderTitle hideUntitled />);
+    expect(screen.queryByText("New Chat")).not.toBeInTheDocument();
+  });
+
   it("displays the correct session name after switching currentSessionId", () => {
     mockUseChatAnywhereSessionsState.mockReturnValue({
       sessions: [

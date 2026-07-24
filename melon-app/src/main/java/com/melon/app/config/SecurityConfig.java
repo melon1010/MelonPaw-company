@@ -66,7 +66,6 @@ public class SecurityConfig {
                                 "/api/auth/login", "/api/auth/bootstrap", "/api/auth/register").permitAll()
                         .pathMatchers(HttpMethod.GET,
                                 "/api/auth/status", "/api/agent/health").permitAll()
-                        .pathMatchers(HttpMethod.GET, "/api/channels/onebot/websocket").permitAll()
                         .pathMatchers(HttpMethod.POST, "/api/channels/*/webhook").permitAll()
                         .pathMatchers("/", "/console", "/console/**", "/assets/**", "/favicon.ico",
                                 "/*.js", "/*.css", "/*.map", "/*.png", "/*.svg", "/*.woff", "/*.woff2").permitAll()
@@ -304,11 +303,6 @@ public class SecurityConfig {
         AuthenticationWebFilter filter = new AuthenticationWebFilter(authenticationManager);
         filter.setServerAuthenticationConverter(exchange -> {
             String path = exchange.getRequest().getPath().pathWithinApplication().value();
-            if ("/api/channels/onebot/websocket".equals(path)) {
-                // This upgrade uses the per-Agent OneBot token, which is verified by
-                // OneBotWebSocketHandler instead of the application login token.
-                return Mono.empty();
-            }
             String authorization = exchange.getRequest().getHeaders().getFirst("Authorization");
             String token = null;
             if (authorization != null && authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {

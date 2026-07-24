@@ -11,7 +11,6 @@ import {
   Select,
   Space,
   Switch,
-  Table,
   Tag,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -35,6 +34,7 @@ import type { AuthUser } from "../../../api/modules/auth";
 import { useAuth } from "../../../contexts/AuthContext";
 import { canManageProjects } from "../../../auth/authorization";
 import { PageHeader } from "../../../components/PageHeader";
+import ResponsiveTable from "../../../components/ResponsiveTable";
 import { useAppMessage } from "../../../hooks/useAppMessage";
 import styles from "../company.module.less";
 
@@ -386,7 +386,7 @@ export default function ProjectSpaces() {
   return (
     <div className={styles.page}>
       <PageHeader
-        current={t("enterprise.projects.title")}
+        current={t("enterprise.nav.projects")}
         afterBreadcrumb={
           <Tag>{t("common.total", { count: projects.length })}</Tag>
         }
@@ -411,7 +411,7 @@ export default function ProjectSpaces() {
         }
       />
       <div className={styles.body}>
-        <Table
+        <ResponsiveTable
           rowKey="id"
           loading={loading}
           columns={columns}
@@ -523,7 +523,7 @@ export default function ProjectSpaces() {
               </Button>
             </Form>
           )}
-          <Table
+          <ResponsiveTable
             rowKey="user_id"
             size="small"
             loading={membersLoading}

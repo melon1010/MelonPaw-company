@@ -7,6 +7,7 @@ vi.mock("../../../api", () => ({
   default: {
     listChannels: vi.fn(),
     listChannelTypes: vi.fn(),
+    getChannelsHealth: vi.fn(),
   },
 }));
 
@@ -22,6 +23,7 @@ describe("useChannels", () => {
     vi.clearAllMocks();
     (api.listChannels as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (api.listChannelTypes as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (api.getChannelsHealth as ReturnType<typeof vi.fn>).mockResolvedValue({});
   });
 
   it("初始 loading=true，fetch 成功后 loading=false", async () => {
@@ -66,6 +68,9 @@ describe("useChannels", () => {
     (api.listChannelTypes as ReturnType<typeof vi.fn>).mockResolvedValue([
       "dingtalk",
       "my-custom",
+      "onebot",
+      "xiaoyi",
+      "yuanbao",
       "console",
     ]);
 
@@ -75,7 +80,7 @@ describe("useChannels", () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(result.current.orderedKeys).toEqual(["console", "dingtalk"]);
+    expect(result.current.orderedKeys).toEqual(["dingtalk"]);
   });
 
   it("orderedKeys excludes international and custom channel types", async () => {

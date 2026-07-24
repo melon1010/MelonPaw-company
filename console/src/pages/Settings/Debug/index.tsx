@@ -41,7 +41,7 @@ export default function DebugPage() {
     <div className={styles.debugPage}>
       <PageHeader
         parent={t("nav.settings")}
-        current={t("debug.title", "Debug")}
+        current={t("nav.debug", "Debug")}
       />
 
       <div className={styles.content}>

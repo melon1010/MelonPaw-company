@@ -1,0 +1,129 @@
+.mobileTable {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .desktopTable {
+    display: none;
+  }
+
+  .mobileTable {
+    display: block;
+    min-width: 0;
+  }
+
+  .cardList {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dataCard {
+    min-width: 0;
+    padding: 14px;
+    color: var(--mp-text);
+    background: var(--mp-surface-raised);
+    border: 1px solid var(--mp-border);
+    border-radius: 7px;
+  }
+
+  .cardTitle {
+    min-width: 0;
+    margin-bottom: 12px;
+    padding-bottom: 11px;
+    color: var(--mp-text);
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 650;
+    border-bottom: 1px solid var(--mp-border);
+    overflow-wrap: anywhere;
+  }
+
+  .cardFields {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin: 0;
+  }
+
+  .cardField {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(88px, 34%) minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+
+    dt,
+    dd {
+      min-width: 0;
+      margin: 0;
+      font-size: 12px;
+      line-height: 19px;
+      overflow-wrap: anywhere;
+    }
+
+    dt {
+      color: var(--mp-text-tertiary);
+    }
+
+    dd {
+      color: var(--mp-text-secondary);
+      text-align: right;
+
+      > * {
+        max-width: 100%;
+      }
+    }
+  }
+
+  .cardActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--mp-border);
+
+    :global(.qwenpaw-space),
+    :global(.ant-space) {
+      width: 100%;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+  }
+
+  .cardDetails {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--mp-border);
+
+    summary {
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      color: var(--mp-primary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    > div {
+      min-width: 0;
+      overflow-x: auto;
+    }
+  }
+
+  .emptyState,
+  .loadingSpace {
+    min-height: 180px;
+    display: grid;
+    place-items: center;
+  }
+
+  .mobilePagination {
+    display: flex;
+    justify-content: center;
+    padding: 16px 0 4px;
+  }
+}

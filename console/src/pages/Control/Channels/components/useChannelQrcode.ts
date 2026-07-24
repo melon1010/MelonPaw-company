@@ -123,7 +123,7 @@ export function useChannelQrcode(
               setQrcodeImg("");
               onError("expired");
               return;
-            } else if (result.status === "fail") {
+            } else if (result.status === "fail" || result.status === "failed") {
               setQrcodeImg("");
               onError("fail");
               return;

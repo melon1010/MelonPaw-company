@@ -1,19 +1,21 @@
 import type { TFunction } from "i18next";
 
-// Channel key type - now accepts any string for custom channels
-export type ChannelKey = string;
+export type ChannelKey =
+  | "console"
+  | "dingtalk"
+  | "feishu"
+  | "qq"
+  | "wechat"
+  | "wecom";
 
 // Built-in channel labels
-export const CHANNEL_LABELS: Record<string, string> = {
+export const CHANNEL_LABELS: Record<ChannelKey, string> = {
   dingtalk: "DingTalk",
   feishu: "Feishu",
   qq: "QQ",
   console: "Console",
   wecom: "WeCom",
-  xiaoyi: "XiaoYi",
   wechat: "WeChat",
-  onebot: "OneBot",
-  yuanbao: "Yuanbao",
 };
 
 function formatCustomChannelKey(key: string): string {
@@ -25,7 +27,8 @@ function formatCustomChannelKey(key: string): string {
 
 // Per-locale strings under `channels.channelNames.*`; missing keys use `defaultValue` (English labels).
 export function getChannelLabel(key: string, t?: TFunction): string {
-  const english = CHANNEL_LABELS[key] ?? formatCustomChannelKey(key);
+  const english =
+    CHANNEL_LABELS[key as ChannelKey] ?? formatCustomChannelKey(key);
   if (t) {
     return t(`channels.channelNames.${key}`, { defaultValue: english });
   }

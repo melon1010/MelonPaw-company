@@ -3,7 +3,6 @@ import {
   Card,
   Button,
   Input,
-  Table,
   Popconfirm,
   Tag,
   Switch,
@@ -19,6 +18,7 @@ import {
 import { useTranslation } from "react-i18next";
 import api from "../../../../api";
 import styles from "../index.module.less";
+import ResponsiveTable from "../../../../components/ResponsiveTable";
 
 interface FileGuardSectionProps {
   onSave?: (handlers: {
@@ -225,7 +225,7 @@ export function FileGuardSection({ onSave }: FileGuardSectionProps = {}) {
       </Card>
 
       <Card className={styles.tableCard}>
-        <Table
+        <ResponsiveTable
           columns={columns}
           dataSource={dataSource}
           loading={loading}

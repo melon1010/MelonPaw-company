@@ -16,20 +16,24 @@ public class ChannelAdapterRegistry implements AutoCloseable {
 
     public ChannelAdapterRegistry(
             ExecutorService worker, ScheduledExecutorService scheduler) {
-        this(ChannelExecutionContext.managed(worker, scheduler));
+        this(worker, scheduler, worker);
+    }
+
+    public ChannelAdapterRegistry(
+            ExecutorService worker, ScheduledExecutorService scheduler,
+            ExecutorService longPoll) {
+        this(ChannelExecutionContext.managed(worker, scheduler, longPoll));
     }
 
     private ChannelAdapterRegistry(ChannelExecutionContext executionContext) {
         this.executionContext = executionContext;
         register(new BasicChannelAdapter("console", true, false, true, false));
-        register(new HttpChannelAdapter("dingtalk", true, true, true, executionContext.worker()));
-        register(new HttpChannelAdapter("feishu", true, true, true, executionContext.worker()));
+        register(new HttpChannelAdapter("dingtalk", true, true, false, executionContext.worker()));
+        register(new HttpChannelAdapter("feishu", true, true, false, executionContext.worker()));
         register(new QQChannelAdapter(executionContext.worker(), executionContext.scheduler()));
-        register(new WeChatChannelAdapter(executionContext.worker(), executionContext.scheduler()));
-        register(new WeComChannelAdapter(executionContext.worker()));
-        register(new YuanbaoChannelAdapter(executionContext.worker(), executionContext.scheduler()));
-        register(new XiaoYiChannelAdapter(executionContext.scheduler()));
-        register(new OneBotChannelAdapter());
+        register(new WeChatChannelAdapter(
+                executionContext.worker(), executionContext.scheduler(), executionContext.longPoll()));
+        register(new WeComChannelAdapter(executionContext.worker(), executionContext.scheduler()));
     }
 
     public void register(ChannelAdapter adapter) {

@@ -787,6 +787,16 @@
     "loading": "チャンネルを読み込み中...",
     "configSaved": "設定を保存しました",
     "configFailed": "設定の保存に失敗しました",
+    "runtimeStatus": {
+      "running": "接続済み",
+      "starting": "接続中",
+      "reconnecting": "再接続中",
+      "configured": "未接続",
+      "unhealthy": "接続エラー",
+      "misconfigured": "設定が不完全",
+      "stopped": "無効",
+      "unsupported": "利用不可"
+    },
     "channelType": "チャンネルタイプ",
     "status": "ステータス",
     "totalItems": "合計 {{count}} 件",

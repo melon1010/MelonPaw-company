@@ -8,7 +8,6 @@ import {
   Select,
   Space,
   Switch,
-  Table,
   Tag,
   Tooltip,
 } from "antd";
@@ -20,6 +19,7 @@ import type { AuthUser } from "../../../api/modules/auth";
 import { skillApi } from "../../../api/modules/skill";
 import { hasPermission } from "../../../auth/authorization";
 import { PageHeader } from "../../../components/PageHeader";
+import ResponsiveTable from "../../../components/ResponsiveTable";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useAppMessage } from "../../../hooks/useAppMessage";
 import accessStyles from "../accessControl.module.less";
@@ -298,10 +298,8 @@ export default function EnterpriseMembers() {
     <div className={accessStyles.accessPage}>
       {modalContextHolder}
       <PageHeader
-        items={[
-          { title: t("enterprise.nav.administration") },
-          { title: t("enterprise.members.title") },
-        ]}
+        parent={t("nav.settings")}
+        current={t("enterprise.nav.members")}
         afterBreadcrumb={
           <Tag>{t("common.total", { count: filtered.length })}</Tag>
         }
@@ -351,7 +349,7 @@ export default function EnterpriseMembers() {
             })}
           </span>
         </div>
-        <Table
+        <ResponsiveTable
           className={accessStyles.accessTable}
           rowKey="id"
           loading={loading}

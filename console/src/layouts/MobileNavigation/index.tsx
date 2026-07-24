@@ -30,12 +30,16 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../contexts/AuthContext";
-import { canAccessRoute } from "../../auth/authorization";
+import { canAccessRoute, hasPermission } from "../../auth/authorization";
+import sessionApi from "../../pages/Chat/sessionApi";
+import { useAgentStore } from "../../stores/agentStore";
+import { buildSessionPath } from "../../utils/sessionRoute";
 import { AccountControl } from "../AccountControls";
+import SidebarSessionList from "../SidebarSessionList";
 import styles from "./index.module.less";
 
 interface NavItem {
@@ -52,6 +56,8 @@ export default function MobileNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const selectedAgent = useAgentStore((state) => state.selectedAgent);
+  const canUseAgents = hasPermission(user, "agents:use");
   const [open, setOpen] = useState(false);
   const [settingsMode, setSettingsMode] = useState(false);
 
@@ -234,20 +240,38 @@ export default function MobileNavigation() {
     };
   }, [t, user]);
 
+  const routeUsesSettingsNavigation = useMemo(
+    () =>
+      [...workspace, ...administration].some(
+        (item) =>
+          location.pathname === item.path ||
+          location.pathname.startsWith(`${item.path}/`),
+      ),
+    [administration, location.pathname, workspace],
+  );
+
   useEffect(() => {
     setOpen(false);
-    setSettingsMode(false);
-  }, [location.pathname]);
+    setSettingsMode(routeUsesSettingsNavigation);
+  }, [location.pathname, routeUsesSettingsNavigation]);
 
   const closeDrawer = () => {
     setOpen(false);
-    setSettingsMode(false);
   };
 
   const go = (path: string) => {
     closeDrawer();
     navigate(path);
   };
+
+  const handleSidebarSessionClick = useCallback(
+    (sessionId: string) => {
+      setOpen(false);
+      setSettingsMode(false);
+      navigate(buildSessionPath(sessionApi.getEffectiveSessionId(sessionId)));
+    },
+    [navigate],
+  );
 
   const renderSection = (label: string, items: NavItem[]) => {
     if (items.length === 0) return null;
@@ -287,7 +311,7 @@ export default function MobileNavigation() {
         aria-controls={DRAWER_NAV_ID}
         aria-expanded={open}
         onClick={() => {
-          setSettingsMode(false);
+          setSettingsMode(routeUsesSettingsNavigation);
           setOpen(true);
         }}
       >
@@ -300,6 +324,7 @@ export default function MobileNavigation() {
         placement="left"
         closable={false}
         maskClosable
+        destroyOnHidden
         width="min(86vw, 312px)"
         title={
           <span className={styles.drawerBrand}>
@@ -312,7 +337,9 @@ export default function MobileNavigation() {
         <div className={styles.drawerShell}>
           <nav
             id={DRAWER_NAV_ID}
-            className={styles.drawerNavigation}
+            className={`${styles.drawerNavigation} ${
+              settingsMode ? "" : styles.drawerNavigationApp
+            }`}
             aria-label={t("nav.menu", "Navigation")}
           >
             {settingsMode ? (
@@ -337,7 +364,23 @@ export default function MobileNavigation() {
                 )}
               </>
             ) : (
-              renderSection(t("enterprise.nav.work", "Work"), primary)
+              <>
+                {renderSection(t("enterprise.nav.work", "Work"), primary)}
+                {canUseAgents && (
+                  <section className={styles.drawerHistory}>
+                    <div
+                      className={`${styles.drawerSectionLabel} ${styles.drawerHistoryLabel}`}
+                    >
+                      {t("chat.recentConversations", "Recent chats")}
+                    </div>
+                    <SidebarSessionList
+                      key={selectedAgent}
+                      historyOnly
+                      onSessionClick={handleSidebarSessionClick}
+                    />
+                  </section>
+                )}
+              </>
             )}
           </nav>
 

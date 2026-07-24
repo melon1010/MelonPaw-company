@@ -1,5 +1,10 @@
 import { request } from "../request";
-import type { ChannelConfig, SingleChannelConfig } from "../types";
+import type {
+  ChannelConfig,
+  ChannelHealth,
+  ChannelHealthMap,
+  SingleChannelConfig,
+} from "../types";
 
 export const channelApi = {
   listChannelTypes: () => request<string[]>("/config/channels/types"),
@@ -25,6 +30,14 @@ export const channelApi = {
         body: JSON.stringify(body),
       },
     ),
+
+  getChannelHealth: (channelName: string) =>
+    request<ChannelHealth>(
+      `/config/channels/${encodeURIComponent(channelName)}/health`,
+    ),
+
+  getChannelsHealth: () =>
+    request<ChannelHealthMap>("/config/channels/health"),
 
   getChannelQrcode: (channel: string, params?: Record<string, string>) => {
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";

@@ -218,7 +218,7 @@ function AgentConfigPage() {
 
   return (
     <div className={styles.configPage}>
-      <PageHeader parent={t("nav.agent")} current={t("agentConfig.title")} />
+      <PageHeader parent={t("nav.settings")} current={t("nav.agentConfig")} />
 
       <div className={styles.content}>
         <Form form={form} layout="vertical" className={styles.form}>

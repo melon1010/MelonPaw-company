@@ -8,7 +8,6 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table,
   Tag,
   Tree,
   type TreeDataNode,
@@ -33,6 +32,7 @@ import {
 } from "../../../api";
 import { hasPermission } from "../../../auth/authorization";
 import { PageHeader } from "../../../components/PageHeader";
+import ResponsiveTable from "../../../components/ResponsiveTable";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useAppMessage } from "../../../hooks/useAppMessage";
 import accessStyles from "../accessControl.module.less";
@@ -363,10 +363,8 @@ export default function RolesPage() {
   return (
     <div className={accessStyles.accessPage}>
       <PageHeader
-        items={[
-          { title: t("enterprise.nav.administration") },
-          { title: t("enterprise.roles.title") },
-        ]}
+        parent={t("nav.settings")}
+        current={t("enterprise.nav.roles")}
         afterBreadcrumb={
           <Tag>{t("common.total", { count: filteredRoles.length })}</Tag>
         }
@@ -420,7 +418,7 @@ export default function RolesPage() {
             })}
           </span>
         </div>
-        <Table
+        <ResponsiveTable
           className={accessStyles.accessTable}
           rowKey="code"
           loading={loading}

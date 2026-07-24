@@ -6,7 +6,13 @@ export type PageHeaderBreadcrumbItem = {
 };
 
 export interface PageHeaderProps {
-  /** When omitted, `parent` and `current` build the trail. */
+  /**
+   * Title convention:
+   * - App top-level pages use `current` only.
+   * - Settings top-level pages use Settings as `parent` and the menu label as `current`.
+   * - Detail pages use `items` to preserve their business hierarchy.
+   * When omitted, `parent` and `current` build the trail.
+   */
   items?: PageHeaderBreadcrumbItem[];
   parent?: ReactNode;
   current?: ReactNode;

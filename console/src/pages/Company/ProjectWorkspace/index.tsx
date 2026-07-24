@@ -13,7 +13,6 @@ import {
   Space,
   Spin,
   Switch,
-  Table,
   Tag,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -44,6 +43,7 @@ import api, {
 } from "../../../api";
 import type { ProviderInfo } from "../../../api/types";
 import { PageHeader, SectionHeader } from "../../../components/PageHeader";
+import ResponsiveTable from "../../../components/ResponsiveTable";
 import { useAppMessage } from "../../../hooks/useAppMessage";
 import { useAgentStore } from "../../../stores/agentStore";
 import styles from "../company.module.less";
@@ -370,7 +370,7 @@ export default function ProjectWorkspacePage() {
   return (
     <div className={styles.page}>
       <PageHeader
-        parent={t("enterprise.projects.title")}
+        parent={t("enterprise.nav.projects")}
         current={project?.name || t("enterprise.projects.workspace")}
         afterBreadcrumb={
           project?.member_role ? <Tag>{project.member_role}</Tag> : undefined
@@ -683,7 +683,7 @@ export default function ProjectWorkspacePage() {
         width={680}
         onClose={() => setVersionsOpen(false)}
       >
-        <Table
+        <ResponsiveTable
           rowKey="version_id"
           size="small"
           loading={versionsLoading}

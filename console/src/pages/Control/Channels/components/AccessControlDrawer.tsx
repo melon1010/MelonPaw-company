@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Drawer,
   Tabs,
-  Table,
   Button,
   Input,
   Select,
@@ -21,6 +20,7 @@ import {
   type ACLUserEntry,
 } from "../../../../api/modules/accessControl";
 import { getChannelLabel, type ChannelKey } from "./constants";
+import ResponsiveTable from "../../../../components/ResponsiveTable";
 
 interface AccessControlDrawerProps {
   open: boolean;
@@ -346,7 +346,7 @@ export function AccessControlDrawer({
         </Space>
       </div>
 
-      <Table
+      <ResponsiveTable
         dataSource={listData}
         columns={columns}
         rowKey={(record) => record.userId}

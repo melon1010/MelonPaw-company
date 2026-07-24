@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Empty, Spin, Table, Tag } from "antd";
+import { Alert, Button, Empty, Spin, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   ArrowRight,
@@ -20,6 +20,7 @@ import type { AgentSummary } from "../../../api/types/agents";
 import { useAuth } from "../../../contexts/AuthContext";
 import { canAccessRoute } from "../../../auth/authorization";
 import { PageHeader, SectionHeader } from "../../../components/PageHeader";
+import ResponsiveTable from "../../../components/ResponsiveTable";
 import { isActiveTask, taskStatusColor } from "../taskPresentation";
 import { useAgentStore } from "../../../stores/agentStore";
 import styles from "../company.module.less";
@@ -83,9 +84,6 @@ export default function CompanyWorkbench() {
       "wecom",
       "qq",
       "wechat",
-      "onebot",
-      "yuanbao",
-      "xiaoyi",
       "console",
     ]);
     const enabledChannels = channelConfig
@@ -186,7 +184,8 @@ export default function CompanyWorkbench() {
   return (
     <div className={styles.page}>
       <PageHeader
-        current={t("enterprise.workbench.title")}
+        parent={t("nav.settings")}
+        current={t("enterprise.nav.workbench")}
         subRow={
           <span className={styles.toolbarMeta}>
             {user?.display_name || user?.username}
@@ -270,7 +269,7 @@ export default function CompanyWorkbench() {
               />
               {recentTasks.length > 0 ? (
                 <div className={styles.tableWrap}>
-                  <Table
+                  <ResponsiveTable
                     rowKey="task_id"
                     size="small"
                     pagination={false}

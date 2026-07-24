@@ -102,7 +102,7 @@ function TokenUsagePage() {
   }, [aggregatedData?.by_date]);
 
   const pageHeader = (
-    <PageHeader parent={t("nav.settings")} current={t("tokenUsage.title")} />
+    <PageHeader parent={t("nav.settings")} current={t("nav.tokenUsage")} />
   );
 
   if (loading) {

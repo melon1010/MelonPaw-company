@@ -52,9 +52,6 @@ export const MCP_CHANNEL_SOURCE_VALUES = [
   "wechat",
   "wecom",
   "qq",
-  "onebot",
-  "xiaoyi",
-  "yuanbao",
 ] as const;
 
 export function normalizeMCPAccessPolicy(

@@ -288,10 +288,7 @@ function ModelsPage() {
       ) : (
         <>
           {/* ---- LLM Section (top) ---- */}
-          <PageHeader
-            parent={t("nav.settings")}
-            current={t("models.llmTitle")}
-          />
+          <PageHeader parent={t("nav.settings")} current={t("nav.models")} />
           {/* ---- Scrollable Content ---- */}
           <div className={styles.content}>
             {/* ---- Providers Section ---- */}

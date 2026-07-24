@@ -345,8 +345,16 @@
   line-height: 19px;
   letter-spacing: normal;
 
-  &.enabled {
+  &.healthy {
     color: rgba(20, 184, 166, 1);
+  }
+
+  &.pending {
+    color: #d97706;
+  }
+
+  &.error {
+    color: #dc2626;
   }
 
   &.disabled {
@@ -360,8 +368,16 @@
   border-radius: 50%;
   flex-shrink: 0;
 
-  &.enabled {
+  &.healthy {
     background-color: rgba(20, 184, 166, 1);
+  }
+
+  &.pending {
+    background-color: #f59e0b;
+  }
+
+  &.error {
+    background-color: #ef4444;
   }
 
   &.disabled {

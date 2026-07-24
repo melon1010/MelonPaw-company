@@ -76,7 +76,7 @@ export default function BackupsPage() {
       <PageHeader
         className={styles.pageHeader}
         parent={t("nav.settings")}
-        current={t("backup.title")}
+        current={t("nav.backups")}
         extra={
           <div className={styles.headerRight}>
             <ImportButton onPick={importFlow.handleImport} />

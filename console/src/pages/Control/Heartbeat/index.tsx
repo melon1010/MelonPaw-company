@@ -144,9 +144,7 @@ function HeartbeatPage() {
   if (loading) {
     return (
       <div className={styles.heartbeatPage}>
-        <PageHeader
-          items={[{ title: t("nav.control") }, { title: t("heartbeat.title") }]}
-        />
+        <PageHeader parent={t("nav.settings")} current={t("nav.heartbeat")} />
         <span className={styles.description}>{t("common.loading")}</span>
       </div>
     );
@@ -154,9 +152,7 @@ function HeartbeatPage() {
 
   return (
     <div className={styles.heartbeatPage}>
-      <PageHeader
-        items={[{ title: t("nav.control") }, { title: t("heartbeat.title") }]}
-      />
+      <PageHeader parent={t("nav.settings")} current={t("nav.heartbeat")} />
       <div className={styles.heartbeatContent}>
         <Card className={styles.card}>
           <Form

@@ -271,7 +271,8 @@ function MCPPage() {
   return (
     <div className={styles.mcpPage}>
       <PageHeader
-        items={[{ title: t("nav.agent") }, { title: t("mcp.title") }]}
+        parent={t("nav.settings")}
+        current={t("nav.mcp")}
         extra={
           <Button
             type="primary"

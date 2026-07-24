@@ -181,7 +181,8 @@ function SessionsPage() {
   return (
     <div className={styles.sessionsPage}>
       <PageHeader
-        items={[{ title: t("nav.control") }, { title: t("sessions.title") }]}
+        parent={t("nav.settings")}
+        current={t("nav.sessions")}
         extra={
           <div className={styles.headerRight}>
             <FilterBar

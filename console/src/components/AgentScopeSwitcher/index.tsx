@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Dropdown, type MenuProps } from "antd";
+import { Dropdown, type DropdownProps, type MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import {
   Bot,
@@ -17,6 +17,11 @@ import styles from "./index.module.less";
 type AgentScope = NonNullable<AgentSummary["scope"]>;
 
 const SCOPE_ORDER: AgentScope[] = ["PERSONAL", "PROJECT", "SERVICE"];
+const ACCOUNT_SUBMENU_ALIGN = {
+  points: ["tl", "tr"],
+  offset: [8, 0],
+  overflow: { adjustX: false, adjustY: true },
+} satisfies NonNullable<DropdownProps["align"]>;
 let agentsRequest: Promise<AgentSummary[]> | null = null;
 
 function listAccessibleAgents(): Promise<AgentSummary[]> {
@@ -49,15 +54,17 @@ function ScopeIcon({ scope, size = 16 }: { scope: AgentScope; size?: number }) {
 }
 
 interface AgentScopeSwitcherProps {
-  variant?: "header" | "sidebar" | "menu";
+  variant?: "header" | "sidebar" | "menu" | "panel";
   collapsed?: boolean;
   mobile?: boolean;
+  onSelect?: () => void;
 }
 
 export default function AgentScopeSwitcher({
   variant = "header",
   collapsed = false,
   mobile = false,
+  onSelect,
 }: AgentScopeSwitcherProps) {
   const { t } = useTranslation();
   const selectedAgent = useAgentStore((state) => state.selectedAgent);
@@ -174,6 +181,69 @@ export default function AgentScopeSwitcher({
     ];
   }, [agents, loadFailed, loading, scopeLabel, selectedAgent, t]);
 
+  if (variant === "panel") {
+    const visibleGroups = SCOPE_ORDER.map((scope) => ({
+      scope,
+      agents: agents.filter(
+        (agent) =>
+          agent.id !== "default" &&
+          agent.enabled &&
+          resolveScope(agent) === scope,
+      ),
+    })).filter((group) => group.agents.length > 0);
+
+    return (
+      <div className={styles.scopePanel} aria-busy={loading}>
+        {visibleGroups.map((group) => (
+          <section key={group.scope} className={styles.scopePanelGroup}>
+            <div className={styles.scopePanelLabel}>
+              {scopeLabel(group.scope)}
+            </div>
+            {group.agents.map((agent) => {
+              const selected = agent.id === selectedAgent;
+              return (
+                <button
+                  key={agent.id}
+                  type="button"
+                  className={
+                    selected
+                      ? styles.scopePanelItemSelected
+                      : styles.scopePanelItem
+                  }
+                  onClick={() => {
+                    if (!selected) setSelectedAgent(agent.id);
+                    onSelect?.();
+                  }}
+                >
+                  <span
+                    className={`${styles.menuIcon} ${
+                      styles[group.scope.toLowerCase()]
+                    }`}
+                  >
+                    <ScopeIcon scope={group.scope} size={16} />
+                  </span>
+                  <span className={styles.scopePanelName}>
+                    {agent.name?.trim() || scopeLabel(group.scope)}
+                  </span>
+                  {selected ? <Check size={16} aria-hidden /> : null}
+                </button>
+              );
+            })}
+          </section>
+        ))}
+        {visibleGroups.length === 0 ? (
+          <div className={styles.scopePanelState}>
+            {loadFailed
+              ? t("agent.loadFailed")
+              : loading
+              ? t("common.loading")
+              : t("chat.scopeEmpty")}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   const trigger =
     variant === "menu" ? (
       <span
@@ -216,7 +286,7 @@ export default function AgentScopeSwitcher({
       placement={
         mobile ? "topLeft" : variant === "sidebar" ? "topLeft" : "bottomLeft"
       }
-      align={variant === "menu" && !mobile ? { offset: [210, -30] } : undefined}
+      align={variant === "menu" && !mobile ? ACCOUNT_SUBMENU_ALIGN : undefined}
       overlayClassName={`${styles.scopeMenuPopup} ${
         variant === "menu" ? styles.accountScopeMenuPopup : ""
       }`}

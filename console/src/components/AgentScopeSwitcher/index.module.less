@@ -227,6 +227,76 @@
   color: var(--mp-primary);
 }
 
+.scopePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.scopePanelGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scopePanelLabel {
+  padding: 0 4px 4px;
+  color: var(--mp-text-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 650;
+}
+
+.scopePanelItem,
+.scopePanelItemSelected {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  color: var(--mp-text);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font: inherit;
+  text-align: left;
+
+  &:active,
+  &:focus-visible {
+    background: var(--mp-surface-muted);
+    outline: none;
+  }
+
+  > svg {
+    flex: 0 0 auto;
+    color: var(--mp-primary);
+  }
+}
+
+.scopePanelItemSelected {
+  background: var(--mp-primary-soft);
+}
+
+.scopePanelName {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scopePanelState {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  color: var(--mp-text-tertiary);
+  font-size: 13px;
+}
+
 @media (max-width: 640px) {
   .headerTrigger {
     max-width: 150px;

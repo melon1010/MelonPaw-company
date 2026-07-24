@@ -1,17 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import api from "../../../api";
+import type { ChannelHealthMap } from "../../../api";
 import { useAgentStore } from "../../../stores/agentStore";
 
-export const DOMESTIC_CHANNELS = [
-  "console",
+export const MANAGED_CHANNELS = [
   "dingtalk",
   "feishu",
   "wecom",
   "wechat",
   "qq",
-  "onebot",
-  "yuanbao",
-  "xiaoyi",
 ] as const;
 
 export function useChannels() {
@@ -20,18 +17,21 @@ export function useChannels() {
     Record<string, Record<string, unknown>>
   >({});
   const [channelTypes, setChannelTypes] = useState<string[]>([]);
+  const [health, setHealth] = useState<ChannelHealthMap>({});
   const [loading, setLoading] = useState(true);
 
   const fetchChannels = useCallback(async () => {
     setLoading(true);
     try {
-      const [data, types] = await Promise.all([
+      const [data, types, runtimeHealth] = await Promise.all([
         api.listChannels(),
         api.listChannelTypes(),
+        api.getChannelsHealth().catch(() => ({})),
       ]);
       if (data)
         setChannels(data as unknown as Record<string, Record<string, unknown>>);
       if (types) setChannelTypes(types);
+      if (runtimeHealth) setHealth(runtimeHealth);
     } catch (error) {
       console.error("❌ Failed to load channels:", error);
     } finally {
@@ -43,8 +43,18 @@ export function useChannels() {
     fetchChannels();
   }, [fetchChannels, selectedAgent]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      api
+        .getChannelsHealth()
+        .then((runtimeHealth) => setHealth(runtimeHealth || {}))
+        .catch(() => undefined);
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [selectedAgent]);
+
   const orderedKeys = useMemo(
-    () => DOMESTIC_CHANNELS.filter((key) => channelTypes.includes(key)),
+    () => MANAGED_CHANNELS.filter((key) => channelTypes.includes(key)),
     [channelTypes],
   );
 
@@ -56,6 +66,7 @@ export function useChannels() {
 
   return {
     channels,
+    health,
     channelTypes,
     orderedKeys,
     isBuiltin,

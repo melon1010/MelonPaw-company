@@ -2,7 +2,6 @@ import { useState, useCallback } from "react";
 import {
   Card,
   InputNumber,
-  Table,
   Tag,
   Button,
   Modal,
@@ -24,6 +23,7 @@ import type {
 import { skillApi } from "../../../../api/modules/skill";
 import { useTheme } from "../../../../contexts/ThemeContext";
 import styles from "../index.module.less";
+import ResponsiveTable from "../../../../components/ResponsiveTable";
 
 function FindingsModal({
   findings,
@@ -48,7 +48,7 @@ function FindingsModal({
       footer={null}
       width={700}
     >
-      <Table
+      <ResponsiveTable
         dataSource={findings}
         rowKey={(_, idx) => String(idx)}
         pagination={false}
@@ -399,7 +399,7 @@ export function SkillScannerSection() {
                       />
                     </div>
                   ) : (
-                    <Table
+                    <ResponsiveTable
                       dataSource={blockedHistory}
                       columns={blockedColumns}
                       rowKey={(_, idx) => String(idx)}
@@ -435,7 +435,7 @@ export function SkillScannerSection() {
                       />
                     </div>
                   ) : (
-                    <Table
+                    <ResponsiveTable
                       dataSource={whitelist}
                       columns={whitelistColumns}
                       rowKey="skill_name"

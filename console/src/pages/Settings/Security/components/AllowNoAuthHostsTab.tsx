@@ -3,7 +3,6 @@ import {
   Card,
   Button,
   Input,
-  Table,
   Popconfirm,
   Tag,
   Alert,
@@ -14,6 +13,7 @@ import { Shield, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import api from "../../../../api";
 import styles from "../index.module.less";
+import ResponsiveTable from "../../../../components/ResponsiveTable";
 
 interface AllowNoAuthHostsTabProps {
   onSave?: (handlers: {
@@ -174,7 +174,7 @@ export function AllowNoAuthHostsTab({ onSave }: AllowNoAuthHostsTabProps = {}) {
       </Card>
 
       <Card className={styles.tableCard}>
-        <Table
+        <ResponsiveTable
           columns={columns}
           dataSource={dataSource}
           loading={loading}

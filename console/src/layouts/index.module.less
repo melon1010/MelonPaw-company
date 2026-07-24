@@ -1896,6 +1896,245 @@
   max-width: calc(100vw - 24px);
 }
 
+.accountPopoverRoot {
+  width: min(292px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+
+  :global(.qwenpaw-popover-inner),
+  :global(.ant-popover-inner) {
+    padding: 0 !important;
+    overflow: hidden;
+    color: var(--mp-text) !important;
+    background: var(--mp-surface-raised) !important;
+    border: 1px solid var(--mp-border-strong);
+    border-radius: 9px !important;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22) !important;
+  }
+
+  :global(.qwenpaw-popover-inner-content),
+  :global(.ant-popover-inner-content) {
+    min-width: 0;
+  }
+}
+
+.accountPopoverPanel {
+  width: min(290px, calc(100vw - 26px));
+  max-height: min(68dvh, 540px);
+  display: flex;
+  flex-direction: column;
+}
+
+.accountPopoverBody {
+  min-height: 0;
+  padding: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.accountSheetTitle {
+  min-width: 0;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--mp-border);
+
+  button {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    color: var(--mp-text-secondary);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+
+    &:active,
+    &:focus-visible {
+      color: var(--mp-text);
+      background: var(--mp-surface-muted);
+      outline: none;
+    }
+  }
+
+  strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--mp-text);
+    font-size: 15px;
+    line-height: 22px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.accountSheetMain,
+.accountSheetActions,
+.accountSheetOptionList {
+  display: flex;
+  flex-direction: column;
+}
+
+.accountSheetMain {
+  gap: 10px;
+}
+
+.accountSheetActions,
+.accountSheetOptionList {
+  gap: 3px;
+}
+
+.accountSheetIdentity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 5px 8px 13px;
+  border-bottom: 1px solid var(--mp-border);
+
+  > span {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    display: grid;
+    place-items: center;
+    color: #f7fffc;
+    background: var(--mp-primary);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  > div {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  strong,
+  small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: var(--mp-text);
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 650;
+  }
+
+  small {
+    color: var(--mp-text-tertiary);
+    font-size: 12px;
+    line-height: 18px;
+  }
+}
+
+.accountSheetRow,
+.accountSheetOption {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  color: var(--mp-text);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font: inherit;
+  text-align: left;
+
+  &:active,
+  &:focus-visible {
+    background: var(--mp-surface-muted);
+    outline: none;
+  }
+
+  > svg {
+    flex: 0 0 auto;
+    color: var(--mp-primary);
+  }
+}
+
+.accountSheetRowIcon,
+.accountSheetLanguageCode {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  color: var(--mp-primary);
+  background: var(--mp-primary-soft);
+  border-radius: 7px;
+}
+
+.accountSheetLanguageCode {
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 750;
+}
+
+.accountSheetRowCopy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+
+  strong,
+  small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: var(--mp-text);
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 550;
+  }
+
+  small {
+    color: var(--mp-text-tertiary);
+    font-size: 11px;
+    line-height: 16px;
+  }
+}
+
+.accountSheetOption {
+  > strong {
+    min-width: 0;
+    flex: 1;
+    color: var(--mp-text);
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 550;
+  }
+}
+
+.accountSheetLogout {
+  color: var(--mp-danger, #d14343);
+  border-top: 1px solid var(--mp-border);
+  border-radius: 0;
+
+  .accountSheetRowIcon {
+    color: var(--mp-danger, #d14343);
+    background: color-mix(in srgb, var(--mp-danger, #d14343) 10%, transparent);
+  }
+
+  .accountSheetRowCopy strong {
+    color: inherit;
+  }
+}
+
 .webuiSider.siderCollapsed .sidebarBrand {
   justify-content: center;
   padding-inline: 9px;

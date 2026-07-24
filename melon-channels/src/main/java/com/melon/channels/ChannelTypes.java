@@ -12,10 +12,7 @@ public final class ChannelTypes {
             "feishu",
             "qq",
             "wechat",
-            "wecom",
-            "yuanbao",
-            "xiaoyi",
-            "onebot"
+            "wecom"
     );
 
     public static final List<String> BUILTIN = DOMESTIC;

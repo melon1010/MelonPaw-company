@@ -13,6 +13,7 @@ public class RuntimeConcurrencyProperties {
     private int historyQueueCapacity = 512;
     private int mcpLifecycleThreads = 4;
     private int channelSchedulerThreads = 4;
+    private int channelLongPollThreads = 32;
     private int channelPendingPerSession = 32;
     private int cronThreads = 4;
     private boolean configWatcherEnabled = true;
@@ -44,6 +45,14 @@ public class RuntimeConcurrencyProperties {
 
     public void setChannelSchedulerThreads(int channelSchedulerThreads) {
         this.channelSchedulerThreads = positive(channelSchedulerThreads, "channelSchedulerThreads");
+    }
+
+    public int getChannelLongPollThreads() {
+        return channelLongPollThreads;
+    }
+
+    public void setChannelLongPollThreads(int channelLongPollThreads) {
+        this.channelLongPollThreads = positive(channelLongPollThreads, "channelLongPollThreads");
     }
 
     public int getChannelPendingPerSession() {

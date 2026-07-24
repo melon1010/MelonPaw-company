@@ -449,6 +449,16 @@
     "loading": "Memuat saluran...",
     "configSaved": "Konfigurasi berhasil disimpan",
     "configFailed": "Gagal menyimpan konfigurasi",
+    "runtimeStatus": {
+      "running": "Terhubung",
+      "starting": "Menghubungkan",
+      "reconnecting": "Menghubungkan ulang",
+      "configured": "Belum terhubung",
+      "unhealthy": "Kesalahan koneksi",
+      "misconfigured": "Konfigurasi belum lengkap",
+      "stopped": "Dinonaktifkan",
+      "unsupported": "Tidak tersedia"
+    },
     "channelType": "Tipe Saluran",
     "status": "Status",
     "totalItems": "Total {{count}} item",

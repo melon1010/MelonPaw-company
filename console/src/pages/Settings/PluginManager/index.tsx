@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next";
-import { Button, Empty, Spin, Table } from "antd";
+import { Button, Empty, Spin } from "antd";
 import { Package, Plus } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
+import ResponsiveTable from "@/components/ResponsiveTable";
 import { usePluginManager } from "./hooks/usePluginManager";
 import { usePluginColumns } from "./hooks/usePluginColumns";
 import { useInstallModal } from "./hooks/useInstallModal";
@@ -46,7 +47,7 @@ export default function PluginManagerPage() {
               style={{ marginTop: 24 }}
             />
           ) : (
-            <Table
+            <ResponsiveTable
               dataSource={plugins}
               columns={columns}
               rowKey="id"

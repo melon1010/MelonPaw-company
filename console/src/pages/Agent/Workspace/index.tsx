@@ -167,14 +167,8 @@ export default function WorkspacePage() {
     <div className={styles.workspacePage}>
       <PageHeader
         className={styles.pageHeader}
-        items={[
-          {
-            title: canManageAgents
-              ? t("nav.agent")
-              : t("enterprise.nav.mySpace", "我的空间"),
-          },
-          { title: t("workspace.title") },
-        ]}
+        parent={t("nav.settings")}
+        current={t("nav.workspace")}
         afterBreadcrumb={
           <p className={styles.workspacePath}>
             {canManageAgents

@@ -7,7 +7,6 @@ import {
   Modal,
   Select,
   Space,
-  Table,
   Tag,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -20,6 +19,7 @@ import {
   type QuotaScope,
 } from "../../../api";
 import { PageHeader } from "../../../components/PageHeader";
+import ResponsiveTable from "../../../components/ResponsiveTable";
 import { useAppMessage } from "../../../hooks/useAppMessage";
 import { hasPermission } from "../../../auth/authorization";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -270,9 +270,7 @@ export default function QuotasPage() {
     <div className={styles.page}>
       <PageHeader
         parent={t("nav.settings")}
-        current={t("enterprise.quotas.title", {
-          defaultValue: "Quota policies",
-        })}
+        current={t("enterprise.nav.quotas", "Quota management")}
         extra={
           <Space>
             <Button icon={<RefreshCw size={15} />} onClick={() => void load()}>
@@ -302,7 +300,7 @@ export default function QuotasPage() {
             })}
           </span>
         </div>
-        <Table
+        <ResponsiveTable
           rowKey={(row) => `${row.scope_type}:${row.scope_id}`}
           loading={loading}
           columns={columns}

@@ -10,6 +10,8 @@ import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.auth.ProjectAgentService;
 import com.melon.app.service.ChannelWebhookSecurityService;
 import com.melon.core.util.JsonUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -25,6 +27,8 @@ import static com.melon.core.util.ValueUtils.stringValue;
 @RestController
 @RequestMapping("/api")
 public class ChannelCompatController {
+
+    private static final Logger log = LoggerFactory.getLogger(ChannelCompatController.class);
 
     private final ChannelConfigService configService;
     private final ChannelManager channelManager;
@@ -189,7 +193,8 @@ public class ChannelCompatController {
     }
 
     private void activateChannelAfterQrSuccess(String agentId, String channel, Map<String, Object> result) {
-        if (!"success".equals(String.valueOf(result.get("status")))) return;
+        String status = String.valueOf(result.get("status"));
+        if (!"success".equals(status) && !"confirmed".equals(status)) return;
         Object rawCredentials = result.get("credentials");
         if (!(rawCredentials instanceof Map<?, ?> credentials) || credentials.isEmpty()) return;
         Map<String, Object> update = new LinkedHashMap<>();
@@ -200,9 +205,13 @@ public class ChannelCompatController {
             }
         });
         if (update.isEmpty()) return;
-        update.put("enabled", true);
-        configService.update(agentId, channel, update);
-        channelManager.restart(agentId, channel).exceptionally(error -> null);
+        configService.updateAuthorizedCredentials(agentId, channel, update);
+        channelManager.start(agentId, channel).whenComplete((health, error) -> {
+            if (error != null) {
+                log.warn("Channel activation after QR authorization failed: agent={}, channel={}",
+                        agentId, channel, error);
+            }
+        });
     }
 
     @PostMapping("/channels/{channel}/webhook")

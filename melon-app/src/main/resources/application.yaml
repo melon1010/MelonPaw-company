@@ -32,6 +32,8 @@ melon:
       queue-capacity: ${MELON_SKILL_INSTALL_QUEUE_CAPACITY:20}
     mcp-lifecycle-threads: ${MELON_MCP_LIFECYCLE_THREADS:4}
     channel-scheduler-threads: ${MELON_CHANNEL_SCHEDULER_THREADS:4}
+    # 微信等长轮询渠道会长期占用一个阻塞线程，超过上限时明确拒绝启动。
+    channel-long-poll-threads: ${MELON_CHANNEL_LONG_POLL_THREADS:32}
     channel-pending-per-session: ${MELON_CHANNEL_PENDING_PER_SESSION:32}
     cron-threads: ${MELON_CRON_THREADS:4}
     shutdown-timeout: ${MELON_EXECUTOR_SHUTDOWN_TIMEOUT:5s}

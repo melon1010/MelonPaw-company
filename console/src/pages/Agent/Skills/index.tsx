@@ -140,8 +140,8 @@ function SkillsPage() {
       <div className={styles.skillsPage}>
         <PageHeader
           items={[
-            { title: t("nav.agent") },
-            { title: t("skills.title") },
+            { title: t("nav.settings") },
+            { title: t("nav.skills") },
             { title: t("nav.market") },
           ]}
           extra={
@@ -158,14 +158,8 @@ function SkillsPage() {
   return (
     <div className={styles.skillsPage}>
       <PageHeader
-        items={[
-          {
-            title: canManageAgents
-              ? t("nav.agent")
-              : t("enterprise.nav.mySpace", "我的空间"),
-          },
-          { title: t("skills.title") },
-        ]}
+        parent={t("nav.settings")}
+        current={t("nav.skills")}
         extra={
           <HeaderActions
             batchModeEnabled={batchModeEnabled}

@@ -11,7 +11,7 @@
   white-space: nowrap;
 
   @media (max-width: 768px) {
-    max-width: 120px;
+    max-width: min(38vw, 200px);
     font-size: 14px;
   }
 
@@ -19,7 +19,7 @@
   // When the title is longer than its container, slide the full text from
   // right to left so the user can still read it.
   @media (max-width: 480px) {
-    max-width: 90px;
+    max-width: min(42vw, 164px);
     font-size: 13px;
     overflow: hidden;
     text-overflow: clip;
@@ -80,11 +80,11 @@
   }
 
   @media (max-width: 768px) {
-    max-width: 140px;
+    max-width: min(42vw, 210px);
   }
 
   @media (max-width: 480px) {
-    max-width: 100px;
+    max-width: min(44vw, 172px);
   }
 }
 

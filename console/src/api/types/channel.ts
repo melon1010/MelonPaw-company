@@ -49,28 +49,10 @@ export interface WecomConfig extends BaseChannelConfig {
   streaming_enabled?: boolean;
 }
 
-export interface XiaoYiConfig extends BaseChannelConfig {
-  ak: string;
-  sk: string;
-  agent_id: string;
-  task_timeout_ms?: number;
-}
-
 export interface WeChatConfig extends BaseChannelConfig {
   bot_token: string;
   message_merge_enabled?: boolean;
   message_merge_delay_ms?: number;
-}
-
-export interface YuanbaoConfig extends BaseChannelConfig {
-  app_id: string;
-  app_secret: string;
-  accept_bot_messages?: boolean;
-}
-
-export interface OneBotConfig extends BaseChannelConfig {
-  access_token: string;
-  share_session_in_group: boolean;
 }
 
 export interface ChannelConfig {
@@ -80,9 +62,19 @@ export interface ChannelConfig {
   qq: QQConfig;
   wechat: WeChatConfig;
   wecom: WecomConfig;
-  yuanbao: YuanbaoConfig;
-  xiaoyi: XiaoYiConfig;
-  onebot: OneBotConfig;
 }
 
 export type SingleChannelConfig = ChannelConfig[keyof ChannelConfig];
+
+export interface ChannelHealth {
+  channel: string;
+  status: string;
+  running: boolean;
+  available: boolean;
+  implemented: boolean;
+  detail: string;
+  checked_at: string;
+  meta: Record<string, unknown>;
+}
+
+export type ChannelHealthMap = Record<string, ChannelHealth>;

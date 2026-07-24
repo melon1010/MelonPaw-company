@@ -2873,11 +2873,9 @@ export default function ChatPage() {
               onLoadingChange={setChatLoading}
             />
             <div className={styles.chatHeaderLeading}>
-              {chatId ? (
-                <span className={styles.chatConversationTitle}>
-                  <ChatHeaderTitle />
-                </span>
-              ) : null}
+              <span className={styles.chatConversationTitle}>
+                <ChatHeaderTitle hideUntitled />
+              </span>
               {canManageModels && <ModelSelector />}
             </div>
             <div className={styles.chatHeaderActions}>

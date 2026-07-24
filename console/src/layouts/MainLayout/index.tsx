@@ -52,6 +52,8 @@ export default function MainLayout() {
     [currentPath, routes],
   );
   const canPollConsole = canAccessRoute("core.inbox", user);
+  const isChatRoute =
+    currentPath === "/chat" || currentPath.startsWith("/chat/");
 
   return (
     <Layout className={`${styles.mainLayout} webui-shell`}>
@@ -72,7 +74,11 @@ export default function MainLayout() {
       <Content className="page-container">
         {canPollConsole && <ConsolePollService />}
         <Slot name="content.statusBar" kind="fill" />
-        <div className="page-content">
+        <div
+          className={`page-content ${
+            isChatRoute ? "" : "mobile-page-safe-content"
+          }`.trim()}
+        >
           <ChunkErrorBoundary resetKey={currentPath}>
             <Suspense
               fallback={

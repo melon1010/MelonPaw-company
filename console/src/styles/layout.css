@@ -1007,6 +1007,11 @@ html.dark-mode .qwenpaw-sender-content {
   .page-container {
     padding-bottom: 0;
   }
+
+  /* The global menu button occupies the first 52px on non-chat routes. */
+  .page-content.mobile-page-safe-content {
+    padding-top: max(52px, calc(env(safe-area-inset-top) + 44px));
+  }
 }
 
 .table-container {

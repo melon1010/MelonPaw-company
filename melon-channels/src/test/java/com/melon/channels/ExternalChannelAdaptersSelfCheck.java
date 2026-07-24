@@ -20,7 +20,7 @@ public final class ExternalChannelAdaptersSelfCheck {
 
     public static void main(String[] args) throws Exception {
         ChannelAdapterRegistry registry = new ChannelAdapterRegistry();
-        for (String type : List.of("qq", "wechat", "wecom", "yuanbao", "xiaoyi")) {
+        for (String type : List.of("qq", "wechat", "wecom")) {
             ChannelAdapter adapter = registry.get(type);
             if (!adapter.implemented()) {
                 throw new AssertionError(type + " should be backed by a real adapter");
@@ -76,7 +76,7 @@ public final class ExternalChannelAdaptersSelfCheck {
                         Map.of("text_item", Map.of("text", "hello")),
                         Map.of("type", 4, "file_item", Map.of(
                                 "file_name", "report.pdf",
-                                "media", Map.of("encrypt_query_param", "https://cdn.example/report", "aes_key", "0123456789abcdef0123456789abcdef")
+                                "media", Map.of("encrypt_query_param", "encrypted-query", "aes_key", "0123456789abcdef0123456789abcdef")
                         ))
                 )
         ), Map.of());
@@ -97,38 +97,10 @@ public final class ExternalChannelAdaptersSelfCheck {
             throw new AssertionError("WeCom event parse failed");
         }
 
-        ChannelInboundMessage xiaoyi = registry.get("xiaoyi").parseWebhook("default", Map.of(
-                "id", "req1",
-                "params", Map.of(
-                        "id", "task1",
-                        "sessionId", "s1",
-                        "message", Map.of("parts", List.of(Map.of("text", "ping"))))
-        ), Map.of());
-        if (!"xiaoyi:s1".equals(xiaoyi.getSessionId()) || !"ping".equals(xiaoyi.getContent())) {
-            throw new AssertionError("XiaoYi A2A parse failed");
-        }
-
-        ChannelInboundMessage yuanbao = registry.get("yuanbao").parseWebhook("default", Map.of(
-                "group_openid", "g2",
-                "from_openid", "u2",
-                "content", "yo"
-        ), Map.of());
-        if (!"yuanbao:group:g2".equals(yuanbao.getSessionId()) || !"yo".equals(yuanbao.getContent())) {
-            throw new AssertionError("Yuanbao parse failed");
-        }
-        YuanbaoProto.ConnMsg auth = YuanbaoProto.decodeConn(YuanbaoProto.authBind("bot1", "bot", "token1"));
-        if (!"auth-bind".equals(auth.cmd()) || !"conn_access".equals(auth.module()) || auth.data().length == 0) {
-            throw new AssertionError("Yuanbao AuthBind protobuf failed: " + auth);
-        }
-        YuanbaoProto.ConnMsg c2c = YuanbaoProto.decodeConn(YuanbaoProto.sendC2C("u1", "bot1", "hello"));
-        if (!"send_c2c_message".equals(c2c.cmd()) || !"yuanbao_openclaw_proxy".equals(c2c.module()) || c2c.data().length == 0) {
-            throw new AssertionError("Yuanbao send protobuf failed: " + c2c);
-        }
         if (ChannelHttpSupport.qrPngBase64("https://example.com/login").length() < 100) {
             throw new AssertionError("QR PNG generation failed");
         }
 
-        AtomicReference<String> posted = new AtomicReference<>("");
         AtomicReference<String> wechatAuthType = new AtomicReference<>("");
         AtomicReference<String> wechatUin = new AtomicReference<>("");
         AtomicReference<String> wechatSend = new AtomicReference<>("");
@@ -172,13 +144,6 @@ public final class ExternalChannelAdaptersSelfCheck {
             exchange.getResponseBody().write(ok);
             exchange.close();
         });
-        server.createContext("/reply", exchange -> {
-            posted.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            byte[] ok = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, ok.length);
-            exchange.getResponseBody().write(ok);
-            exchange.close();
-        });
         server.start();
         try {
             String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
@@ -200,7 +165,7 @@ public final class ExternalChannelAdaptersSelfCheck {
             Path stateDir = Files.createTempDirectory("wechat-channel-state");
             Map<String, Object> qrStatus = registry.get("wechat").qrcodeStatus("default",
                     Map.of("base_url", baseUrl, "_channel_state_dir", stateDir.toString()), "wx-token-1");
-            if (!"success".equals(qrStatus.get("status"))
+            if (!"confirmed".equals(qrStatus.get("status"))
                     || !"token-from-qr".equals(((Map<?, ?>) qrStatus.get("credentials")).get("bot_token"))) {
                 throw new AssertionError("WeChat QR status should return credentials for scoped persistence: " + qrStatus);
             }
@@ -224,7 +189,6 @@ public final class ExternalChannelAdaptersSelfCheck {
                 throw new AssertionError("WeChat typing keepalive should start and stop around outbound send");
             }
 
-            String url = baseUrl + "/reply";
             ChannelOutboundMessage out = new ChannelOutboundMessage();
             out.setAgentId("default");
             out.setChannel("wecom");
@@ -232,10 +196,10 @@ public final class ExternalChannelAdaptersSelfCheck {
             out.setSessionId("wecom:group:c1");
             out.setTo(wecom.getReplyTo());
             out.setText("answer");
-            out.setMeta(Map.of("channel_meta", Map.of("reply_url", url, "wecom_chatid", "c1")));
+            out.setMeta(Map.of("channel_meta", Map.of("wecom_chatid", "c1")));
             registry.get("wecom").send(out, Map.of("enabled", true, "bot_id", "b", "secret", "s")).get();
-            if (!posted.get().contains("answer") || !"sent".equals(out.getMeta().get("delivery_status"))) {
-                throw new AssertionError("WeCom outbound failed: " + out.getMeta());
+            if (!"failed".equals(out.getMeta().get("delivery_status"))) {
+                throw new AssertionError("WeCom must not report delivery before WebSocket authentication: " + out.getMeta());
             }
         } finally {
             server.stop(0);

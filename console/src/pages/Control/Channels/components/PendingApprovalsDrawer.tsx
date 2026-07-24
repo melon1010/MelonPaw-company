@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Drawer,
-  Table,
   Button,
   Space,
   Tooltip,
@@ -22,6 +21,7 @@ import {
 } from "../../../../api/modules/accessControl";
 import { getChannelLabel, type ChannelKey } from "./constants";
 import { ChannelIcon } from "./ChannelIcon";
+import ResponsiveTable from "../../../../components/ResponsiveTable";
 
 const { Text } = Typography;
 
@@ -386,7 +386,7 @@ export function PendingApprovalsDrawer({
         </Space>
       </div>
 
-      <Table
+      <ResponsiveTable
         dataSource={filteredPending}
         columns={columns}
         rowKey={(r) => `${r.channel}:${r.user_id}`}
