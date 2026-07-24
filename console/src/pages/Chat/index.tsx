@@ -11,7 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Alert, Button, Dropdown, Modal, Result, Tooltip } from "antd";
+import { Alert, Button, Drawer, Dropdown, Modal, Result, Tooltip } from "antd";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import type { GroupImperativeHandle } from "react-resizable-panels";
 import { GripHorizontal, GripVertical } from "lucide-react";
@@ -171,6 +171,7 @@ import {
   buildSessionPath,
 } from "../../utils/sessionRoute";
 import { useUploadLimitStore } from "../../stores/uploadLimitStore";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import MessageQueuePanel from "./components/MessageQueuePanel";
 import {
   useMessageQueueStore,
@@ -1157,12 +1158,14 @@ export default function ChatPage() {
     }>
   >([]);
   const { selectedAgent } = useAgentStore();
+  const isMobile = useIsMobile();
   const stackedFilePreview = useStackedFilePreview();
   const [previewFile, setPreviewFile] = useState<ChatPreviewFile | null>(null);
   const [fullWidthFilePreview, setFullWidthFilePreview] = useState(false);
   const splitGroupRef = useRef<GroupImperativeHandle>(null);
   const previewRestoreSizeRef = useRef(38);
   const restorePreviewLayoutRef = useRef(false);
+  const showSplitFilePreview = previewFile !== null && !isMobile;
   const openFilePreview = useCallback(
     (file: ChatPreviewFile) => setPreviewFile(file),
     [],
@@ -1186,7 +1189,7 @@ export default function ChatPage() {
   }, [fullWidthFilePreview, stackedFilePreview]);
 
   useLayoutEffect(() => {
-    if (!previewFile || !splitGroupRef.current) return;
+    if (!previewFile || isMobile || !splitGroupRef.current) return;
 
     if (fullWidthFilePreview) {
       splitGroupRef.current.setLayout({
@@ -1204,7 +1207,7 @@ export default function ChatPage() {
       });
       restorePreviewLayoutRef.current = false;
     }
-  }, [fullWidthFilePreview, previewFile, stackedFilePreview]);
+  }, [fullWidthFilePreview, isMobile, previewFile, stackedFilePreview]);
   const { toolRenderConfig } = usePlugins();
   const extScalar = useChatScalarSnapshot();
   const extLists = useChatListSnapshot();
@@ -3153,20 +3156,30 @@ export default function ChatPage() {
         <Group
           groupRef={splitGroupRef}
           className={`${styles.chatSplitGroup} ${
-            stackedFilePreview ? styles.chatSplitGroupStacked : ""
+            showSplitFilePreview && stackedFilePreview
+              ? styles.chatSplitGroupStacked
+              : ""
           }`}
-          orientation={stackedFilePreview ? "vertical" : "horizontal"}
+          orientation={
+            showSplitFilePreview && stackedFilePreview
+              ? "vertical"
+              : "horizontal"
+          }
         >
           <Panel
             id="conversation"
             className={styles.chatSplitPanel}
             defaultSize={
-              previewFile ? (stackedFilePreview ? "44%" : "62%") : "100%"
+              showSplitFilePreview
+                ? stackedFilePreview
+                  ? "44%"
+                  : "62%"
+                : "100%"
             }
             minSize={
               fullWidthFilePreview
                 ? 0
-                : previewFile
+                : showSplitFilePreview
                 ? stackedFilePreview
                   ? "180px"
                   : "420px"
@@ -3303,7 +3316,7 @@ export default function ChatPage() {
             {/* End of main chat area */}
           </Panel>
 
-          {previewFile && (
+          {showSplitFilePreview && previewFile && (
             <>
               <Separator
                 id="file-preview-separator"
@@ -3349,6 +3362,28 @@ export default function ChatPage() {
             </>
           )}
         </Group>
+
+        <Drawer
+          open={isMobile && previewFile !== null}
+          onClose={closeFilePreview}
+          placement="right"
+          closable={false}
+          maskClosable
+          destroyOnHidden
+          width="100vw"
+          title={null}
+          rootClassName={styles.mobileFilePreviewDrawer}
+        >
+          {previewFile && (
+            <ChatFilePreview
+              file={previewFile}
+              fullWidth={false}
+              showFullWidthToggle={false}
+              onClose={closeFilePreview}
+              onToggleFullWidth={toggleFullWidthFilePreview}
+            />
+          )}
+        </Drawer>
 
         <ChatSearchPanel
           open={searchPanelOpen}

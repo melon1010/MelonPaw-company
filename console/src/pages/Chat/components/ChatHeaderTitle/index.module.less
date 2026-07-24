@@ -1,12 +1,11 @@
 .chatName {
+  max-width: 240px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
   font-size: 16px;
   font-weight: 500;
   line-height: 22px;
-  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
-  max-width: 240px;
-  min-width: 0;
-  flex-shrink: 1;
-  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 
@@ -15,117 +14,16 @@
     font-size: 14px;
   }
 
-  @media (max-width: 640px) {
-    display: none;
-  }
-}
-
-.singleTitle {
-  min-width: 0;
-  display: inline-flex;
-
-  @media (max-width: 640px) {
-    display: none;
+  @media (max-width: 480px) {
+    max-width: min(42vw, 164px);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
 :global(.dark-mode) {
   .chatName {
     color: rgba(255, 255, 255, 0.88);
-  }
-}
-
-/* ---- Trigger button ---- */
-.trigger {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  border-radius: 8px;
-  cursor: pointer;
-  user-select: none;
-  max-width: 260px;
-
-  &:hover {
-    .chatName {
-      color: var(--colorPrimary, var(--mp-primary));
-    }
-  }
-
-  &:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px var(--mp-focus-ring);
-  }
-
-  @media (max-width: 768px) {
-    max-width: min(42vw, 210px);
-  }
-
-  @media (max-width: 640px) {
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
-    justify-content: center;
-    padding: 0;
-    color: var(--mp-text-secondary);
-
-    &:active {
-      background: var(--mp-surface-subtle);
-    }
-  }
-}
-
-.dropdownChevron {
-  flex: 0 0 auto;
-  transition: transform 180ms ease;
-
-  @media (max-width: 640px) {
-    width: 13px;
-    height: 13px;
-  }
-}
-
-.mobileConversationIcon {
-  display: none;
-
-  @media (max-width: 640px) {
-    display: block;
-    flex: 0 0 auto;
-  }
-}
-
-.trigger[aria-expanded="true"] .dropdownChevron {
-  transform: rotate(180deg);
-}
-
-/* ---- Dropdown menu items ---- */
-.menuItem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 200px;
-}
-
-.menuItemName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-
-.menuItemActive {
-  color: var(--colorPrimary, var(--mp-primary));
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dropdownChevron {
-    transition: none;
   }
 }

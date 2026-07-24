@@ -10,6 +10,18 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 
 项目由 QwenPaw 的交互基础演进而来，Agent 运行时使用 AgentScope Java 2.0 官方能力，但作为独立项目维护，不是 QwenPaw、AgentScope、Hermes Agent 或其他参考项目的官方发行版。上游来源和再分发边界见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。
 
+## README 语言（默认入口）
+
+| 语言 | README |
+| --- | --- |
+| 简体中文（默认） | [README.md](README.md) |
+| English | [README.en.md](README.en.md) |
+| 日本語 | [README.ja.md](README.ja.md) |
+| Русский | [README.ru.md](README.ru.md) |
+| Português (Brasil) | [README.pt-BR.md](README.pt-BR.md) |
+| Bahasa Indonesia | [README.id.md](README.id.md) |
+| Tiếng Việt | [README.vi.md](README.vi.md) |
+
 ## 产品边界
 
 - 一个部署实例服务一家企业，不提供 SaaS 多租户、企业切换、订阅或计费能力。
@@ -35,6 +47,26 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 - 远程 MCP 可显式配置 OAuth 2.0 Client Credentials；服务端会先向 Token Endpoint 验证凭据，成功后才替换旧配置，Client Secret 加密落盘且不回显。
 
 团队 Agent 只向有执行权限的团队成员开放，且任务记录团队范围、执行用户和 Agent 版本。当前 Subagent 只在同一 Agent 工作区内单层运行，不是任意 Agent 之间的互调。
+
+## 语言支持
+
+控制台默认使用简体中文（`zh`）。语言偏好按用户保存，登录后从服务端读取；用户也可以通过右上角语言切换入口修改。当前支持的控制台界面语言如下：
+
+| 标识 | 界面语言 | 覆盖范围 |
+| --- | --- | --- |
+| `zh` | 简体中文 | 默认语言，完整控制台界面 |
+| `en` | English | 控制台界面 |
+| `ja` | 日本語 | 控制台界面 |
+| `ru` | Русский | 控制台界面 |
+| `pt-BR` | Português (Brasil) | 控制台界面 |
+| `id` | Bahasa Indonesia | 控制台界面 |
+| `vi` | Tiếng Việt | 控制台界面 |
+
+这里的“界面语言”只描述 React 控制台、Ant Design 组件、日期和通用提示语的翻译，不等同于模型能力或用户输入语言。模型仍可根据对话内容使用其他语言回复；工具输出、MCP 返回值、用户上传文件和技能正文不会被界面切换自动翻译。
+
+智能体配置中的“智能体语言”是另一项设置，用于选择 `SOUL.md`、`AGENTS.md`、`PROFILE.md`、`MEMORY.md`、`BOOTSTRAP.md`、`HEARTBEAT.md` 等内置人设文件的语言版本。切换它可能覆盖这些内置 MD 文件，已经自定义的内容应先备份。当前内置技能的可用语言以技能自身的 `available_languages` 元数据为准，并不保证覆盖上述全部 7 种界面语言。
+
+语言标签会按 BCP 47 规则规范化，例如 `zh-CN` 归一为 `zh`、`pt-PT` 归一为 `pt-BR`；不支持的标签会被拒绝或回退到简体中文。浏览器的其他语言不会自动新增翻译包，也不会改变系统默认语言。
 
 ## 权限、共享与隔离边界
 
@@ -160,7 +192,7 @@ melon-app 聚合其他四个 Java 模块，并打包 console/dist。
 | Node.js | 20.19 或更高；推荐 22 LTS |
 | Docker | 生产默认运行 Agent 文件/命令工具时必需；受信开发环境可用 `local` profile 在宿主机执行 |
 
-## 构建
+## 构建与启动
 
 先构建 Web 控制台：
 
@@ -179,7 +211,7 @@ mvn clean package
 
 生成的可执行文件为 `melon-app/target/melonpaw-company-web.jar`。Maven 会把已有的 `console/dist` 打入 JAR，因此正式打包前必须先完成前端构建。
 
-## 启动
+### 启动说明
 
 先构建一次企业沙箱镜像。镜像内以非 root 用户运行，并包含技能脚本常用的 Bash、Git、curl、Python 和 Node.js：
 
@@ -245,7 +277,7 @@ ${MELON_HOME}/enterprise.db
 
 生产环境应由反向代理终止 HTTPS，并限制应用端口只对受信网络开放。
 
-## 模型配置
+## 模型与密钥
 
 至少配置一个模型供应商。模型 ID 使用 `<provider>:<model>` 格式，例如 `dashscope:qwen-plus` 或 `deepseek:deepseek-chat`。
 
@@ -318,14 +350,12 @@ npm run build
 - 导入第三方插件、技能包、备份包或工作区压缩包前必须验证来源和内容。
 - 正式上线前应覆盖越权访问、路径逃逸、审批绕过、进程终止、备份恢复和升级回滚测试。
 
-## 文档
+## 文档与许可证
 
 - [AgentScope 2.0 对齐说明](docs/AGENTSCOPE_2_ALIGNMENT.md)
 - [上游来源与独立性说明](docs/UPSTREAM.md)
 - [开源发布检查清单](docs/OPEN_SOURCE_CHECKLIST.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
-
-## 许可证
 
 本项目代码拟使用 [Apache License 2.0](LICENSE)，但当前 Git 历史仍包含已从工作树删除、禁止第三方分发的 Anthropic 技能材料，因此当前仓库不能直接视为合规的开源发布物。公开源码或二进制发布前必须按 [开源发布检查清单](docs/OPEN_SOURCE_CHECKLIST.md) 清理历史，并核对 `NOTICE`、上游版本、剩余第三方资源许可证和前端素材的再分发条件。

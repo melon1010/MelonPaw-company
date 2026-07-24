@@ -29,6 +29,7 @@ export type { ChatPreviewFile } from "./context";
 interface ChatFilePreviewProps {
   file: ChatPreviewFile;
   fullWidth: boolean;
+  showFullWidthToggle?: boolean;
   onClose: () => void;
   onToggleFullWidth: () => void;
 }
@@ -229,6 +230,7 @@ function KindIcon({ kind }: { kind: PreviewKind }) {
 export default function ChatFilePreview({
   file,
   fullWidth,
+  showFullWidthToggle = true,
   onClose,
   onToggleFullWidth,
 }: ChatFilePreviewProps) {
@@ -514,27 +516,29 @@ export default function ChatFilePreview({
           </div>
         )}
         <span className={styles.previewActions}>
-          <Tooltip
-            title={
-              fullWidth ? t("preview.restoreSplit") : t("preview.fullWidth")
-            }
-          >
-            <button
-              type="button"
-              className={styles.iconButton}
-              aria-label={
+          {showFullWidthToggle && (
+            <Tooltip
+              title={
                 fullWidth ? t("preview.restoreSplit") : t("preview.fullWidth")
               }
-              aria-pressed={fullWidth}
-              onClick={onToggleFullWidth}
             >
-              {fullWidth ? (
-                <Minimize2 size={17} aria-hidden />
-              ) : (
-                <Maximize2 size={17} aria-hidden />
-              )}
-            </button>
-          </Tooltip>
+              <button
+                type="button"
+                className={styles.iconButton}
+                aria-label={
+                  fullWidth ? t("preview.restoreSplit") : t("preview.fullWidth")
+                }
+                aria-pressed={fullWidth}
+                onClick={onToggleFullWidth}
+              >
+                {fullWidth ? (
+                  <Minimize2 size={17} aria-hidden />
+                ) : (
+                  <Maximize2 size={17} aria-hidden />
+                )}
+              </button>
+            </Tooltip>
+          )}
           <Tooltip title={t("common.download")}>
             <a
               className={styles.iconButton}

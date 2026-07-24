@@ -73,6 +73,7 @@ vi.mock("react-i18next", () => ({
 describe("MobileNavigation permissions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     mockAuthState.roles = ["EMPLOYEE"];
     mockAuthState.permissions = [
       "projects:read",
@@ -84,7 +85,7 @@ describe("MobileNavigation permissions", () => {
     ];
   });
 
-  it("keeps chat, project spaces, and scheduled tasks in primary navigation", async () => {
+  it("keeps new chat, project spaces, and scheduled tasks in primary navigation", async () => {
     renderWithProviders(<MobileNavigation />, {
       initialEntries: ["/chat"],
     });
@@ -98,12 +99,12 @@ describe("MobileNavigation permissions", () => {
       hidden: true,
     });
     expect(trigger).toHaveAttribute("aria-expanded", "true");
-    const chatNavigationItem = within(navigation).getByRole("button", {
-      name: "nav.chat",
+    const newChatNavigationItem = within(navigation).getByRole("button", {
+      name: "chat.newChatTooltip",
     });
-    expect(chatNavigationItem).toBeInTheDocument();
+    expect(newChatNavigationItem).toBeInTheDocument();
     expect(
-      chatNavigationItem.querySelector(".lucide-square-pen"),
+      newChatNavigationItem.querySelector(".lucide-square-pen"),
     ).toBeInTheDocument();
     expect(
       within(navigation).getByRole("button", {
@@ -145,6 +146,54 @@ describe("MobileNavigation permissions", () => {
     expect(
       within(navigation).queryByRole("button", { name: "nav.models" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("uses the same new-chat flow as desktop navigation", async () => {
+    const onNewChat = vi.fn();
+    window.addEventListener("qwenpaw:sidebar-new-chat", onNewChat);
+
+    try {
+      renderWithProviders(<MobileNavigation />, {
+        initialEntries: ["/chat/session-1"],
+      });
+
+      fireEvent.click(
+        screen.getByLabelText("nav.menu", { selector: "button" }),
+      );
+      const navigation = await screen.findByRole("navigation", {
+        name: "nav.menu",
+        hidden: true,
+      });
+      fireEvent.click(
+        within(navigation).getByRole("button", {
+          name: "chat.newChatTooltip",
+        }),
+      );
+
+      expect(onNewChat).toHaveBeenCalledOnce();
+      expect(sessionStorage.getItem("qwenpaw_pending_new_chat")).toBeNull();
+    } finally {
+      window.removeEventListener("qwenpaw:sidebar-new-chat", onNewChat);
+    }
+  });
+
+  it("marks a new blank chat before navigating from another page", async () => {
+    renderWithProviders(<MobileNavigation />, {
+      initialEntries: ["/projects"],
+    });
+
+    fireEvent.click(screen.getByLabelText("nav.menu", { selector: "button" }));
+    const navigation = await screen.findByRole("navigation", {
+      name: "nav.menu",
+      hidden: true,
+    });
+    fireEvent.click(
+      within(navigation).getByRole("button", {
+        name: "chat.newChatTooltip",
+      }),
+    );
+
+    expect(sessionStorage.getItem("qwenpaw_pending_new_chat")).toBe("1");
   });
 
   it("closes from the mask without rendering a drawer close button", async () => {
@@ -219,7 +268,9 @@ describe("MobileNavigation permissions", () => {
       within(navigation).getByRole("button", { name: "nav.workspace" }),
     ).toBeInTheDocument();
     expect(
-      within(navigation).queryByRole("button", { name: "nav.chat" }),
+      within(navigation).queryByRole("button", {
+        name: "chat.newChatTooltip",
+      }),
     ).not.toBeInTheDocument();
   });
 });

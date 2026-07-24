@@ -420,25 +420,21 @@
     position: relative;
     height: 52px;
     box-sizing: border-box;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 0;
-    padding: 0 76px;
+    padding: 0 52px 0 40px;
   }
 
   .chatHeaderLeading {
     width: 100%;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 6px;
   }
 
   .chatConversationTitle {
     width: auto;
-    flex: 0 0 auto;
-    justify-content: center;
-
-    &:empty {
-      display: none;
-    }
+    max-width: 100%;
+    justify-content: flex-start;
   }
 
   .chatHeaderActions {
@@ -681,9 +677,10 @@
           > .qwenpaw-chat-anywhere-message-list-welcome
         )
         > .qwenpaw-chat-anywhere-input {
-        top: calc(45% + 71px);
-        bottom: auto;
-        transform: translateY(-100%);
+        top: auto;
+        bottom: 0;
+        padding: 8px 0 calc(10px + env(safe-area-inset-bottom));
+        transform: none;
       }
     }
   }
@@ -701,6 +698,29 @@
         .qwenpaw-chat-anywhere-input-wrapper {
         width: calc(100% - 20px) !important;
       }
+    }
+  }
+}
+
+.mobileFilePreviewDrawer {
+  :global(.qwenpaw-drawer-content),
+  :global(.ant-drawer-content),
+  :global(.qwenpaw-drawer-body),
+  :global(.ant-drawer-body) {
+    background: var(--mp-surface) !important;
+  }
+
+  :global(.qwenpaw-drawer-body),
+  :global(.ant-drawer-body) {
+    min-height: 0;
+    display: flex;
+    padding: 0 !important;
+    overflow: hidden;
+
+    > * {
+      min-width: 0;
+      min-height: 0;
+      flex: 1 1 auto;
     }
   }
 }

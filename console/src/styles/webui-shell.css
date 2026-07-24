@@ -362,6 +362,10 @@ html.dark-mode
     height: 52px;
   }
 
+  .webui-shell .qwenpaw-chat-anywhere-layout-right-header {
+    padding: 0 !important;
+  }
+
   .webui-shell .qwenpaw-chat-anywhere-default-header-right {
     padding: 0 8px;
   }

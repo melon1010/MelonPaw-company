@@ -71,6 +71,25 @@ describe("ChatFilePreview", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it("hides the desktop split-width control when rendered in a mobile drawer", () => {
+    renderWithProviders(
+      <ChatFilePreview
+        file={{ name: "diagram.png", url: "/preview/diagram.png" }}
+        fullWidth={false}
+        showFullWidthToggle={false}
+        onClose={() => {}}
+        onToggleFullWidth={() => {}}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", {
+        name: "Expand preview to full width",
+      }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+  });
+
   it("loads text files into the inline preview", async () => {
     vi.stubGlobal(
       "fetch",

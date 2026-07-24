@@ -66,7 +66,7 @@ export default function MobileNavigation() {
       {
         id: "core.chat",
         path: "/chat",
-        label: t("nav.chat"),
+        label: t("chat.newChatTooltip", "New chat"),
         icon: SquarePen,
       },
       {
@@ -264,6 +264,17 @@ export default function MobileNavigation() {
     navigate(path);
   };
 
+  const handleNewChat = () => {
+    closeDrawer();
+    if (location.pathname.startsWith("/chat")) {
+      window.dispatchEvent(new CustomEvent("qwenpaw:sidebar-new-chat"));
+      return;
+    }
+
+    sessionStorage.setItem("qwenpaw_pending_new_chat", "1");
+    navigate("/chat");
+  };
+
   const handleSidebarSessionClick = useCallback(
     (sessionId: string) => {
       setOpen(false);
@@ -289,7 +300,9 @@ export default function MobileNavigation() {
               key={item.id}
               className={active ? styles.drawerItemActive : styles.drawerItem}
               aria-current={active ? "page" : undefined}
-              onClick={() => go(item.path)}
+              onClick={
+                item.id === "core.chat" ? handleNewChat : () => go(item.path)
+              }
             >
               <span className={styles.drawerItemIcon}>
                 <Icon size={19} aria-hidden />
