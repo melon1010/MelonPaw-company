@@ -38,11 +38,23 @@ Java、配置和数据库仍在宿主机；只有 Agent Shell 和 StdIO MCP 进�
 
 ## Docker Compose
 
-复制环境模板并将其中两个宿主目录改为真实绝对路径：
+Java 镜像不内置 Maven，也不会在 Docker 构建时下载 Java 依赖。先在宿主机或 CI 生成 JAR：
+
+```bash
+mvn -pl melon-app -am -DskipTests package
+```
+
+然后复制环境模板，将其中两个宿主目录改为真实绝对路径并启动：
 
 ```bash
 cp .env.example .env
 docker compose up --build -d
+```
+
+如果 Java 源码发生变化，重新执行 Maven 打包命令后再构建 `app` 镜像。首次部署也可以合并执行：
+
+```bash
+mvn -pl melon-app -am -DskipTests package && docker compose up --build -d
 ```
 
 默认入口：
@@ -50,7 +62,7 @@ docker compose up --build -d
 - 控制台：`http://localhost:5173`
 - Java API：`http://localhost:8088`
 
-Compose 会构建三个镜像：Java、前端 Nginx 和标准工具沙箱。前端通过同源 `/api` 反向代理访问 Java，SSE 响应关闭代理缓冲。
+Compose 会组装 Java 运行镜像，并构建前端 Nginx 和标准工具沙箱镜像。前端通过同源 `/api` 反向代理访问 Java，SSE 响应关闭代理缓冲。
 
 ### 工作区路径映射
 
@@ -81,4 +93,3 @@ Java 验证源码后按内容哈希复制到所属 Agent 工作区，MCP 沙箱�
 3. Docker socket 等价于较高的宿主机控制权限；生产环境应使用独立 Docker daemon、rootless Docker 或受控 socket proxy。
 4. 设置 `MELON_BOOTSTRAP_TOKEN` 和 `MELON_MASTER_KEY`，不要把真实密钥提交到 `.env`。
 5. 通过 `MELON_SANDBOX_NETWORK` 使用受限出口网络；需要 gVisor 时设置 `MELON_SANDBOX_RUNTIME=runsc`。
-

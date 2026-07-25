@@ -6,7 +6,7 @@ MelonPaw-Company 是面向单个企业私有部署的 AI Agent 协作与任务�
 
 这里的“龙虾”指中文 Agent 社区对这类可自主使用工具、持续积累上下文并完成任务的 AI 助理产品形态的通俗称呼，不表示兼容或从属于某个同名产品。项目参考 Hermes Agent 等开源 Agent 在持续工作区、Skills、MCP、Memory、ReAct 工具循环和任务执行方面的产品思路，但不是 Hermes Agent 的 Java 移植版，也没有使用其名称、代码或官方身份。
 
-企业角色、个人资源和管理边界见 [企业能力与权限矩阵](docs/ENTERPRISE_CAPABILITY_MATRIX.md)；尚未完成的生产能力及验收标准见 [企业化剩余工作](docs/ENTERPRISE_REMAINING_WORK.md)。
+企业角色、个人资源和管理边界见 [企业能力与权限矩阵](docs/ENTERPRISE_CAPABILITY_MATRIX.md)。
 
 项目由 QwenPaw 的交互基础演进而来，Agent 运行时使用 AgentScope Java 2.0 官方能力，但作为独立项目维护，不是 QwenPaw、AgentScope、Hermes Agent 或其他参考项目的官方发行版。上游来源和再分发边界见 [docs/UPSTREAM.md](docs/UPSTREAM.md)。
 

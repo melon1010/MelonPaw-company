@@ -4,9 +4,9 @@
 .vscode
 .env
 .melonpaw-data
-**/target
+**/target/*
+!melon-app/target/melonpaw-company-web.jar
 console/dist
 console/node_modules
 **/.DS_Store
 **/*.log
-
