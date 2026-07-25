@@ -92,6 +92,7 @@ $env:SERVER_ADDRESS = "127.0.0.1"
 $env:SERVER_PORT = [string]$Port
 $env:MELON_HOME = $StateDir
 $env:MELON_ENTERPRISE_DATABASE_PATH = $database
+$env:SPRING_PROFILES_ACTIVE = "docker"
 $env:MELON_EXECUTION_SANDBOX = "docker"
 $env:MELON_SANDBOX_IMAGE = $SandboxImage
 $env:MELON_SANDBOX_NETWORK = $SandboxNetwork

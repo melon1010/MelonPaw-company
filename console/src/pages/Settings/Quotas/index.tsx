@@ -63,7 +63,7 @@ export default function QuotasPage() {
   const [scopeType, setScopeType] = useState<QuotaScope>("USER");
   const [scopeId, setScopeId] = useState("");
   const [editing, setEditing] = useState<QuotaPolicy | null>(null);
-  const canManage = hasPermission(user, "system:manage");
+  const canManage = hasPermission(user, "quotas:manage");
 
   const load = useCallback(async () => {
     setLoading(true);

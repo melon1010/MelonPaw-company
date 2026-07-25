@@ -161,10 +161,6 @@ vi.mock("./OptionsPanel/defaultConfig", () => ({
   })),
 }));
 
-vi.mock("./ModelSelector", () => ({
-  default: () => <div data-testid="model-selector" />,
-}));
-
 vi.mock("./components/ChatActionGroup", () => ({
   default: () => <div data-testid="action-group" />,
 }));
@@ -226,11 +222,10 @@ describe("ChatPage", () => {
     expect(await screen.findByTestId("chat-ui")).toBeInTheDocument();
   });
 
-  it("renders child components ModelSelector / ChatActionGroup / ChatHeaderTitle", async () => {
+  it("renders the conversation title and header actions without a model selector", async () => {
     renderWithProviders(<ChatPage />, { initialEntries: ["/chat"] });
     await screen.findByTestId("chat-ui");
-    console.log("DOM:", document.body.innerHTML.substring(0, 500));
-    expect(screen.getByTestId("model-selector")).toBeInTheDocument();
+    expect(screen.queryByTestId("model-selector")).not.toBeInTheDocument();
     expect(screen.getByTestId("action-group")).toBeInTheDocument();
     expect(screen.getByTestId("header-title")).toBeInTheDocument();
   });

@@ -142,13 +142,14 @@ public class McpClientManager {
      * @return 注册后的配置 (含生成的 id)
      */
     public McpServerConfig register(McpServerConfig config) {
-        if (config.getId() == null || config.getId().isBlank()) {
-            config.setId(UUID.randomUUID().toString().substring(0, 8));
+        normalizeServerConfig(config, null);
+        if (servers.containsKey(config.getId())) {
+            throw new IllegalArgumentException("MCP server already exists: " + config.getId());
         }
-        if (config.getName() == null || config.getName().isBlank()) {
-            config.setName("mcp-" + config.getId());
+        prepareServerConfig(config);
+        if (servers.putIfAbsent(config.getId(), config) != null) {
+            throw new IllegalArgumentException("MCP server already exists: " + config.getId());
         }
-        servers.put(config.getId(), config);
         retryableConnectionFailures.remove(config.getId());
         connectionStates.put(config.getId(), state(config.getId(), false, null,
                 config.isEnabled() ? "DISCONNECTED" : "DISABLED", null));
@@ -160,6 +161,51 @@ public class McpClientManager {
         log.info("MCP server registered: id={}, name={}, transport={}",
                 config.getId(), config.getName(), config.getTransport());
         return config;
+    }
+
+    /**
+     * Replaces an existing definition only after the new stdio artifact and runtime are valid.
+     * A failed update leaves the persisted configuration and live session untouched.
+     */
+    public McpServerConfig replace(String id, McpServerConfig replacement) {
+        if (id == null || id.isBlank() || !servers.containsKey(id)) return null;
+        normalizeServerConfig(replacement, id);
+        prepareServerConfig(replacement);
+        synchronized (connectionLocks.computeIfAbsent(id, ignored -> new Object())) {
+            if (!servers.containsKey(id)) return null;
+            disconnect(id);
+            servers.put(id, replacement);
+            retryableConnectionFailures.remove(id);
+            restartCounts.remove(id);
+            connectionStates.put(id, state(id, false, null,
+                    replacement.isEnabled() ? "DISCONNECTED" : "DISABLED", null));
+            persist();
+        }
+        if (replacement.isEnabled()) connectAsync(id);
+        log.info("MCP server replaced: id={}, name={}, transport={}",
+                id, replacement.getName(), replacement.getTransport());
+        return replacement;
+    }
+
+    private void normalizeServerConfig(McpServerConfig config, String requiredId) {
+        if (config == null) throw new IllegalArgumentException("MCP server configuration is required");
+        if (requiredId != null) config.setId(requiredId);
+        if (config.getId() == null || config.getId().isBlank()) {
+            config.setId(UUID.randomUUID().toString().substring(0, 8));
+        }
+        if (config.getName() == null || config.getName().isBlank()) {
+            config.setName("mcp-" + config.getId());
+        }
+    }
+
+    private void prepareServerConfig(McpServerConfig config) {
+        if (!"stdio".equals(config.getTransport())) return;
+        try {
+            stdioProcessLauncher.validateAndPrepare(config, workspaceDir);
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalArgumentException("Invalid stdio MCP configuration: "
+                    + connectionError(e), e);
+        }
     }
 
     /**
@@ -528,7 +574,7 @@ public class McpClientManager {
                 try {
                     List<McpTool> tools = session.listTools(config.getStartupTimeoutSeconds()).stream()
                             .map(McpTool::fromMap).toList();
-                    if (shuttingDown || !config.isEnabled()) {
+                    if (shuttingDown || !config.isEnabled() || servers.get(id) != config) {
                         session.close();
                         return false;
                     }
@@ -543,7 +589,7 @@ public class McpClientManager {
                 session.initialize(config.getStartupTimeoutSeconds());
                 List<McpTool> tools = session.listTools(config.getStartupTimeoutSeconds()).stream()
                         .map(McpTool::fromMap).toList();
-                if (shuttingDown || !config.isEnabled()) return false;
+                if (shuttingDown || !config.isEnabled() || servers.get(id) != config) return false;
                 httpSessions.put(id, session);
                 config.setTools(new ArrayList<>(tools));
             } else {
@@ -728,9 +774,11 @@ public class McpClientManager {
         String detail = throwableDetail(failure).toLowerCase(Locale.ROOT);
 
         if (containsAny(detail,
-                "typeerror", "syntaxerror", "referenceerror", "cannot find module", "module_not_found",
-                "command not found", "no such file or directory", "permission denied",
+                "typeerror", "syntaxerror", "referenceerror",
+                "melon_mcp_runtime_missing", "mcp sandbox image is incompatible",
                 "stdio mcp command is required", "unknown mcp transport", "unsupported protocol",
+                "unknown or invalid runtime", "runtime is not registered",
+                "no such image", "pull access denied",
                 "unauthorized", "forbidden", "invalid api key", "invalid token")) {
             return false;
         }
@@ -741,20 +789,68 @@ public class McpClientManager {
                 "timed out", "timeout", "temporarily unavailable", "connection reset",
                 "connection refused", "connectexception", "unknownhost", "eai_again",
                 "enotfound", "econnreset", "econnrefused", "socket hang up", "broken pipe",
-                "rate limit", "too many requests")
+                "network is unreachable", "temporary failure in name resolution", "could not resolve",
+                "getaddrinfo", "rate limit", "too many requests")
                 || detail.matches("(?s).*\\bhttp\\s+(408|425|429|5\\d\\d)\\b.*")) {
             return true;
+        }
+        if (containsAny(detail,
+                "cannot find module", "module_not_found", "command not found",
+                "no such file or directory", "executable file not found", "permission denied",
+                "npm error code e404", "no matching distribution found", "package not found")) {
+            return false;
         }
         return isHttpTransport(transport);
     }
 
-    private String connectionError(Throwable failure) {
-        String detail = firstNonBlank(failure == null ? null : failure.getMessage(),
-                failure == null ? "MCP connection failed" : failure.getClass().getSimpleName());
-        int lineEnd = detail.indexOf('\n');
-        if (lineEnd >= 0) detail = detail.substring(0, lineEnd);
-        detail = detail.strip();
-        return detail.length() <= 1000 ? detail : detail.substring(0, 997) + "...";
+    static String connectionError(Throwable failure) {
+        String raw = failure == null || failure.getMessage() == null || failure.getMessage().isBlank()
+                ? failure == null ? "MCP connection failed" : failure.getClass().getSimpleName()
+                : failure.getMessage();
+        String detail = raw.replaceAll("\\s+", " ").strip();
+        String searchable = throwableDetail(failure).toLowerCase(Locale.ROOT);
+        String guidance = null;
+        if (containsAny(searchable,
+                "melon_mcp_runtime_missing",
+                "/opt/melonpaw-runtime/prepare-mcp.sh failed: no such file or directory")) {
+            guidance = "MCP_SANDBOX_INCOMPATIBLE: The sandbox image is missing a runtime required "
+                    + "to prepare this MCP server. Use an image with npm, uv, and Python support, "
+                    + "or rebuild melonpaw-company-sandbox from docker/sandbox.";
+        } else if (containsAny(searchable,
+                "unable to start sandboxed stdio mcp container",
+                "unable to start the mcp dependency docker sandbox",
+                "cannot connect to the docker daemon", "is the docker daemon running",
+                "unknown or invalid runtime", "runtime is not registered",
+                "no such image", "pull access denied")) {
+            guidance = "MCP_SANDBOX_UNAVAILABLE: The configured Docker sandbox, image, or runtime is unavailable. "
+                    + "Check /api/agent/sandbox/health and the Docker deployment settings.";
+        } else if (containsAny(searchable,
+                "timed out", "timeout", "temporarily unavailable", "connection reset",
+                "connection refused", "connectexception", "unknownhost", "eai_again",
+                "enotfound", "econnreset", "econnrefused", "socket hang up", "broken pipe",
+                "network is unreachable", "temporary failure in name resolution", "could not resolve",
+                "getaddrinfo")) {
+            guidance = "MCP_NETWORK_UNAVAILABLE: The MCP server could not reach the network or package registry. "
+                    + "Check the sandbox network and proxy settings, then retry.";
+        } else if (containsAny(searchable,
+                "command not found", "executable file not found", "cannot run program")
+                || searchable.matches("(?s).*exec\\s+[^ ]+\\s+failed:\\s+no such file or directory.*")) {
+            guidance = "MCP_COMMAND_NOT_FOUND: The configured command is not installed in the MCP sandbox. "
+                    + "Use npx/uvx for package-based servers or select a compatible sandbox image.";
+        } else if (containsAny(searchable,
+                "npm error code e404", "no matching distribution found", "could not find a version",
+                "package not found", "not found in package registry")) {
+            guidance = "MCP_PACKAGE_NOT_FOUND: The configured MCP package or version is unavailable. "
+                    + "Check the package name, version, and registry configuration.";
+        } else if (containsAny(searchable,
+                "unsupported protocol", "invalid json", "json parse", "mcp server closed stdout",
+                "missing protocolversion", "method not found")) {
+            guidance = "MCP_PROTOCOL_ERROR: The process started but did not complete the MCP initialization protocol. "
+                    + "Check that the command starts a stdio MCP server and writes logs only to stderr.";
+        }
+        if (detail.length() > 700) detail = detail.substring(0, 697) + "...";
+        String message = guidance == null ? detail : guidance + " Details: " + detail;
+        return message.length() <= 1000 ? message : message.substring(0, 997) + "...";
     }
 
     private static String throwableDetail(Throwable failure) {

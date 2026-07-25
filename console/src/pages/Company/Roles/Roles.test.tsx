@@ -3,11 +3,7 @@ import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/common_setup";
-import {
-  getPermissionGroup,
-  getPermissionGroupName,
-  getPermissionName,
-} from "../rolePresentation";
+import { getPermissionName } from "../rolePresentation";
 import RolesPage from "./index";
 
 const { mockListRoles, mockMessage, mockT } = vi.hoisted(() => ({
@@ -60,7 +56,7 @@ vi.mock("@/contexts/AuthContext", () => ({
       username: "admin",
       enabled: true,
       roles: ["SYSTEM_ADMIN"],
-      permissions: ["roles:read", "roles:manage"],
+      permissions: ["roles:manage"],
     },
   }),
 }));
@@ -83,7 +79,7 @@ describe("enterprise role management", () => {
           name: "System administrator",
           description: "Full platform administration",
           system_role: true,
-          permissions: ["users:read", "roles:manage"],
+          permissions: ["users:manage", "roles:manage", "models:manage"],
           user_count: 1,
         },
         {
@@ -91,15 +87,20 @@ describe("enterprise role management", () => {
           name: "Shift manager",
           description: "Custom role",
           system_role: false,
-          permissions: ["projects:read"],
+          permissions: ["projects:manage"],
           user_count: 0,
         },
       ],
-      permissions: ["users:read", "roles:manage", "projects:read"],
+      permissions: [
+        "users:manage",
+        "roles:manage",
+        "projects:manage",
+        "models:manage",
+      ],
     });
   });
 
-  it("keeps system roles read-only and maps permissions into named groups", async () => {
+  it("keeps system roles read-only and presents configurable menu permissions", async () => {
     renderWithProviders(<RolesPage />, { initialEntries: ["/roles"] });
 
     expect(
@@ -111,13 +112,7 @@ describe("enterprise role management", () => {
       1,
     );
 
-    expect(getPermissionGroup("users:read")).toBe("members");
     const t = mockT as unknown as TFunction;
-    expect(getPermissionGroupName("members", t)).toBe(
-      "enterprise.roles.permissionGroups.members",
-    );
-    expect(getPermissionName("users:read", t)).toBe(
-      "enterprise.roles.permissionNames.usersRead",
-    );
+    expect(getPermissionName("models:manage", t)).toBe("nav.models");
   });
 });

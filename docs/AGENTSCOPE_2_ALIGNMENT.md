@@ -61,7 +61,11 @@ Web 请求进入 Agent 前，由 `AgentRunner` 创建 `RuntimeContext`：
 - 本地文件系统模式只允许显式设置 `MELON_EXECUTION_SANDBOX=local` 的开发环境使用，不能作为企业部署方式。
 - Java 服务容器化时，通过 `MELON_WORKSPACE_ROOT` 与 `MELON_SANDBOX_HOST_WORKSPACE_ROOT` 将应用容器内路径显式映射为 Docker daemon 可识别的宿主路径；配置不完整、非绝对路径或越界时拒绝创建沙箱。
 
-stdio MCP 与 Agent Shell 使用相同的执行边界策略。Docker 模式下，MCP 进程由 `StdioMcpProcessLauncher` 放入独立非特权容器，只挂载所属 Agent 工作区，并限制 capabilities、进程数、CPU、内存和网络；连接关闭时会强制回收容器。`MELON_MCP_STDIO_MODE=local` 只用于可信开发环境，生产环境可使用 `docker`，或用 `disabled` 完全禁止 stdio MCP。远程 HTTP MCP 不启动本地进程，继续由连接策略和 MCP 工具权限策略约束。
+AgentScope Java 2.0 的 [Sandbox](https://github.com/agentscope-ai/agentscope-java/blob/main/docs/v2/en/docs/harness/sandbox.md) 和 [Workspace](https://github.com/agentscope-ai/agentscope-java/blob/main/docs/v2/en/docs/harness/workspace.md) 文档将 Workspace 定义为 Agent 配置、技能、记忆和 MCP 配置的事实来源，并由 Sandbox 负责工作区投影、隔离执行和生命周期。官方 StdIO MCP 客户端本身使用本地子进程通信，不会自动进入 `DockerFilesystemSpec`，因此企业层仍需提供明确的 StdIO 沙箱适配。
+
+stdio MCP 与 Agent Shell 使用相同的执行边界策略。Docker 模式下，MCP 进程由 `StdioMcpProcessLauncher` 放入独立非特权容器，只挂载所属 Agent 工作区，并限制 capabilities、进程数、CPU、内存和网络；连接关闭时会强制回收容器。可信宿主项目必须位于 `MELON_MCP_IMPORT_ROOTS` 下，运行前按内容哈希复制到所属 Agent 的 `.melon/mcp-sources/`，不会把原始宿主目录挂载给 MCP 容器；符号链接、路径逃逸以及超过数量或体积限制的项目会被拒绝。页面路径与 Java 可见路径不一致时，`MELON_MCP_PATH_MAPPINGS` 可对运行时副本进行最长前缀映射，映射目标仍必须真实存在并位于可信根内。该可信根同时代表对 MCP 配置主体的导入授权，生产环境必须使用专用源目录，不能配置用户主目录或文件系统根目录。Node 和 Python 项目的依赖在同一沙箱镜像内准备并缓存，网络、包或镜像环境错误会明确返回，不会回退到宿主执行。`MELON_MCP_STDIO_MODE=local` 只用于显式启用的可信开发环境，生产环境使用 `docker`，或用 `disabled` 完全禁止 stdio MCP。远程 HTTP MCP 不启动本地进程，继续由连接策略和 MCP 工具权限策略约束。
+
+设置 `MELON_SANDBOX_RUNTIME=runsc` 后，AgentScope 的 `DockerFilesystemSpec.additionalRunArgs` 和 StdIO MCP 容器都会显式传入 gVisor runtime。Docker 未注册该 runtime 时创建操作直接失败，不静默改用默认 runtime。沙箱镜像预检同时覆盖 AgentScope 要求的 POSIX/GNU 文件命令、Python、Node 和 `uv`。MCP 依赖准备通过容器内标准 `/bin/sh` 调用对应包管理器，不依赖 MelonPaw 私有镜像脚本，因此其他具备相同运行时的沙箱镜像也可以使用。
 
 `AGENTS.md` 与 `MEMORY.md` 由 Harness Workspace 管理。其他允许的单层上下文文件使用 `additionalContextFile` 注入，并拒绝绝对路径、父目录跳转和多层任意路径。
 

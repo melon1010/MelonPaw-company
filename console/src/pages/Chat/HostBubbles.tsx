@@ -54,6 +54,8 @@ import type {
 } from "../../plugins/registry/types";
 import ConversationProcess, {
   buildConversationRenderSegments,
+  ConversationRunStatus,
+  getMessageRunStatus,
   hasVisibleAnswerContent,
   isPersistentToolResultMessage,
   pairToolMessages,
@@ -93,6 +95,37 @@ function HostDefaultResponseCard({
     [messages],
   );
   const isGenerating = AgentScopeRuntimeResponseBuilder.maybeGenerating(data);
+  const assistantReplyCompleted =
+    isGenerating &&
+    (((data as IAgentScopeRuntimeResponse & { assistant_status?: string })
+      .assistant_status === "completed") ||
+      messages.some((message) => {
+        const metadata = (
+          message as IAgentScopeRuntimeMessage & {
+            metadata?: Record<string, unknown> | null;
+          }
+        ).metadata;
+        return (
+          message.type === AgentScopeRuntimeMessageType.MESSAGE &&
+          metadata?.phase === "final" &&
+          metadata?.terminal === true &&
+          getMessageRunStatus(message) === ConversationRunStatus.COMPLETED &&
+          hasVisibleAnswerContent([message])
+        );
+      }));
+  const actionData = assistantReplyCompleted
+    ? ({
+        ...data,
+        status: ConversationRunStatus.COMPLETED,
+      } as IAgentScopeRuntimeResponse)
+    : data;
+  const responseActions = (
+    <VendorResponseActions
+      data={actionData}
+      // Do not expose regenerate while AgentScope is still maintaining this turn.
+      isLast={assistantReplyCompleted ? false : isLast}
+    />
+  );
 
   const identity = avatar ? (
     <Flex align="center" gap={8} style={{ marginBottom: 8 }}>
@@ -125,7 +158,7 @@ function HostDefaultResponseCard({
           isGenerating
         />
         {contentAppend}
-        <VendorResponseActions data={data} isLast={isLast} />
+        {responseActions}
       </>
     );
   }
@@ -187,7 +220,7 @@ function HostDefaultResponseCard({
       })}
       {data.error ? <VendorResponseError data={data.error} /> : null}
       {contentAppend}
-      <VendorResponseActions data={data} isLast={isLast} />
+      {responseActions}
     </>
   );
 }

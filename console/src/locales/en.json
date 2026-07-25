@@ -246,7 +246,7 @@
       "create": "Create role",
       "edit": "Edit role",
       "view": "View role",
-      "hint": "System roles protect the platform's authorization boundaries and are view-only. Custom roles can grant only permissions held by the current administrator.",
+      "hint": "The operations center is available to every user. Custom roles only configure project management and administration menus.",
       "code": "Code",
       "name": "Name",
       "description": "Description",
@@ -261,7 +261,7 @@
       "empty": "No matching roles",
       "permissionCount": "{{count}} permissions",
       "userCount": "{{count}} members",
-      "permissionTreeHint": "Select a group to select all permissions in it",
+      "permissionTreeHint": "Choose which management menus this role can access",
       "selectedPermissions": "{{count}} selected",
       "systemReadOnly": "This is a built-in platform role. It can be viewed but not edited or deleted, which keeps the system authorization boundary stable.",
       "viewOnly": "Your account has view-only access.",
@@ -277,6 +277,7 @@
       "saved": "Role saved",
       "roleNames": {
         "systemAdmin": "System administrator",
+        "user": "User",
         "serviceOperator": "AI service operator",
         "approver": "Approver",
         "employee": "Company member",
@@ -285,6 +286,7 @@
       },
       "roleDescriptions": {
         "systemAdmin": "Full platform administration",
+        "user": "Use the operations center and assigned team spaces",
         "serviceOperator": "Build, configure, and operate AI services",
         "approver": "Approve high-risk operations",
         "employee": "Use assigned enterprise AI services",

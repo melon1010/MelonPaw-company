@@ -261,6 +261,6 @@ class SecurityConfigTest {
     private EnterprisePrincipal principal(Set<String> permissions) {
         return new EnterprisePrincipal(
                 "user-1", "employee", "Employee", true,
-                Set.of("EMPLOYEE"), permissions, "", "");
+                Set.of("USER"), permissions, "", "");
     }
 }

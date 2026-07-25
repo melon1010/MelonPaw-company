@@ -1,53 +1,101 @@
 server:
+  # Java HTTP 服务端口。
   port: ${SERVER_PORT:8088}
-  address: ${SERVER_ADDRESS:127.0.0.1}
 
 spring:
   application:
+    # Spring Boot 应用名称，用于日志和监控标识。
     name: melonpaw-company
+  profiles:
+    # 默认：Java 在宿主机运行，Agent Shell 和 StdIO MCP 在 Docker 沙箱运行。
+    # 完全本机开发使用 local；整个系统通过 Compose 运行使用 container。
+    default: docker
   autoconfigure:
+    # 企业认证由项目自行实现，关闭 Spring 默认用户认证。
     exclude: org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration
   output:
     ansi:
+      # 保留控制台彩色日志。
       enabled: always
   codec:
+    # WebFlux 单次在内存中解码请求或响应的最大体积。
     max-in-memory-size: 50MB
 
 melon:
-  home_dir: ${MELON_HOME:~/.melonPaw-CompanyAI}
   execution:
-    # 生产环境默认采用安全关闭策略。使用 IDEA 本地开发时，
-    # 应通过 application-local.yaml 启用 Spring 的 local 配置。
-    sandbox-mode: ${MELON_EXECUTION_SANDBOX:docker}
+    mcp:
+      # Docker CLI 命令或绝对路径。
+      docker-command: ${MELON_DOCKER_COMMAND:docker}
+      # MCP 沙箱镜像；默认复用 Agent Shell 镜像。
+      sandbox-image: ${MELON_MCP_SANDBOX_IMAGE:${MELON_SANDBOX_IMAGE:melonpaw-company-sandbox:latest}}
+      # MCP 容器网络。bridge 可访问公网，none 禁网，生产可填写受限出口网络。
+      sandbox-network: ${MELON_MCP_SANDBOX_NETWORK:${MELON_SANDBOX_NETWORK:bridge}}
+      # Docker runtime，留空使用 Docker 默认值；安装 gVisor 后可设置 runsc。
+      sandbox-runtime: ${MELON_MCP_SANDBOX_RUNTIME:${MELON_SANDBOX_RUNTIME:}}
+      # 单个 MCP 容器的内存、CPU 和最大进程数限制。
+      sandbox-memory: ${MELON_MCP_SANDBOX_MEMORY:512m}
+      sandbox-cpus: ${MELON_MCP_SANDBOX_CPUS:2}
+      sandbox-pids: ${MELON_MCP_SANDBOX_PIDS:256}
+      # MCP 容器必须使用非 root 的数字 uid:gid。
+      sandbox-user: ${MELON_MCP_SANDBOX_USER:10001:10001}
+      # Node/Python 依赖在沙箱内准备的最长等待时间，单位为秒。
+      prepare-timeout-seconds: ${MELON_MCP_PREPARE_TIMEOUT_SECONDS:300}
+      import:
+        # 允许 Java 只读导入的宿主机父目录。多个目录在 macOS/Linux 用冒号分隔，Windows 用分号。
+        # 各运行 Profile 决定默认目录；生产环境建议只使用专门的 MCP 源目录。
+        roots: ${MELON_MCP_IMPORT_ROOTS:}
+        # 页面路径与 Java 可见路径不一致时使用 JSON 前缀映射；目标仍必须位于 roots 内。
+        # 示例：{"/home/user/Github":"/mcp-imports"}
+        path-mappings: ${MELON_MCP_PATH_MAPPINGS:}
+        # 单次源码快照允许导入的最大文件数量。
+        max-files: ${MELON_MCP_IMPORT_MAX_FILES:20000}
+        # 单次源码快照允许导入的最大总字节数，默认 256 MiB。
+        max-bytes: ${MELON_MCP_IMPORT_MAX_BYTES:268435456}
   runtime:
     channel:
+      # 渠道消息阻塞任务线程池；队列满时拒绝新任务，避免无界堆积。
       core-threads: ${MELON_CHANNEL_CORE_THREADS:4}
       max-threads: ${MELON_CHANNEL_MAX_THREADS:16}
       queue-capacity: ${MELON_CHANNEL_QUEUE_CAPACITY:256}
     # 历史记录投影固定使用单线程，以保证 SQLite 写入顺序。
     history-queue-capacity: ${MELON_HISTORY_QUEUE_CAPACITY:512}
     skill-install:
+      # 技能安装线程池，安装任务通常包含阻塞文件或网络操作。
       core-threads: ${MELON_SKILL_INSTALL_THREADS:2}
       max-threads: ${MELON_SKILL_INSTALL_THREADS:2}
       queue-capacity: ${MELON_SKILL_INSTALL_QUEUE_CAPACITY:20}
+    # MCP 连接、重连和存活检查使用的调度线程数。
     mcp-lifecycle-threads: ${MELON_MCP_LIFECYCLE_THREADS:4}
+    # 渠道定时调度线程数。
     channel-scheduler-threads: ${MELON_CHANNEL_SCHEDULER_THREADS:4}
     # 微信等长轮询渠道会长期占用一个阻塞线程，超过上限时明确拒绝启动。
     channel-long-poll-threads: ${MELON_CHANNEL_LONG_POLL_THREADS:32}
+    # 每个会话允许排队等待处理的渠道消息数量。
     channel-pending-per-session: ${MELON_CHANNEL_PENDING_PER_SESSION:32}
+    # 定时任务执行调度线程数。
     cron-threads: ${MELON_CRON_THREADS:4}
+    # 应用关闭时等待内部线程池完成任务的最长时间。
     shutdown-timeout: ${MELON_EXECUTOR_SHUTDOWN_TIMEOUT:5s}
+    # 是否监听 config.yaml 并在外部修改后热加载。
     config-watcher-enabled: ${MELON_CONFIG_WATCHER_ENABLED:true}
   enterprise:
+    # 企业 SQLite 数据库路径；留空时使用 MELON_HOME 下的默认位置。
     database-path: ${MELON_ENTERPRISE_DATABASE_PATH:}
     auth:
+      # 登录令牌有效期，单位为小时。
       token-ttl-hours: ${MELON_TOKEN_TTL_HOURS:12}
+      # 可选的首次管理员初始化令牌。留空时本机首次启动可直接初始化。
       bootstrap-token: ${MELON_BOOTSTRAP_TOKEN:}
-      generate-bootstrap-token: ${MELON_GENERATE_BOOTSTRAP_TOKEN:true}
+      # 首次启动默认直接创建管理员，不要求用户查找或填写初始化令牌。
+      # 公网暴露初始化入口时，可显式设置 MELON_BOOTSTRAP_TOKEN，或开启自动生成令牌。
+      generate-bootstrap-token: ${MELON_GENERATE_BOOTSTRAP_TOKEN:false}
     cors:
+      # 允许访问 API 的前端来源，多个地址使用逗号分隔。
       allowed-origins: ${MELON_ALLOWED_ORIGINS:http://127.0.0.1:8088,http://localhost:8088,http://127.0.0.1:5173,http://localhost:5173}
 
 logging:
   level:
+    # 项目代码默认输出 INFO，排障时可临时调整为 DEBUG。
     com.melon: INFO
+    # AgentScope 默认只记录生命周期和错误，避免输出过量底层日志。
     io.agentscope: INFO

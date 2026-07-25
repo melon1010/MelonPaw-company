@@ -1,14 +1,19 @@
 spring:
   config:
     activate:
+      # local：Java、Agent Shell 和 StdIO MCP 全部在宿主机运行。
       on-profile: local
 
+server:
+  # 本机开发只监听回环地址，不对局域网开放。
+  address: ${SERVER_ADDRESS:127.0.0.1}
+
 melon:
+  # 两种宿主机启动方式共用同一个数据目录，切换沙箱模式不会切换用户数据。
+  home_dir: ${MELON_HOME:${user.home}/.melonPaw-CompanyAI}
   execution:
-    # 仅用于开发环境：命令执行和技能脚本将在 IDEA 所在的宿主机进程中运行。
+    # 仅用于可信开发环境，模型执行的文件和命令工具可直接访问宿主机。
     sandbox-mode: ${MELON_EXECUTION_SANDBOX:local}
-  enterprise:
-    auth:
-      # 本机回环地址开发时可以直接创建首个管理员。
-      # 如需在本地强制校验令牌，请设置 MELON_BOOTSTRAP_TOKEN。
-      generate-bootstrap-token: ${MELON_GENERATE_BOOTSTRAP_TOKEN:false}
+    mcp:
+      # local Profile 默认让 StdIO MCP 也在宿主机运行；可设为 disabled 单独关闭。
+      stdio-mode: ${MELON_MCP_STDIO_MODE:local}

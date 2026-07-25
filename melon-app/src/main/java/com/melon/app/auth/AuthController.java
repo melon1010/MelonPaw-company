@@ -39,7 +39,7 @@ public class AuthController {
     @Autowired
     public AuthController(AuthService authService,
                           @Value("${melon.enterprise.auth.bootstrap-token:}") String bootstrapToken,
-                          @Value("${melon.enterprise.auth.generate-bootstrap-token:true}")
+                          @Value("${melon.enterprise.auth.generate-bootstrap-token:false}")
                           boolean generateBootstrapToken,
                           ConfigManager configManager) {
         this.authService = authService;

@@ -31,6 +31,11 @@ class EnterpriseAdministrationBoundaryTest {
         authService = new AuthService(store, Duration.ofHours(1), new SecureRandom());
         systemAdministrator = authService.bootstrap(
                 "system-admin", "System Administrator", "StrongPassword123");
+        store.saveCustomRole(
+                "ORG_ADMIN",
+                "Organization Administrator",
+                "Manage organization administration menus",
+                Set.of("users:manage", "roles:manage", "projects:manage", "audit:read"));
         organizationAdministrator = authService.createUser(
                 "org-admin", "Organization Administrator", "OrgAdminPassword123", true,
                 Set.of("ORG_ADMIN"));
@@ -40,7 +45,7 @@ class EnterpriseAdministrationBoundaryTest {
     void organizationAdministratorCannotGrantOrModifySystemAdministrator() {
         UserAdminController controller = new UserAdminController(authService, store);
 
-        assertThrows(SecurityException.class, () -> controller.create(Map.of(
+        assertThrows(IllegalArgumentException.class, () -> controller.create(Map.of(
                 "username", "second-system-admin",
                 "display_name", "Second System Administrator",
                 "password", "SecondAdminPassword123",
@@ -74,8 +79,8 @@ class EnterpriseAdministrationBoundaryTest {
         var response = controller.create(Map.of(
                 "code", "PROJECT_AUDITOR",
                 "name", "Project Auditor",
-                "description", "read projects and audit records",
-                "permissions", List.of("projects:read", "audit:read")
+                "description", "manage projects and read audit records",
+                "permissions", List.of("projects:manage", "audit:read")
         ), organizationAdministrator).block();
         assertEquals(201, response.getStatusCode().value());
     }
@@ -95,21 +100,21 @@ class EnterpriseAdministrationBoundaryTest {
 
     @Test
     void customRoleCanOnlyBeDeletedWhenItHasNoUsers() {
-        store.saveCustomRole("PROJECT_READER", "Project Reader", "", Set.of("projects:read"));
+        store.saveCustomRole("PROJECT_MANAGER", "Project Manager", "", Set.of("projects:manage"));
         EnterprisePrincipal user = authService.createUser(
                 "project-reader", "Project Reader", "ProjectReaderPassword123", true,
-                Set.of("PROJECT_READER"));
+                Set.of("PROJECT_MANAGER"));
 
         EnterpriseIdentityStore.RoleRecord role = store.listRoles().stream()
-                .filter(item -> item.code().equals("PROJECT_READER"))
+                .filter(item -> item.code().equals("PROJECT_MANAGER"))
                 .findFirst().orElseThrow();
         assertEquals(1, role.userCount());
         assertThrows(EnterpriseIdentityStore.RoleInUseException.class,
-                () -> store.deleteCustomRole("PROJECT_READER"));
+                () -> store.deleteCustomRole("PROJECT_MANAGER"));
 
-        store.replaceUserRoles(user.id(), Set.of("EMPLOYEE"));
-        store.deleteCustomRole("PROJECT_READER");
+        store.replaceUserRoles(user.id(), Set.of("USER"));
+        store.deleteCustomRole("PROJECT_MANAGER");
         assertTrue(store.listRoles().stream()
-                .noneMatch(item -> item.code().equals("PROJECT_READER")));
+                .noneMatch(item -> item.code().equals("PROJECT_MANAGER")));
     }
 }

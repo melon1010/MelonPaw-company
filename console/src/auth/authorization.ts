@@ -1,37 +1,115 @@
 import type { AuthUser } from "../api/modules/auth";
 import type { MenuItem } from "../plugins/registry/types";
 
-export const SYSTEM_ADMIN_ROLES = new Set([
-  "SYSTEM_ADMIN",
-  "ADMIN",
-  "SUPER_ADMIN",
-]);
+export const SYSTEM_ADMIN_ROLES = new Set(["SYSTEM_ADMIN"]);
 
-export const OPERATOR_ROLES = new Set([
-  ...SYSTEM_ADMIN_ROLES,
-  "SERVICE_OPERATOR",
-  "AI_OPERATOR",
-  "AI_SERVICE_OPERATOR",
-  "AGENT_OPERATOR",
-]);
+export type ConfigurablePermissionSection = "projects" | "administration";
 
-export const PROJECT_MANAGER_ROLES = new Set([
-  ...OPERATOR_ROLES,
-  "PROJECT_ADMIN",
-  "PROJECT_MANAGER",
-]);
+export interface ConfigurableMenuPermission {
+  routeId: string;
+  permission: string;
+  section: ConfigurablePermissionSection;
+}
 
-const AUDIT_ROLES = new Set([...SYSTEM_ADMIN_ROLES, "AUDITOR"]);
+/** The only permissions exposed by the custom-role editor. */
+export const CONFIGURABLE_MENU_PERMISSIONS: ConfigurableMenuPermission[] = [
+  {
+    routeId: "company.projects",
+    permission: "projects:manage",
+    section: "projects",
+  },
+  {
+    routeId: "company.members",
+    permission: "users:manage",
+    section: "administration",
+  },
+  {
+    routeId: "company.roles",
+    permission: "roles:manage",
+    section: "administration",
+  },
+  {
+    routeId: "core.models",
+    permission: "models:manage",
+    section: "administration",
+  },
+  {
+    routeId: "core.skill-pool",
+    permission: "skill-pool:manage",
+    section: "administration",
+  },
+  {
+    routeId: "core.environments",
+    permission: "environment:manage",
+    section: "administration",
+  },
+  {
+    routeId: "core.security",
+    permission: "security:manage",
+    section: "administration",
+  },
+  {
+    routeId: "core.token-usage",
+    permission: "token-usage:read",
+    section: "administration",
+  },
+  {
+    routeId: "core.management-audit",
+    permission: "audit:read",
+    section: "administration",
+  },
+  {
+    routeId: "core.backups",
+    permission: "backups:manage",
+    section: "administration",
+  },
+  {
+    routeId: "core.quotas",
+    permission: "quotas:manage",
+    section: "administration",
+  },
+  {
+    routeId: "core.voice-transcription",
+    permission: "transcription:manage",
+    section: "administration",
+  },
+  {
+    routeId: "core.debug",
+    permission: "debug:manage",
+    section: "administration",
+  },
+  {
+    routeId: "core.plugin-manager",
+    permission: "plugins:manage",
+    section: "administration",
+  },
+];
 
-const ADMIN_ROUTES = new Set([
-  "core.models",
-  "core.environments",
-  "core.security",
-  "core.backups",
-  "core.voice-transcription",
-  "core.debug",
-  "core.plugin-manager",
-  "core.quotas",
+const MANAGEMENT_ROUTE_PERMISSIONS = new Map(
+  CONFIGURABLE_MENU_PERMISSIONS.filter(
+    ({ section }) => section === "administration",
+  ).map(({ routeId, permission }) => [routeId, permission]),
+);
+
+const DEFAULT_ROUTES = new Set([
+  "core.root",
+  "company.workbench",
+  "company.projects",
+  "company.project-workspace",
+  "company.tasks",
+  "company.task-result",
+  "core.chat",
+  "core.sessions",
+  "core.workspace",
+  "core.skills",
+  "core.tools",
+  "core.channels",
+  "core.cron-jobs",
+  "core.heartbeat",
+  "core.inbox",
+  "core.mcp",
+  "core.agent-config",
+  "core.agent-stats",
 ]);
 
 function normalize(value: string): string {
@@ -51,6 +129,10 @@ export function hasPermission(
     user.permissions.some(
       (value) => value.toLowerCase() === permission.toLowerCase(),
     ) ||
+    (user.permissions.includes("system:manage") &&
+      CONFIGURABLE_MENU_PERMISSIONS.some(
+        (item) => item.permission === permission,
+      )) ||
     isSystemAdmin(user)
   );
 }
@@ -73,97 +155,9 @@ export function canAccessRoute(
   user: AuthUser | null,
 ): boolean {
   if (!user) return false;
-  if (isSystemAdmin(user)) return true;
-  // The root route contains only the authenticated landing redirect.
-  if (routeId === "core.root") return true;
-  if (routeId === "company.workbench") return true;
-  if (routeId === "company.members") {
-    return (
-      hasPermission(user, "users:read") || hasPermission(user, "users:manage")
-    );
-  }
-  if (routeId === "company.roles") {
-    return hasPermission(user, "roles:read") || hasPermission(user, "roles:manage");
-  }
-  if (
-    routeId === "company.projects" ||
-    routeId === "company.project-workspace"
-  ) {
-    return hasPermission(user, "projects:read");
-  }
-  if (
-    routeId === "company.tasks" ||
-    routeId === "company.task-result" ||
-    routeId === "core.chat" ||
-    routeId === "core.sessions"
-  ) {
-    return hasPermission(user, "agents:use");
-  }
-  if (routeId === "core.workspace") {
-    return (
-      hasPermission(user, "workspace:personal") ||
-      hasPermission(user, "agents:manage")
-    );
-  }
-  if (routeId === "core.skills") {
-    return (
-      hasPermission(user, "skills:personal") ||
-      hasPermission(user, "agents:manage")
-    );
-  }
-  if (routeId === "core.tools") {
-    return hasPermission(user, "system:manage");
-  }
-  if (routeId === "core.channels") {
-    return (
-      hasPermission(user, "channels:personal") ||
-      hasPermission(user, "agents:manage")
-    );
-  }
-  if (routeId === "core.cron-jobs" || routeId === "core.heartbeat") {
-    return (
-      hasPermission(user, "automations:personal") ||
-      hasPermission(user, "agents:manage")
-    );
-  }
-  if (routeId === "core.inbox") {
-    return (
-      hasPermission(user, "agents:use") ||
-      hasPermission(user, "approvals:decide")
-    );
-  }
-  if (routeId === "core.skill-pool") {
-    return hasPermission(user, "agents:manage");
-  }
-  if (routeId === "core.mcp") {
-    return (
-      hasPermission(user, "mcp:personal") ||
-      hasPermission(user, "agents:manage")
-    );
-  }
-  if (routeId === "core.agent-config") {
-    return (
-      hasPermission(user, "workspace:personal") ||
-      hasPermission(user, "agents:manage")
-    );
-  }
-  if (routeId === "core.agent-stats") {
-    return (
-      hasPermission(user, "agents:use") ||
-      hasPermission(user, "agents:manage")
-    );
-  }
-  if (ADMIN_ROUTES.has(routeId)) return hasPermission(user, "system:manage");
-  if (routeId === "core.token-usage") {
-    return (
-      hasPermission(user, "audit:read") ||
-      hasPermission(user, "agents:manage") ||
-      hasAnyRole(user, new Set([...OPERATOR_ROLES, ...AUDIT_ROLES]))
-    );
-  }
-  if (routeId === "core.management-audit") {
-    return hasPermission(user, "audit:read") || hasPermission(user, "system:manage");
-  }
+  if (isSystemAdmin(user) || DEFAULT_ROUTES.has(routeId)) return true;
+  const permission = MANAGEMENT_ROUTE_PERMISSIONS.get(routeId);
+  if (permission) return hasPermission(user, permission);
   if (routeId.startsWith("plugin.")) return false;
   return false;
 }
@@ -193,5 +187,5 @@ export function filterMenuForUser(
 }
 
 export function primaryRole(user: AuthUser | null): string {
-  return user?.roles?.[0] || "EMPLOYEE";
+  return user?.roles?.[0] || "USER";
 }

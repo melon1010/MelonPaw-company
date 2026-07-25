@@ -20,7 +20,7 @@ import java.util.Map;
 /** System management API for enterprise, user, project and Agent quota policies. */
 @RestController
 @RequestMapping("/api/quotas")
-@PreAuthorize("hasAuthority('system:manage')")
+@PreAuthorize("hasAuthority('quotas:manage')")
 public class EnterpriseQuotaController {
 
     private final EnterpriseQuotaService quotaService;

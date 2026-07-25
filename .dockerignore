@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.vscode
+.env
+.melonpaw-data
+**/target
+console/dist
+console/node_modules
+**/.DS_Store
+**/*.log
+

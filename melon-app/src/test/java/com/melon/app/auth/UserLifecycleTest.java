@@ -51,7 +51,7 @@ class UserLifecycleTest {
                 "username", "employee",
                 "display_name", "Employee",
                 "password", "EmployeePassword123",
-                "roles", List.of("EMPLOYEE"),
+                "roles", List.of("USER"),
                 "default_skills", List.of("news")
         ), administrator).block();
 
@@ -111,7 +111,7 @@ class UserLifecycleTest {
                 "username", "employee",
                 "display_name", "Employee",
                 "password", "EmployeePassword123",
-                "roles", List.of("EMPLOYEE")
+                "roles", List.of("USER")
         ), administrator).block();
 
         @SuppressWarnings("unchecked")

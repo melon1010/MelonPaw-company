@@ -30,23 +30,35 @@ import {
   type EnterpriseRole,
   type EnterpriseRoleInput,
 } from "../../../api";
-import { hasPermission } from "../../../auth/authorization";
+import {
+  CONFIGURABLE_MENU_PERMISSIONS,
+  hasPermission,
+} from "../../../auth/authorization";
 import { PageHeader } from "../../../components/PageHeader";
 import ResponsiveTable from "../../../components/ResponsiveTable";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useAppMessage } from "../../../hooks/useAppMessage";
+import { renderIcon, resolveLabel } from "../../../layouts/registry/adapter";
+import { BUILTIN_MENU } from "../../../layouts/registry/builtinMenu";
 import accessStyles from "../accessControl.module.less";
 import {
-  getPermissionGroup,
-  getPermissionGroupName,
   getPermissionName,
   getRoleDescription,
   getRoleName,
-  PERMISSION_GROUP_ORDER,
 } from "../rolePresentation";
 
 type EditorMode = "create" | "edit" | "view";
 type RoleFilter = "all" | "system" | "custom";
+
+const CONFIGURABLE_PERMISSION_CODES = new Set(
+  CONFIGURABLE_MENU_PERMISSIONS.map((item) => item.permission),
+);
+
+function configurablePermissions(permissions: string[]): string[] {
+  return permissions.filter((permission) =>
+    CONFIGURABLE_PERMISSION_CODES.has(permission),
+  );
+}
 
 interface PermissionTreeProps {
   permissions: string[];
@@ -63,40 +75,46 @@ function PermissionTree({
 }: PermissionTreeProps) {
   const { t } = useTranslation();
   const permissionSet = useMemo(() => new Set(permissions), [permissions]);
+  const selectedPermissions = useMemo(
+    () => value.filter((permission) => permissionSet.has(permission)),
+    [permissionSet, value],
+  );
   const treeData = useMemo<TreeDataNode[]>(() => {
-    const grouped = new Map<string, string[]>();
-    permissions.forEach((permission) => {
-      const group = getPermissionGroup(permission);
-      grouped.set(group, [...(grouped.get(group) || []), permission]);
-    });
-
-    return PERMISSION_GROUP_ORDER.filter((group) => grouped.has(group)).map(
-      (group) => {
-        const items = grouped.get(group) || [];
-        return {
-          key: `group:${group}`,
-          disabled,
-          title: (
-            <span className={accessStyles.treeGroupTitle}>
-              {getPermissionGroupName(group, t)}
-              <span className={accessStyles.treeGroupCount}>
-                {items.length}
-              </span>
-            </span>
-          ),
-          children: items.map((permission) => ({
-            key: permission,
+    return (["projects", "administration"] as const).map((section) => {
+      const entries = CONFIGURABLE_MENU_PERMISSIONS.filter(
+        (entry) => entry.section === section && permissionSet.has(entry.permission),
+      );
+      return {
+        key: `section:${section}`,
+        checkable: false,
+        selectable: false,
+        title: (
+          <span className={accessStyles.treeGroupTitle}>
+            {section === "projects"
+              ? t("enterprise.nav.projects")
+              : t("enterprise.nav.administration")}
+            <span className={accessStyles.treeGroupCount}>{entries.length}</span>
+          </span>
+        ),
+        children: entries.map((entry) => {
+          const menu = BUILTIN_MENU.find((item) => item.route === entry.routeId);
+          return {
+            key: entry.permission,
             disabled,
+            icon: renderIcon(menu?.icon, 16),
             title: (
-              <span className={accessStyles.permissionTitle} title={permission}>
-                {getPermissionName(permission, t)}
+              <span
+                className={accessStyles.permissionTitle}
+                title={entry.permission}
+              >
+                {menu ? resolveLabel(menu.label) : getPermissionName(entry.permission, t)}
               </span>
             ),
-          })),
-        };
-      },
-    );
-  }, [disabled, permissions, t]);
+          };
+        }),
+      };
+    });
+  }, [disabled, permissionSet, t]);
 
   const handleCheck = (
     checked: React.Key[] | { checked: React.Key[]; halfChecked: React.Key[] },
@@ -114,16 +132,20 @@ function PermissionTree({
       <div className={accessStyles.permissionTreeHeader}>
         <span>{t("enterprise.roles.permissionTreeHint")}</span>
         <span>
-          {t("enterprise.roles.selectedPermissions", { count: value.length })}
+          {t("enterprise.roles.selectedPermissions", {
+            count: selectedPermissions.length,
+          })}
         </span>
       </div>
       <Tree
         className={accessStyles.permissionTree}
         blockNode
         checkable
+        checkStrictly
         defaultExpandAll
+        showIcon
         selectable={false}
-        checkedKeys={value}
+        checkedKeys={selectedPermissions}
         treeData={treeData}
         onCheck={handleCheck}
       />
@@ -179,7 +201,7 @@ export default function RolesPage() {
         role.code,
         getRoleName(role.code, role.name, t),
         getRoleDescription(role.code, role.description, t),
-        ...role.permissions.map((permission) =>
+        ...configurablePermissions(role.permissions).map((permission) =>
           getPermissionName(permission, t),
         ),
       ].some((value) => value.toLowerCase().includes(normalized));
@@ -201,7 +223,7 @@ export default function RolesPage() {
       code: role.code,
       name: getRoleName(role.code, role.name, t),
       description: getRoleDescription(role.code, role.description, t),
-      permissions: role.permissions,
+      permissions: configurablePermissions(role.permissions),
     });
     setOpen(true);
   };
@@ -291,7 +313,9 @@ export default function RolesPage() {
         <div className={accessStyles.permissionSummary}>
           <KeyRound size={14} />
           <span>
-            {t("enterprise.roles.permissionCount", { count: items.length })}
+            {t("enterprise.roles.permissionCount", {
+              count: configurablePermissions(items).length,
+            })}
           </span>
         </div>
       ),

@@ -21,7 +21,7 @@ public class SecretManagementController {
     }
 
     @PostMapping("/rotate")
-    @PreAuthorize("hasAuthority('system:manage')")
+    @PreAuthorize("hasAuthority('security:manage')")
     public Mono<ResponseEntity<?>> rotate() {
         return Mono.<ResponseEntity<?>>fromCallable(
                         () -> ResponseEntity.ok(secretRotationService.reencryptAll()))

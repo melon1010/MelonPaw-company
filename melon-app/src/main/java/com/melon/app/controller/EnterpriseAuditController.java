@@ -22,7 +22,7 @@ public class EnterpriseAuditController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('audit:read') or hasAuthority('system:manage')")
+    @PreAuthorize("hasAuthority('audit:read')")
     public Mono<ResponseEntity<?>> list(
             @RequestParam(required = false) String actorUserId,
             @RequestParam(required = false) String action,
@@ -36,7 +36,7 @@ public class EnterpriseAuditController {
     }
 
     @GetMapping("/verify")
-    @PreAuthorize("hasAuthority('audit:read') or hasAuthority('system:manage')")
+    @PreAuthorize("hasAuthority('audit:read')")
     public Mono<ResponseEntity<?>> verify() {
         return Mono.<ResponseEntity<?>>fromCallable(() -> ResponseEntity.ok(auditService.verifyChain()))
                 .subscribeOn(Schedulers.boundedElastic());

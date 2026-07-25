@@ -5,7 +5,7 @@ import MobileNavigation from "./index";
 
 const { mockAuthState, mockClearSession, mockT } = vi.hoisted(() => ({
   mockAuthState: {
-    roles: ["EMPLOYEE"] as string[],
+    roles: ["USER"] as string[],
     permissions: [
       "projects:read",
       "agents:use",
@@ -74,7 +74,7 @@ describe("MobileNavigation permissions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
-    mockAuthState.roles = ["EMPLOYEE"];
+    mockAuthState.roles = ["USER"];
     mockAuthState.permissions = [
       "projects:read",
       "agents:use",
@@ -218,7 +218,7 @@ describe("MobileNavigation permissions", () => {
   });
 
   it("shows administration entries only when their route permission allows it", async () => {
-    mockAuthState.roles = ["AUDITOR"];
+    mockAuthState.roles = ["USER"];
     mockAuthState.permissions = ["audit:read"];
 
     renderWithProviders(<MobileNavigation />, {

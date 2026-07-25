@@ -22,6 +22,9 @@ public class ContextCompactConfig {
     @JsonProperty("trigger_messages")
     private int triggerMessages = 50;
 
+    @JsonProperty("trigger_messages_enabled")
+    private boolean triggerMessagesEnabled = false;
+
     @JsonProperty("keep_messages")
     private int keepMessages = 20;
 
@@ -42,6 +45,9 @@ public class ContextCompactConfig {
 
     public int getTriggerMessages() { return triggerMessages; }
     public void setTriggerMessages(int triggerMessages) { this.triggerMessages = triggerMessages; }
+
+    public boolean isTriggerMessagesEnabled() { return triggerMessagesEnabled; }
+    public void setTriggerMessagesEnabled(boolean triggerMessagesEnabled) { this.triggerMessagesEnabled = triggerMessagesEnabled; }
 
     public int getKeepMessages() { return keepMessages; }
     public void setKeepMessages(int keepMessages) { this.keepMessages = keepMessages; }

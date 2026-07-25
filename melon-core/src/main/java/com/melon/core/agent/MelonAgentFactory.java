@@ -23,6 +23,7 @@ import io.agentscope.harness.agent.sandbox.layout.BindMountEntry;
 import io.agentscope.harness.agent.tool.ShellExecuteTool;
 import io.agentscope.harness.agent.tool.SkillManageConfig;
 import io.agentscope.harness.agent.tools.ToolsConfig;
+import io.agentscope.harness.agent.subagent.task.WorkspaceTaskRepository;
 import io.agentscope.harness.agent.workspace.LocalFsMode;
 import io.agentscope.core.state.AgentStateStore;
 import com.melon.core.config.AgentConfig;
@@ -52,6 +53,9 @@ import java.util.Set;
 public class MelonAgentFactory {
 
     private static final Logger log = LoggerFactory.getLogger(MelonAgentFactory.class);
+    static final Duration MEMORY_FLUSH_MIN_GAP = Duration.ofMinutes(5);
+    private static final String LOCAL_TOOL_RESULT_EVICTION_PATH = "/large_tool_results";
+    private static final String DOCKER_TOOL_RESULT_EVICTION_PATH = "/workspace/large_tool_results";
     private final TokenRecordingMiddleware.TokenUsageCallback tokenUsageCallback;
     private final List<ToolkitContributor> toolkitContributors;
     private final ProviderManager providerManager;
@@ -127,9 +131,12 @@ public class MelonAgentFactory {
                 ? LlmRateLimitedModel.wrap(providerManager.createModel(activeModel), agentId, agentConfig.getRunning())
                 : null;
 
+        String sandboxMode = executionSandboxMode();
+
         // 2. 构建压缩配置
         CompactionConfig compaction = buildCompactionConfig(agentId, agentConfig, primaryModel);
-        ToolResultEvictionConfig toolResultEviction = buildToolResultEvictionConfig(agentConfig);
+        ToolResultEvictionConfig toolResultEviction = buildToolResultEvictionConfig(
+                agentConfig, sandboxMode);
 
         // 3. 构建记忆配置
         MemoryConfig memoryConfig = memoryConfig(agentConfig);
@@ -142,8 +149,10 @@ public class MelonAgentFactory {
                 .name(agentConfig.getName())
                 .agentId(agentId)
                 .toolkit(toolkit)
-                .workspace(workspaceDir);
-        String sandboxMode = executionSandboxMode();
+                .workspace(workspaceDir)
+                // Background task bookkeeping must remain available after a per-call Docker
+                // sandbox is released. It contains control metadata only and never executes tools.
+                .taskRepository(backgroundTaskRepository(agentId, workspaceDir));
         if ("local".equals(sandboxMode)) {
             log.warn("Agent {} uses local shell execution. This is a development-only mode; "
                     + "enterprise deployments must use DockerFilesystemSpec.", agentId);
@@ -215,6 +224,18 @@ public class MelonAgentFactory {
             installOptionalShellTool(agent);
         }
         return agent;
+    }
+
+    static WorkspaceTaskRepository backgroundTaskRepository(String agentId, Path workspaceDir) {
+        if (agentId == null || agentId.isBlank()) {
+            throw new IllegalArgumentException("agentId is required for background task persistence");
+        }
+        if (workspaceDir == null) {
+            throw new IllegalArgumentException("workspaceDir is required for background task persistence");
+        }
+        Path root = workspaceDir.toAbsolutePath().normalize();
+        return new WorkspaceTaskRepository(
+                new io.agentscope.harness.agent.workspace.WorkspaceManager(root), agentId);
     }
 
     /**
@@ -368,6 +389,22 @@ public class MelonAgentFactory {
 
     private DockerFilesystemSpec dockerFilesystem(Path workspaceDir) {
         String image = envOr("MELON_SANDBOX_IMAGE", "melonpaw-company-sandbox:latest");
+        List<String> runArguments = new ArrayList<>(List.of(
+                "--user=10001:10001",
+                "--init",
+                "--read-only",
+                "--tmpfs=/tmp:rw,nosuid,nodev,size=256m",
+                "--tmpfs=/home/melon:rw,exec,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=0700",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges:true",
+                "--pids-limit=256"));
+        String runtime = envOr("MELON_SANDBOX_RUNTIME", null);
+        if (runtime != null) {
+            if (!runtime.matches("[A-Za-z0-9_.-]{1,64}")) {
+                throw new IllegalArgumentException("MELON_SANDBOX_RUNTIME has an invalid name");
+            }
+            runArguments.add("--runtime=" + runtime);
+        }
         DockerFilesystemSpec spec = new DockerFilesystemSpec()
                 .image(image)
                 .workspaceRoot("/workspace")
@@ -377,15 +414,7 @@ public class MelonAgentFactory {
                 // Operators can set MELON_SANDBOX_NETWORK=none or provide a restricted
                 // Docker network when outbound access is not allowed by policy.
                 .network(envOr("MELON_SANDBOX_NETWORK", "bridge"))
-                .additionalRunArgs(
-                        "--user=10001:10001",
-                        "--init",
-                        "--read-only",
-                        "--tmpfs=/tmp:rw,nosuid,nodev,size=256m",
-                        "--tmpfs=/home/melon:rw,nosuid,nodev,size=256m",
-                        "--cap-drop=ALL",
-                        "--security-opt=no-new-privileges:true",
-                        "--pids-limit=256");
+                .additionalRunArgs(runArguments);
         spec.isolationScope(IsolationScope.USER);
         // Keep the Web workspace and the Agent workspace consistent. Only the already validated
         // per-Agent workspace is mounted; the repository root and all other Agents remain outside.
@@ -654,7 +683,7 @@ public class MelonAgentFactory {
     /**
      * 构建压缩配置. 对应 Python ContextCompactConfig.
      */
-    private CompactionConfig buildCompactionConfig(String agentId, AgentConfig config, Model model) {
+    CompactionConfig buildCompactionConfig(String agentId, AgentConfig config, Model model) {
         ContextCompactConfig py = config.getContextCompact();
         int maxInputTokens = model != null && model.getContextWindowSize() > 0
                 ? model.getContextWindowSize()
@@ -662,7 +691,10 @@ public class MelonAgentFactory {
         int triggerTokens = (int) Math.max(1, Math.round(maxInputTokens * py.getCompactThresholdRatio()));
         int keepTokens = (int) Math.max(1, Math.round(maxInputTokens * py.getReserveThresholdRatio()));
         CompactionConfig.Builder builder = CompactionConfig.builder()
-                .triggerMessages(py.getTriggerMessages())
+                // Token pressure is the reliable trigger when the model reports its context
+                // window. A raw message count caused expensive compaction at only ~44% usage.
+                .triggerMessages(py.isTriggerMessagesEnabled()
+                        ? Math.max(0, py.getTriggerMessages()) : 0)
                 .triggerTokens(triggerTokens)
                 .keepMessages(py.getKeepMessages())
                 .keepTokens(keepTokens)
@@ -695,14 +727,20 @@ public class MelonAgentFactory {
     /**
      * 构建单条工具结果驱逐配置. 对应 AgentScope 2.0 官方 ToolResultEvictionMiddleware.
      */
-    private ToolResultEvictionConfig buildToolResultEvictionConfig(AgentConfig config) {
-        ToolResultEvictionConfig.Builder builder = ToolResultEvictionConfig.builder();
+    ToolResultEvictionConfig buildToolResultEvictionConfig(AgentConfig config, String sandboxMode) {
+        ToolResultEvictionConfig.Builder builder = ToolResultEvictionConfig.builder()
+                // AgentScope's default /large_tool_results targets the read-only container root.
+                // Docker workspaces are mounted at /workspace; local SANDBOXED filesystems
+                // interpret /large_tool_results relative to the owning Agent workspace.
+                .evictionPath("docker".equals(sandboxMode)
+                        ? DOCKER_TOOL_RESULT_EVICTION_PATH
+                        : LOCAL_TOOL_RESULT_EVICTION_PATH);
 
         LightContextConfig light = config.getLightContextConfig();
         ToolResultPruningConfig pruning = light != null ? light.getToolResultPruningConfig() : null;
         if (pruning == null || !pruning.isEnabled()) {
             // Preserve AgentScope's hard 80K safety threshold when aggressive pruning is disabled.
-            return ToolResultEvictionConfig.defaults();
+            return builder.build();
         }
         int maxChars = firstPositive(pruning.getPruningOldMsgMaxBytes(), pruning.getPruningRecentMsgMaxBytes());
         if (maxChars > 0) {
@@ -735,7 +773,9 @@ public class MelonAgentFactory {
             return null;
         }
         return MemoryConfig.builder()
-                .flushTrigger(MemoryConfig.FlushTrigger.always())
+                // Message offload still runs after every call. Only the LLM-based extraction is
+                // throttled, which removes the avoidable model call from ordinary response tails.
+                .flushTrigger(MemoryConfig.FlushTrigger.throttled(MEMORY_FLUSH_MIN_GAP))
                 .consolidationMaxTokens(4000)
                 .consolidationMinGap(java.time.Duration.ofMinutes(30))
                 .dailyFileRetentionDays(90)

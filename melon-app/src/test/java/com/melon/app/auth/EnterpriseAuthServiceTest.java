@@ -54,7 +54,7 @@ class EnterpriseAuthServiceTest {
         EnterprisePrincipal administrator = service.bootstrap(
                 "admin", "Administrator", "StrongPassword123");
         EnterprisePrincipal employee = service.createUser(
-                "employee", "Employee", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+                "employee", "Employee", "EmployeePassword123", true, Set.of("USER"));
 
         EnterpriseIdentityStore.ProjectSpaceRecord project = store.createProject(
                 "customer-care", "Customer Care", "Internal assistant workspace", administrator.id());
@@ -83,46 +83,44 @@ class EnterpriseAuthServiceTest {
     }
 
     @Test
-    void separatesPersonalCapabilitiesFromOrganizationAdministration() {
+    void customManagementRolesKeepTheBuiltInUserCapabilities() {
         Path database = tempDir.resolve("roles.db");
         EnterpriseIdentityStore store = new EnterpriseIdentityStore(database);
         AuthService service = new AuthService(store, Duration.ofHours(1), new SecureRandom());
         service.bootstrap("admin", "Administrator", "StrongPassword123");
 
+        store.saveCustomRole(
+                "ORG_ADMIN",
+                "Organization Administrator",
+                "Manage enterprise administration menus",
+                Set.of("users:manage", "roles:manage", "projects:manage", "audit:read"));
         EnterprisePrincipal employee = service.createUser(
-                "employee", "Employee", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+                "employee", "Employee", "EmployeePassword123", true, Set.of("USER"));
         EnterprisePrincipal organizationAdministrator = service.createUser(
                 "org-admin", "Organization Administrator", "OrgAdminPassword123", true, Set.of("ORG_ADMIN"));
 
         assertTrue(employee.permissions().containsAll(EnterprisePermissions.PERSONAL_CAPABILITIES));
+        assertTrue(organizationAdministrator.roles().contains("USER"));
         assertTrue(organizationAdministrator.hasPermission("users:manage"));
         assertTrue(organizationAdministrator.hasPermission("roles:manage"));
         assertTrue(organizationAdministrator.hasPermission("projects:manage"));
         assertTrue(organizationAdministrator.hasPermission("audit:read"));
-        assertFalse(organizationAdministrator.hasPermission("agents:use"));
+        assertTrue(organizationAdministrator.hasPermission("agents:use"));
         assertFalse(organizationAdministrator.hasPermission("agents:manage"));
         assertFalse(organizationAdministrator.hasPermission("system:manage"));
         assertTrue(EnterprisePermissions.PERSONAL_CAPABILITIES.stream()
-                .noneMatch(organizationAdministrator::hasPermission));
+                .allMatch(organizationAdministrator::hasPermission));
     }
 
     @Test
-    void migratesLegacyAgentUseRolesToExplicitPersonalCapabilities() {
-        Path database = tempDir.resolve("legacy-role.db");
-        EnterpriseIdentityStore first = new EnterpriseIdentityStore(database);
-        first.saveCustomRole(
-                "LEGACY_AGENT_USER",
-                "Legacy Agent User",
-                "Role created before personal permissions were split",
-                Set.of("agents:use"));
+    void freshDatabaseContainsOnlyTheTwoBuiltInRoles() {
+        EnterpriseIdentityStore store = new EnterpriseIdentityStore(tempDir.resolve("roles-catalog.db"));
 
-        EnterpriseIdentityStore migrated = new EnterpriseIdentityStore(database);
-        EnterpriseIdentityStore.RoleRecord role = migrated.listRoles().stream()
-                .filter(candidate -> "LEGACY_AGENT_USER".equals(candidate.code()))
-                .findFirst()
-                .orElseThrow();
+        var systemRoles = store.listRoles().stream()
+                .filter(EnterpriseIdentityStore.RoleRecord::systemRole)
+                .map(EnterpriseIdentityStore.RoleRecord::code)
+                .collect(java.util.stream.Collectors.toSet());
 
-        assertTrue(role.permissions().contains("agents:use"));
-        assertTrue(role.permissions().containsAll(EnterprisePermissions.PERSONAL_CAPABILITIES));
+        assertEquals(Set.of("SYSTEM_ADMIN", "USER"), systemRoles);
     }
 }

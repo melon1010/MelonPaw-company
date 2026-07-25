@@ -109,6 +109,26 @@ describe("LoginPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not request a bootstrap token when the deployment disables it", async () => {
+    mocks.getStatus.mockResolvedValue({
+      enabled: true,
+      has_users: false,
+      bootstrap_required: true,
+      bootstrap_token_required: false,
+    });
+
+    renderLogin();
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "enterprise.auth.bootstrapTitle",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("enterprise.auth.bootstrapToken"),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps the existing authentication and redirect behavior", async () => {
     const user = userEvent.setup();
     const authUser = {

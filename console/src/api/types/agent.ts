@@ -10,6 +10,10 @@ export interface ContextCompactConfig {
   enabled: boolean;
   compact_threshold_ratio: number;
   reserve_threshold_ratio: number;
+  trigger_messages_enabled?: boolean;
+  trigger_messages?: number;
+  keep_messages?: number;
+  summary_model?: string | null;
 }
 
 export interface ToolResultPruningConfig {

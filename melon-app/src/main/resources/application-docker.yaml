@@ -1,0 +1,21 @@
+spring:
+  config:
+    activate:
+      # docker：Java 在宿主机运行，Agent Shell 和 StdIO MCP 在 Docker 沙箱运行。
+      on-profile: docker
+
+server:
+  # Java 仍在本机运行，只监听回环地址。
+  address: ${SERVER_ADDRESS:127.0.0.1}
+
+melon:
+  # 与 local Profile 共用数据目录，只改变工具执行边界。
+  home_dir: ${MELON_HOME:${user.home}/.melonPaw-CompanyAI}
+  execution:
+    # Docker 或 gVisor 配置错误时直接失败，不回退到宿主机执行。
+    sandbox-mode: ${MELON_EXECUTION_SANDBOX:docker}
+    mcp:
+      stdio-mode: ${MELON_MCP_STDIO_MODE:docker}
+      import:
+        # 本机开发的默认可信源码父目录，可用 MELON_MCP_IMPORT_ROOTS 收窄或覆盖。
+        roots: ${MELON_MCP_IMPORT_ROOTS:${user.home}/IdeaWorkSpace/Github}

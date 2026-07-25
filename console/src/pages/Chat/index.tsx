@@ -35,7 +35,6 @@ import { getApiUrl } from "../../api/config";
 import { buildAuthHeaders } from "../../api/authHeaders";
 import { providerApi } from "../../api/modules/provider";
 import type { ProviderInfo, ModelInfo, SkillSpec } from "../../api/types";
-import ModelSelector from "./ModelSelector";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { hasPermission } from "../../auth/authorization";
@@ -1116,7 +1115,7 @@ export default function ChatPage() {
   const location = useLocation();
   const { isDark } = useTheme();
   const { user } = useAuth();
-  const canManageModels = hasPermission(user, "system:manage");
+  const canManageModels = hasPermission(user, "models:manage");
   const availableCommands = useLoopStore((s) => s.availableCommands);
   const availableLoopSkills = useLoopStore((s) => s.availableSkills);
 
@@ -2857,7 +2856,6 @@ export default function ChatPage() {
               <span className={styles.chatConversationTitle}>
                 <ChatHeaderTitle hideUntitled />
               </span>
-              {canManageModels && <ModelSelector />}
             </div>
             <div className={styles.chatHeaderActions}>
               {pluginRightHeader}

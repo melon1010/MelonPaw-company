@@ -7,7 +7,7 @@ function user(permissions: string[]): AuthUser {
     id: "user-1",
     username: "user",
     enabled: true,
-    roles: ["ORG_ADMIN"],
+    roles: ["USER"],
     permissions,
   };
 }

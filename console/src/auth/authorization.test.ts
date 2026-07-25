@@ -17,38 +17,60 @@ function user(roles: string[], permissions: string[]): AuthUser {
 }
 
 describe("enterprise route authorization", () => {
-  it("allows a system administrator to access all built-in management pages", () => {
+  it("allows the built-in administrator to access every management menu", () => {
     const administrator = user(["SYSTEM_ADMIN"], []);
     expect(canAccessRoute("company.members", administrator)).toBe(true);
     expect(canAccessRoute("core.security", administrator)).toBe(true);
+    expect(canAccessRoute("core.plugin-manager", administrator)).toBe(true);
     expect(canManageProjects(administrator)).toBe(true);
   });
 
-  it("gives an employee isolated personal resources without operator controls", () => {
-    const employee = user(
-      ["EMPLOYEE"],
-      [
-        "projects:read",
-        "agents:use",
-        "workspace:personal",
-        "skills:personal",
-        "channels:personal",
-        "automations:personal",
-        "mcp:personal",
-      ],
-    );
-    expect(canAccessRoute("core.root", employee)).toBe(true);
-    expect(canAccessRoute("company.workbench", employee)).toBe(true);
-    expect(canAccessRoute("company.projects", employee)).toBe(true);
-    expect(canAccessRoute("company.project-workspace", employee)).toBe(true);
-    expect(canAccessRoute("company.tasks", employee)).toBe(true);
-    expect(canAccessRoute("company.members", employee)).toBe(false);
-    expect(canAccessRoute("core.channels", employee)).toBe(true);
-    expect(canAccessRoute("core.workspace", employee)).toBe(true);
-    expect(canAccessRoute("core.skills", employee)).toBe(true);
-    expect(canAccessRoute("core.cron-jobs", employee)).toBe(true);
-    expect(canAccessRoute("core.heartbeat", employee)).toBe(true);
-    expect(canAccessRoute("core.tools", employee)).toBe(false);
+  it("makes the operations center available to every signed-in user", () => {
+    const member = user(["USER"], []);
+    for (const route of [
+      "company.workbench",
+      "company.projects",
+      "company.project-workspace",
+      "company.tasks",
+      "core.chat",
+      "core.sessions",
+      "core.channels",
+      "core.workspace",
+      "core.skills",
+      "core.cron-jobs",
+      "core.heartbeat",
+      "core.tools",
+      "core.mcp",
+      "core.agent-config",
+      "core.agent-stats",
+    ]) {
+      expect(canAccessRoute(route, member)).toBe(true);
+    }
+    expect(canAccessRoute("company.members", member)).toBe(false);
+    expect(canAccessRoute("core.models", member)).toBe(false);
+  });
+
+  it("authorizes management menus independently", () => {
+    const modelManager = user(["USER", "MODEL_MANAGER"], [
+      "models:manage",
+    ]);
+    expect(canAccessRoute("core.models", modelManager)).toBe(true);
+    expect(canAccessRoute("core.environments", modelManager)).toBe(false);
+    expect(canAccessRoute("company.roles", modelManager)).toBe(false);
+  });
+
+  it("keeps project creation separate from assigned-project access", () => {
+    const member = user(["USER"], []);
+    const projectManager = user(["USER", "PROJECT_MANAGER"], [
+      "projects:manage",
+    ]);
+    expect(canAccessRoute("company.projects", member)).toBe(true);
+    expect(canManageProjects(member)).toBe(false);
+    expect(canManageProjects(projectManager)).toBe(true);
+  });
+
+  it("filters only unauthorized administration items", () => {
+    const member = user(["USER"], []);
     expect(
       filterMenuForUser(
         [
@@ -58,38 +80,21 @@ describe("enterprise route authorization", () => {
             label: () => "Tools",
             route: "core.tools",
           },
+          {
+            id: "core.models",
+            location: "primary.settings",
+            label: () => "Models",
+            route: "core.models",
+          },
         ],
-        employee,
-      ),
-    ).toEqual([]);
-    expect(canAccessRoute("core.mcp", employee)).toBe(true);
-    expect(canAccessRoute("core.agent-config", employee)).toBe(true);
-    expect(canAccessRoute("core.agent-stats", employee)).toBe(true);
-    expect(canAccessRoute("core.agents", employee)).toBe(false);
+        member,
+      ).map((item) => item.id),
+    ).toEqual(["core.tools"]);
   });
 
-  it("supports non-conversational personal automation roles", () => {
-    const automationUser = user(["AUTOMATION_USER"], [
-      "automations:personal",
-    ]);
-    expect(canAccessRoute("core.cron-jobs", automationUser)).toBe(true);
-    expect(canAccessRoute("core.heartbeat", automationUser)).toBe(true);
-    expect(canAccessRoute("core.chat", automationUser)).toBe(false);
-    expect(canAccessRoute("core.workspace", automationUser)).toBe(false);
-  });
-
-  it("uses backend permission codes for service operators", () => {
-    const operator = user(
-      ["SERVICE_OPERATOR"],
-      ["projects:read", "agents:use", "agents:manage"],
-    );
-    expect(canAccessRoute("core.channels", operator)).toBe(true);
-    expect(canAccessRoute("core.models", operator)).toBe(false);
-    expect(canAccessRoute("core.tools", operator)).toBe(false);
-  });
-
-  it("reserves the system tools page for system management permission", () => {
-    const manager = user(["SERVICE_OPERATOR"], ["system:manage"]);
-    expect(canAccessRoute("core.tools", manager)).toBe(true);
+  it("keeps legacy system management as an umbrella during configuration rollout", () => {
+    const legacyManager = user(["USER"], ["system:manage"]);
+    expect(canAccessRoute("core.models", legacyManager)).toBe(true);
+    expect(canAccessRoute("core.security", legacyManager)).toBe(true);
   });
 });

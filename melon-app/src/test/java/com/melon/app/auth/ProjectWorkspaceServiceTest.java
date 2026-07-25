@@ -81,9 +81,9 @@ class ProjectWorkspaceServiceTest {
         EnterprisePrincipal administrator = auth.bootstrap(
                 "admin", "Administrator", "StrongPassword123");
         EnterprisePrincipal member = auth.createUser(
-                "member", "Member", "MemberPassword123", true, Set.of("EMPLOYEE"));
+                "member", "Member", "MemberPassword123", true, Set.of("USER"));
         EnterprisePrincipal viewer = auth.createUser(
-                "viewer", "Viewer", "ViewerPassword123", true, Set.of("EMPLOYEE"));
+                "viewer", "Viewer", "ViewerPassword123", true, Set.of("USER"));
         EnterpriseIdentityStore.ProjectSpaceRecord project = store.createProject(
                 "project-one", "Project One", "authorization test", administrator.id());
         store.putProjectMember(project.id(), member.id(), "MEMBER");

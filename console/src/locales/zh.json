@@ -246,7 +246,7 @@
       "create": "新建角色",
       "edit": "编辑角色",
       "view": "查看角色",
-      "hint": "系统角色用于保障平台基础权限边界，可以查看但不能修改；自定义角色只能授予当前管理员已有的权限。",
+      "hint": "运营中心是所有用户的默认能力；自定义角色只配置项目管理和管理后台菜单权限。",
       "code": "编码",
       "name": "名称",
       "description": "描述",
@@ -261,7 +261,7 @@
       "empty": "暂无符合条件的角色",
       "permissionCount": "{{count}} 项权限",
       "userCount": "{{count}} 人",
-      "permissionTreeHint": "勾选分组可快速选择该组权限",
+      "permissionTreeHint": "按菜单配置角色可访问的管理功能",
       "selectedPermissions": "已选择 {{count}} 项",
       "systemReadOnly": "这是平台内置角色。为保证系统权限边界稳定，仅支持查看，不能编辑或删除。",
       "viewOnly": "当前账号仅有查看权限。",
@@ -277,6 +277,7 @@
       "saved": "角色已保存",
       "roleNames": {
         "systemAdmin": "系统管理员",
+        "user": "用户",
         "serviceOperator": "AI 服务运维",
         "approver": "审批员",
         "employee": "企业成员",
@@ -285,6 +286,7 @@
       },
       "roleDescriptions": {
         "systemAdmin": "拥有完整的平台管理权限",
+        "user": "使用运营中心和已分配的团队空间",
         "serviceOperator": "创建、配置并运维 AI 服务",
         "approver": "审批高风险操作",
         "employee": "使用已授权的企业 AI 服务",

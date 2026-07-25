@@ -40,9 +40,9 @@ class EnterpriseAgentAccessServiceTest {
         AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
         EnterprisePrincipal admin = auth.bootstrap("admin", "Administrator", "StrongPassword123");
         EnterprisePrincipal member = auth.createUser(
-                "member", "Member", "MemberPassword123", true, Set.of("EMPLOYEE"));
+                "member", "Member", "MemberPassword123", true, Set.of("USER"));
         EnterprisePrincipal viewer = auth.createUser(
-                "viewer", "Viewer", "ViewerPassword123", true, Set.of("EMPLOYEE"));
+                "viewer", "Viewer", "ViewerPassword123", true, Set.of("USER"));
         EnterpriseIdentityStore.ProjectSpaceRecord project = store.createProject(
                 "project-one", "Project One", "", admin.id());
         store.putProjectMember(project.id(), member.id(), "MEMBER");
@@ -71,7 +71,7 @@ class EnterpriseAgentAccessServiceTest {
         EnterprisePrincipal administrator = auth.bootstrap(
                 "admin", "Administrator", "StrongPassword123");
         EnterprisePrincipal employee = auth.createUser(
-                "employee", "Employee", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+                "employee", "Employee", "EmployeePassword123", true, Set.of("USER"));
 
         EnterpriseAgentAccessService access = new EnterpriseAgentAccessService(
                 store, configManager(), new WorkspaceManager());
@@ -92,9 +92,9 @@ class EnterpriseAgentAccessServiceTest {
         AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
         auth.bootstrap("admin", "Administrator", "StrongPassword123");
         EnterprisePrincipal first = auth.createUser(
-                "employee-one", "Employee One", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+                "employee-one", "Employee One", "EmployeePassword123", true, Set.of("USER"));
         EnterprisePrincipal second = auth.createUser(
-                "employee-two", "Employee Two", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+                "employee-two", "Employee Two", "EmployeePassword123", true, Set.of("USER"));
 
         ConfigManager configManager = configManager();
         WorkspaceManager workspaceManager = new WorkspaceManager();
@@ -130,7 +130,7 @@ class EnterpriseAgentAccessServiceTest {
         AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
         auth.bootstrap("admin", "Administrator", "StrongPassword123");
         EnterprisePrincipal employee = auth.createUser(
-                "stable-user", "Stable User", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+                "stable-user", "Stable User", "EmployeePassword123", true, Set.of("USER"));
 
         CountingConfigManager configManager = new CountingConfigManager();
         configManager.setConfigPath(tempDir.resolve("stable-config.yaml"));
@@ -153,7 +153,7 @@ class EnterpriseAgentAccessServiceTest {
         AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
         auth.bootstrap("admin", "Administrator", "StrongPassword123");
         EnterprisePrincipal employee = auth.createUser(
-                "employee", "Employee", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+                "employee", "Employee", "EmployeePassword123", true, Set.of("USER"));
 
         ConfigManager configManager = configManager();
         WorkspaceManager workspaceManager = new WorkspaceManager();
@@ -175,15 +175,15 @@ class EnterpriseAgentAccessServiceTest {
     }
 
     @Test
-    void operatorsCannotEnterAnotherUsersPersonalAgent() throws Exception {
+    void usersCannotEnterAnotherUsersPersonalAgent() throws Exception {
         EnterpriseIdentityStore store = new EnterpriseIdentityStore(tempDir.resolve("operator-scope.db"));
         AuthService auth = new AuthService(store, Duration.ofHours(1), new SecureRandom());
         EnterprisePrincipal systemAdministrator = auth.bootstrap(
                 "admin", "Administrator", "StrongPassword123");
         EnterprisePrincipal operator = auth.createUser(
-                "operator", "Service Operator", "OperatorPassword123", true, Set.of("SERVICE_OPERATOR"));
+                "operator", "Operator", "OperatorPassword123", true, Set.of("USER"));
         EnterprisePrincipal employee = auth.createUser(
-                "employee", "Employee", "EmployeePassword123", true, Set.of("EMPLOYEE"));
+                "employee", "Employee", "EmployeePassword123", true, Set.of("USER"));
 
         ConfigManager configManager = configManager();
         AuditLogService auditLogService = mock(AuditLogService.class);

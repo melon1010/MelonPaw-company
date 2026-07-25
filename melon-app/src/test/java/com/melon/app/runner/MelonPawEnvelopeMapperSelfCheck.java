@@ -135,6 +135,9 @@ public final class MelonPawEnvelopeMapperSelfCheck {
 
         MelonPawEnvelopeMapper completionBoundary = new MelonPawEnvelopeMapper("s3");
         List<Map<String, Object>> boundaryPayloads = new ArrayList<>();
+        collect(boundaryPayloads, completionBoundary.translate(new TextBlockStartEvent("r3", "answer")));
+        collect(boundaryPayloads, completionBoundary.translate(new TextBlockDeltaEvent("r3", "answer", "done")));
+        collect(boundaryPayloads, completionBoundary.translate(new TextBlockEndEvent("r3", "answer")));
         collect(boundaryPayloads, completionBoundary.translate(new AgentEndEvent("r3")));
         boolean completedBeforeStreamEnd = boundaryPayloads.stream()
                 .anyMatch(p -> "response".equals(p.get("object"))
@@ -142,8 +145,15 @@ public final class MelonPawEnvelopeMapperSelfCheck {
         if (completedBeforeStreamEnd) {
             throw new AssertionError("AGENT_END completed the response before stream completion");
         }
+        boolean assistantCompletedBeforeStreamEnd = boundaryPayloads.stream()
+                .anyMatch(p -> "response".equals(p.get("object"))
+                        && "in_progress".equals(p.get("status"))
+                        && "completed".equals(p.get("assistant_status")));
+        if (!assistantCompletedBeforeStreamEnd) {
+            throw new AssertionError("AGENT_END did not expose the completed assistant reply");
+        }
         collect(boundaryPayloads, completionBoundary.finish());
-        verifyCompletedOutput(boundaryPayloads, 0);
+        verifyCompletedOutput(boundaryPayloads, 1);
 
     }
 

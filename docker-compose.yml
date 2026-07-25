@@ -1,0 +1,85 @@
+name: melonpaw-company
+
+services:
+  # 仅负责构建标准沙箱镜像。一次性容器成功退出后，Java 服务才会启动。
+  sandbox-image:
+    image: ${MELON_SANDBOX_IMAGE:-melonpaw-company-sandbox:latest}
+    build:
+      context: ./docker/sandbox
+      dockerfile: Dockerfile
+    entrypoint: ["/bin/true"]
+    restart: "no"
+
+  app:
+    image: melonpaw-company-app:local
+    build:
+      context: .
+      dockerfile: melon-app/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      sandbox-image:
+        condition: service_completed_successfully
+    environment:
+      SPRING_PROFILES_ACTIVE: container
+      SERVER_PORT: 8088
+      MELON_HOME: /data
+      MELON_WORKSPACE_ROOT: /data/workspaces
+      # Docker daemon读取的是宿主机路径，Java 侧通过该变量完成路径投影。
+      MELON_SANDBOX_HOST_WORKSPACE_ROOT: ${MELON_HOST_DATA_DIR:?请在.env中配置宿主机绝对数据目录}/workspaces
+      MELON_EXECUTION_SANDBOX: docker
+      MELON_DOCKER_COMMAND: docker
+      MELON_SANDBOX_IMAGE: ${MELON_SANDBOX_IMAGE:-melonpaw-company-sandbox:latest}
+      MELON_SANDBOX_NETWORK: ${MELON_SANDBOX_NETWORK:-bridge}
+      MELON_SANDBOX_RUNTIME: ${MELON_SANDBOX_RUNTIME:-}
+      MELON_MCP_STDIO_MODE: docker
+      MELON_MCP_SANDBOX_IMAGE: ${MELON_SANDBOX_IMAGE:-melonpaw-company-sandbox:latest}
+      MELON_MCP_SANDBOX_NETWORK: ${MELON_SANDBOX_NETWORK:-bridge}
+      MELON_MCP_SANDBOX_RUNTIME: ${MELON_SANDBOX_RUNTIME:-}
+      MELON_MCP_IMPORT_ROOTS: /mcp-imports
+      MELON_MCP_PATH_MAPPINGS: ${MELON_MCP_PATH_MAPPINGS:-}
+      MELON_ALLOWED_ORIGINS: http://localhost:${MELON_CONSOLE_PORT:-5173},http://127.0.0.1:${MELON_CONSOLE_PORT:-5173}
+      MELON_BOOTSTRAP_TOKEN: ${MELON_BOOTSTRAP_TOKEN:-}
+      MELON_GENERATE_BOOTSTRAP_TOKEN: ${MELON_GENERATE_BOOTSTRAP_TOKEN:-false}
+      MELON_MASTER_KEY: ${MELON_MASTER_KEY:-}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - type: bind
+        source: ${MELON_HOST_DATA_DIR:?请在.env中配置宿主机绝对数据目录}
+        target: /data
+      - type: bind
+        source: ${MELON_HOST_MCP_IMPORT_DIR:?请在.env中配置MCP可信导入目录}
+        target: /mcp-imports
+        read_only: true
+      # Java 只使用该 socket 创建受限的同级沙箱容器；生产环境建议使用独立或代理后的 Docker daemon。
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+    ports:
+      - "${MELON_API_PORT:-8088}:8088"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8088/api/agent/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  console:
+    image: melonpaw-company-console:local
+    build:
+      context: ./console
+      dockerfile: Dockerfile
+      args:
+        # 空值表示浏览器使用同源 /api，由 Nginx 代理到 Java 服务。
+        VITE_API_BASE_URL: ""
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${MELON_CONSOLE_PORT:-5173}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+

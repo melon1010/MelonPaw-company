@@ -45,7 +45,7 @@ public class ModelsCompatController {
     public Mono<ResponseEntity<?>> listModels(@AuthenticationPrincipal EnterprisePrincipal principal) {
         return Mono.<ResponseEntity<?>>fromCallable(() -> {
             boolean includeAdministrationDetails = principal != null
-                    && principal.hasPermission("system:manage");
+                    && principal.hasPermission("models:manage");
             List<Map<String, Object>> providers = new ArrayList<>();
             for (String providerId : providerManager.listProviders()) {
                 Map<String, Object> provider = providerPayload(providerId, providerManager.listModels(providerId));
@@ -229,7 +229,7 @@ public class ModelsCompatController {
             @RequestParam(value = "agent_id", required = false) String queryAgentId,
             @RequestParam(value = "scope", defaultValue = "effective") String scope,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
-        boolean systemManager = principal != null && principal.hasPermission("system:manage");
+        boolean systemManager = principal != null && principal.hasPermission("models:manage");
         String effectiveScope = systemManager && "global".equalsIgnoreCase(scope)
                 ? "global" : "effective";
         return Mono.fromCallable(() -> ResponseEntity.ok(activeModels(headerAgentId, effectiveScope)));
@@ -244,7 +244,7 @@ public class ModelsCompatController {
             String targetAgentId = agentId;
             String active = activeModelFromBody(body);
             boolean globalScope = principal != null
-                    && principal.hasPermission("system:manage")
+                    && principal.hasPermission("models:manage")
                     && "global".equalsIgnoreCase(stringValue(body.get("scope"), "agent"));
             if (!active.isBlank()) {
                 String[] parts = splitModel(active);

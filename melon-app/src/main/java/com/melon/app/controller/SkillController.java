@@ -174,7 +174,7 @@ public class SkillController {
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
         boolean includeInternalDetails = principal != null
-                && principal.hasPermission("agents:manage");
+                && principal.hasPermission("skill-pool:manage");
         return Mono.fromCallable(() -> ResponseEntity.ok(
                 skillService.listPoolSkills().stream()
                         .map(raw -> poolSkillSpec(raw, includeInternalDetails)).toList()
@@ -1225,7 +1225,7 @@ public class SkillController {
         List<String> requested = requestedWorkspaceIds(body);
         boolean allTargets = Boolean.TRUE.equals(body != null ? body.get("all_workspaces") : null);
 
-        if (principal == null || !principal.hasPermission("agents:manage")) {
+        if (principal == null || !principal.hasPermission("skill-pool:manage")) {
             return List.of(currentAgentId);
         }
         if (!allTargets && (requested.isEmpty()

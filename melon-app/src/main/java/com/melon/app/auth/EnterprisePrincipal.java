@@ -35,7 +35,10 @@ public record EnterprisePrincipal(
         if (EnterprisePermissions.DATA_BREAKGLASS.equals(permission)) {
             return permissions.contains(permission);
         }
-        return hasRole("SYSTEM_ADMIN") || permissions.contains(permission);
+        return hasRole("SYSTEM_ADMIN")
+                || permissions.contains(permission)
+                || (permissions.contains(EnterprisePermissions.SYSTEM_MANAGE)
+                    && EnterprisePermissions.ASSIGNABLE_ROLE_PERMISSIONS.contains(permission));
     }
 
     public boolean hasAnyPermission(String... values) {
@@ -54,6 +57,9 @@ public record EnterprisePrincipal(
         Set<String> values = new LinkedHashSet<>();
         roles.forEach(role -> values.add("ROLE_" + role));
         values.addAll(permissions);
+        if (permissions.contains(EnterprisePermissions.SYSTEM_MANAGE)) {
+            values.addAll(EnterprisePermissions.ASSIGNABLE_ROLE_PERMISSIONS);
+        }
         return values.stream().map(SimpleGrantedAuthority::new).map(GrantedAuthority.class::cast).toList();
     }
 

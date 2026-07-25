@@ -1,0 +1,20 @@
+spring:
+  config:
+    activate:
+      # container：Java 运行在容器中，通过 Docker socket 启动同级工具沙箱。
+      on-profile: container
+
+server:
+  # 容器必须监听全部接口，由前端 Nginx 或端口映射访问。
+  address: ${SERVER_ADDRESS:0.0.0.0}
+
+melon:
+  # Compose 将持久化宿主目录挂载到 /data。
+  home_dir: ${MELON_HOME:/data}
+  execution:
+    sandbox-mode: ${MELON_EXECUTION_SANDBOX:docker}
+    mcp:
+      stdio-mode: ${MELON_MCP_STDIO_MODE:docker}
+      import:
+        # Compose 将允许导入的宿主目录只读挂载到 /mcp-imports。
+        roots: ${MELON_MCP_IMPORT_ROOTS:/mcp-imports}

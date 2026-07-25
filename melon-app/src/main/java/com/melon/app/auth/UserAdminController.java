@@ -54,14 +54,14 @@ public class UserAdminController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('users:read') or hasAuthority('users:manage')")
+    @PreAuthorize("hasAuthority('users:manage') or hasAuthority('projects:manage')")
     public Mono<ResponseEntity<?>> list() {
         return blocking(() -> ResponseEntity.ok(
                 store.listUsers().stream().map(EnterprisePrincipal::toMap).toList()));
     }
 
     @GetMapping("/{userId}")
-    @PreAuthorize("hasAuthority('users:read') or hasAuthority('users:manage')")
+    @PreAuthorize("hasAuthority('users:manage') or hasAuthority('projects:manage')")
     public Mono<ResponseEntity<?>> get(@PathVariable String userId) {
         return blocking(() -> store.findUserById(userId)
                 .<ResponseEntity<?>>map(user -> ResponseEntity.ok(user.toMap()))
@@ -82,7 +82,7 @@ public class UserAdminController {
                 throw new IllegalStateException("Skill service is unavailable");
             }
             if (roles.isEmpty()) {
-                roles = Set.of("EMPLOYEE");
+                roles = Set.of("USER");
             }
             requireNoSystemAdminGrant(principal, roles);
             EnterprisePrincipal created = authService.createUser(

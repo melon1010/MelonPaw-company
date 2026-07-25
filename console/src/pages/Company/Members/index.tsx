@@ -128,7 +128,7 @@ export default function EnterpriseMembers() {
     form.resetFields();
     form.setFieldsValue({
       enabled: true,
-      roles: ["EMPLOYEE"],
+      roles: ["USER"],
       default_skills: [],
     });
     setModalOpen(true);

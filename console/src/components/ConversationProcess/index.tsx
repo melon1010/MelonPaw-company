@@ -437,6 +437,8 @@ export default function ConversationProcess({
 
 export {
   buildConversationRenderSegments,
+  ConversationRunStatus,
+  getMessageRunStatus,
   hasVisibleAnswerContent,
   isPersistentToolResultMessage,
   pairToolMessages,

@@ -32,11 +32,22 @@ import java.nio.charset.StandardCharsets;
 
 import static com.melon.app.auth.EnterprisePermissions.AGENTS_MANAGE;
 import static com.melon.app.auth.EnterprisePermissions.AGENTS_USE;
+import static com.melon.app.auth.EnterprisePermissions.AUDIT_READ;
+import static com.melon.app.auth.EnterprisePermissions.BACKUPS_MANAGE;
+import static com.melon.app.auth.EnterprisePermissions.DEBUG_MANAGE;
+import static com.melon.app.auth.EnterprisePermissions.ENVIRONMENT_MANAGE;
+import static com.melon.app.auth.EnterprisePermissions.MODELS_MANAGE;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_AUTOMATIONS;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_CHANNELS;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_SKILLS;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_MCP;
 import static com.melon.app.auth.EnterprisePermissions.PERSONAL_WORKSPACE;
+import static com.melon.app.auth.EnterprisePermissions.PLUGINS_MANAGE;
+import static com.melon.app.auth.EnterprisePermissions.QUOTAS_MANAGE;
+import static com.melon.app.auth.EnterprisePermissions.SECURITY_MANAGE;
+import static com.melon.app.auth.EnterprisePermissions.SKILL_POOL_MANAGE;
+import static com.melon.app.auth.EnterprisePermissions.TOKEN_USAGE_READ;
+import static com.melon.app.auth.EnterprisePermissions.TRANSCRIPTION_MANAGE;
 
 /** Bearer-token security for the private enterprise deployment. */
 @Configuration
@@ -95,10 +106,10 @@ public class SecurityConfig {
                                 .hasAnyAuthority("approvals:decide", "agents:use")
 
                         // Usage and audit data are operational records, not general employee data.
-                        .pathMatchers("/api/token-usage/**", "/api/config/security/audit-events")
-                                .hasAnyAuthority("audit:read", "agents:manage", "system:manage")
+                        .pathMatchers("/api/token-usage/**")
+                                .hasAuthority(TOKEN_USAGE_READ)
                         .pathMatchers("/api/audit/**")
-                                .hasAnyAuthority("audit:read", "system:manage")
+                                .hasAuthority(AUDIT_READ)
 
                         // Employees may inspect the published model catalog and select an
                         // effective model for their own runtime. Provider credentials and global
@@ -133,7 +144,12 @@ public class SecurityConfig {
                         .pathMatchers("/api/skills/hub/install/**")
                                 .hasAnyAuthority(PERSONAL_SKILLS, AGENTS_MANAGE)
                         .pathMatchers("/api/skills/pool/**", "/api/skills/hub/**", "/api/skills/workspaces")
-                                .hasAuthority("agents:manage")
+                                .hasAuthority(SKILL_POOL_MANAGE)
+                        .pathMatchers(HttpMethod.PUT,
+                                "/api/workspace/audio-mode",
+                                "/api/workspace/transcription-provider",
+                                "/api/workspace/transcription-provider-type")
+                                .hasAuthority(TRANSCRIPTION_MANAGE)
                         .pathMatchers("/api/workspace/running-config", "/api/workspace/running-config/**")
                                 .hasAnyAuthority(PERSONAL_WORKSPACE, AGENTS_MANAGE)
                         .pathMatchers("/api/agent-stats/**")
@@ -144,7 +160,7 @@ public class SecurityConfig {
                         .pathMatchers("/api/skills/**")
                                 .hasAnyAuthority(PERSONAL_SKILLS, AGENTS_MANAGE)
                         .pathMatchers("/api/tools/**")
-                                .hasAuthority("system:manage")
+                                .hasAnyAuthority(PERSONAL_WORKSPACE, AGENTS_MANAGE)
                         .pathMatchers("/api/config/channels/**", "/api/channels/**",
                                 "/api/access-control/**")
                                 .hasAnyAuthority(PERSONAL_CHANNELS, AGENTS_MANAGE)
@@ -155,11 +171,20 @@ public class SecurityConfig {
 
                         // Secrets, executable extensions, backups and host-level controls are
                         // intentionally reserved for system administrators.
-                        .pathMatchers("/api/envs/**", "/api/backups/**", "/api/plugins/**", "/api/models/**",
-                                "/api/providers/**", "/api/local-models/**", "/api/quotas/**",
-                                "/api/config/security/**",
-                                "/api/console/debug/**")
-                                .hasAuthority("system:manage")
+                        .pathMatchers("/api/envs/**")
+                                .hasAuthority(ENVIRONMENT_MANAGE)
+                        .pathMatchers("/api/backups/**")
+                                .hasAuthority(BACKUPS_MANAGE)
+                        .pathMatchers("/api/plugins/**")
+                                .hasAuthority(PLUGINS_MANAGE)
+                        .pathMatchers("/api/models/**", "/api/providers/**", "/api/local-models/**")
+                                .hasAuthority(MODELS_MANAGE)
+                        .pathMatchers("/api/quotas/**")
+                                .hasAuthority(QUOTAS_MANAGE)
+                        .pathMatchers("/api/config/security/**")
+                                .hasAuthority(SECURITY_MANAGE)
+                        .pathMatchers("/api/console/debug/**")
+                                .hasAuthority(DEBUG_MANAGE)
 
                         // Compatibility endpoints not listed above still require an account that
                         // is allowed to use an Agent. Read-only auditors cannot forge Agent scope.

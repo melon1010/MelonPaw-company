@@ -14,7 +14,7 @@ const {
   mockT,
 } = vi.hoisted(() => ({
   mockAuthState: {
-    roles: ["ORG_ADMIN"] as string[],
+    roles: ["USER"] as string[],
     permissions: ["projects:read"] as string[],
   },
   mockListProjects: vi.fn(),
@@ -54,7 +54,7 @@ vi.mock("react-i18next", () => ({
 describe("CompanyWorkbench permissions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAuthState.roles = ["ORG_ADMIN"];
+    mockAuthState.roles = ["USER"];
     mockAuthState.permissions = ["projects:read"];
     mockListProjects.mockResolvedValue([]);
     mockListTasks.mockResolvedValue([]);

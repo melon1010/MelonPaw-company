@@ -71,6 +71,7 @@ public class MelonPawEnvelopeMapper {
     private final Map<String, DataBlockState> dataBlocks = new HashMap<>();
     private final List<Map<String, Object>> outputMessages = new ArrayList<>();
     private Map<String, Object> usage;
+    private boolean assistantCompleted;
     private boolean finalized;
 
     public MelonPawEnvelopeMapper(String sessionId) {
@@ -140,11 +141,10 @@ public class MelonPawEnvelopeMapper {
             case DATA_BLOCK_END -> dataEnd((DataBlockEndEvent) event);
             case MODEL_CALL_END -> modelCallEnd((ModelCallEndEvent) event);
             case REQUEST_STOP -> stopNotice((RequestStopEvent) event);
-            // AGENT_END closes the logical Agent turn, but AgentScope may still be
-            // consolidating memory. The owner finalizes the response when the
-            // event stream itself completes so clients and task state share one
-            // completion boundary.
-            case AGENT_END -> List.of();
+            // AGENT_END closes the user-visible assistant reply. AgentScope may still be
+            // offloading messages or maintaining memory, so keep the response in progress
+            // until the owner observes the actual end of the event stream.
+            case AGENT_END -> assistantCompleted();
             default -> List.of();
         };
     }
@@ -167,6 +167,37 @@ public class MelonPawEnvelopeMapper {
         events.add(sse("response", tag(completed)));
         if (turnUsage != null) events.add(sse("turn_usage", tag(new LinkedHashMap<>(turnUsage))));
         return events;
+    }
+
+    private List<ServerSentEvent<String>> assistantCompleted() {
+        if (assistantCompleted || finalized) return List.of();
+        assistantCompleted = true;
+        List<ServerSentEvent<String>> events = new ArrayList<>(finalizeTextMessage(PHASE_FINAL));
+        promoteLastTextMessage(events);
+        if (!hasFinalAssistantMessage()) return events;
+
+        Map<String, Object> turnUsage = turnUsageSnapshot();
+        decorateOutputMessages(turnUsage);
+        Map<String, Object> inProgress = response("in_progress");
+        inProgress.put("assistant_status", "completed");
+        inProgress.put("assistant_completed_at", System.currentTimeMillis() / 1000);
+        inProgress.put("output", new ArrayList<>(outputMessages));
+        if (turnUsage != null) {
+            inProgress.put("usage", turnUsage.get("usage"));
+            inProgress.put("context_usage", turnUsage.get("context_usage"));
+        }
+        events.add(sse("response", tag(inProgress)));
+        return events;
+    }
+
+    private boolean hasFinalAssistantMessage() {
+        return outputMessages.stream().anyMatch(message ->
+                "message".equals(message.get("type"))
+                        && "assistant".equals(message.get("role"))
+                        && "completed".equals(message.get("status"))
+                        && message.get("metadata") instanceof Map<?, ?> metadata
+                        && PHASE_FINAL.equals(metadata.get("phase"))
+                        && Boolean.TRUE.equals(metadata.get("terminal")));
     }
 
     private void promoteLastTextMessage(List<ServerSentEvent<String>> events) {

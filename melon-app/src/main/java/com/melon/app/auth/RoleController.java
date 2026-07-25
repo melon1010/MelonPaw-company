@@ -32,11 +32,11 @@ public class RoleController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('roles:read') or hasAuthority('roles:manage')")
+    @PreAuthorize("hasAuthority('roles:manage') or hasAuthority('users:manage')")
     public Mono<ResponseEntity<?>> list() {
         return blocking(() -> ResponseEntity.ok(Map.of(
                 "roles", store.listRoles().stream().map(EnterpriseIdentityStore.RoleRecord::toMap).toList(),
-                "permissions", store.listPermissions()
+                "permissions", EnterprisePermissions.ASSIGNABLE_ROLE_PERMISSIONS.stream().sorted().toList()
         )));
     }
 
@@ -78,6 +78,9 @@ public class RoleController {
     private EnterpriseIdentityStore.RoleRecord save(
             String code, Map<String, Object> body, EnterprisePrincipal principal) {
         Set<String> permissions = stringSet(body == null ? null : body.get("permissions"));
+        if (!EnterprisePermissions.ASSIGNABLE_ROLE_PERMISSIONS.containsAll(permissions)) {
+            throw new IllegalArgumentException("Custom roles may only contain configurable management permissions");
+        }
         if (!principal.hasPermission(SYSTEM_MANAGE)) {
             for (String permission : permissions) {
                 if (!principal.hasPermission(permission)) {

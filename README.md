@@ -227,7 +227,36 @@ docker build -t melonpaw-company-sandbox:latest docker/sandbox
 
 默认使用 Docker `bridge` 网络，使 `execute_shell_command` 能获取公开链接和技能依赖。生产环境应通过 `MELON_SANDBOX_NETWORK` 指定受限出口网络；禁止外网时可设为 `none`。每个执行上下文采用 AgentScope `USER` 隔离，只把受控工作区根目录下当前授权 Agent 的工作区挂载到容器，个人与团队 Agent 使用不同目录。
 
-stdio MCP 默认跟随 `MELON_EXECUTION_SANDBOX`：Docker 模式下 MCP 进程也在独立的受限容器中运行，并且只挂载所属 Agent 的工作区。可用 `MELON_MCP_STDIO_MODE=local|docker|disabled` 单独覆盖；`local` 仅用于可信开发环境。MCP 容器默认复用沙箱镜像与网络，也可分别设置 `MELON_MCP_SANDBOX_IMAGE`、`MELON_MCP_SANDBOX_NETWORK`。
+stdio MCP 默认跟随 `MELON_EXECUTION_SANDBOX`：Docker 模式下 MCP 进程也在独立的受限容器中运行，并且只挂载所属 Agent 的工作区。可用 `MELON_MCP_STDIO_MODE=local|docker|disabled` 单独覆盖；`local` 仅用于可信开发环境。MCP 容器默认复用沙箱镜像与网络，也可分别设置 `MELON_MCP_SANDBOX_IMAGE`、`MELON_MCP_SANDBOX_NETWORK`。配置 `MELON_SANDBOX_RUNTIME=runsc` 后，Agent Shell 与 StdIO MCP 都显式使用 gVisor；Docker 未注册该 runtime 时直接失败，不会回退到默认 runtime。
+
+页面配置引用本地 MCP 项目时，先用 `MELON_MCP_IMPORT_ROOTS` 声明可信源目录。运行时只读扫描该目录，将项目按内容哈希复制到所属 Agent 的 `<workspace>/.melon/mcp-sources/<server-id>/<hash>/`，再把运行配置改写成 `/workspace/...`；页面保存的原始 JSON 不变。原始目录绝不会直接挂载进 MCP 容器，符号链接、跨可信根路径、多个外部项目、超过 `MELON_MCP_IMPORT_MAX_FILES`（默认 20000）或 `MELON_MCP_IMPORT_MAX_BYTES`（默认 256 MiB）的导入都会被拒绝。Node 锁文件和 Python `uv`/`requirements.txt` 依赖在沙箱内准备，缓存位于当前 Agent 工作区；网络不通、包不存在或镜像环境不足时会返回明确错误。声明可信根意味着允许具备 MCP 配置权限的主体导入其中的项目，生产环境应使用专门的 MCP 源目录，不要直接信任用户主目录或文件系统根目录。
+
+例如本机 MCP 项目位于 `/Users/melon/IdeaWorkSpace/Github/zentao-mcp`：
+
+```bash
+MELON_MCP_IMPORT_ROOTS=/Users/melon/IdeaWorkSpace/Github
+```
+
+该变量属于 Java 进程的启动环境，修改后需要重启服务。使用 IDEA 时应把它加入 Run Configuration 的 Environment variables，不能写进页面 MCP JSON。
+
+也可以使用标准 Spring 配置 `melon.execution.mcp.import.roots`。例如在 IDEA 的 Program arguments 中加入：
+
+```text
+--melon.execution.mcp.import.roots=/Users/melon/IdeaWorkSpace/Github
+```
+
+页面仍可保存标准配置：
+
+```json
+{
+  "mcpServers": {
+    "zentao": {
+      "command": "node",
+      "args": ["/Users/melon/IdeaWorkSpace/Github/zentao-mcp/dist/index.js"]
+    }
+  }
+}
+```
 
 当 Java 服务本身运行在容器中并通过宿主 Docker daemon 创建执行沙箱时，必须同时配置应用容器内和 Docker 宿主机上的工作区根路径。例如应用看到 `/data/workspaces`，宿主机实际目录是 `/srv/melon/workspaces`：
 
@@ -237,6 +266,15 @@ MELON_SANDBOX_HOST_WORKSPACE_ROOT=/srv/melon/workspaces
 ```
 
 `MELON_WORKSPACE_ROOT` 可以单独用于指定应用工作区；配置 `MELON_SANDBOX_HOST_WORKSPACE_ROOT` 做容器路径映射时，两个变量必须同时使用绝对路径。应用只会映射其下的具体 Agent 子目录，不会挂载整个工作区根目录。
+
+Java 服务容器化后，如需导入宿主 MCP 项目，还要把 `MELON_MCP_IMPORT_ROOTS` 中的目录以只读方式挂载给 Java 容器，并确保容器内配置使用可见的挂载路径。该只读源挂载只属于 Java 控制面；MCP 运行容器仍只获得当前 Agent 工作区。
+
+若页面保存的标准 MCP JSON 使用宿主机路径，而 Java 容器只在另一位置看到只读挂载，可使用 JSON 对象 `MELON_MCP_PATH_MAPPINGS` 做路径前缀映射。匹配采用最长前缀，映射只修改运行时副本，目标必须真实存在且仍位于可信根内。例如页面路径为 `/home/mineru/Github/zentao-mcp/dist/index.js`，Java 容器将宿主目录挂载为 `/mcp-imports`：
+
+```bash
+MELON_MCP_IMPORT_ROOTS=/mcp-imports
+MELON_MCP_PATH_MAPPINGS='{"/home/mineru/Github":"/mcp-imports"}'
+```
 
 `web_search` 和 `web_fetch` 由 Java 服务直接执行只读公网访问，不经过 Shell。`web_fetch` 会拒绝本机、私网、云元数据地址、非标准端口和跨域重定向，并限制下载及上下文大小。macOS TUN 代理常用 `198.18.0.0/15` 假 IP DNS，运行时会自动兼容域名解析；需要强制关闭时设置 `MELON_WEB_ALLOW_FAKE_IP_DNS=false`。
 
@@ -269,9 +307,7 @@ SERVER_ADDRESS=127.0.0.1 SERVER_PORT=8088 \
 ${MELON_HOME}/enterprise.db
 ```
 
-当系统没有任何用户且未显式设置 `MELON_BOOTSTRAP_TOKEN` 时，后端会生成 256 位初始化令牌并写入 `${MELON_HOME}/bootstrap.token`；登录页会要求输入该令牌。首个管理员创建成功后文件会被删除，初始化接口随即永久关闭。也可以在启动前由运维系统注入 `MELON_BOOTSTRAP_TOKEN`，此时不会生成令牌文件。
-
-`local` profile 默认不生成初始化令牌，首次打开控制台即可直接创建管理员。需要在本地复现生产保护时，可显式设置 `MELON_BOOTSTRAP_TOKEN`，或将 `MELON_GENERATE_BOOTSTRAP_TOKEN` 设为 `true`。
+系统没有任何用户时，首次打开控制台可直接创建管理员，不要求填写初始化令牌。公网暴露初始化入口时，应在启动前注入 `MELON_BOOTSTRAP_TOKEN`；也可将 `MELON_GENERATE_BOOTSTRAP_TOKEN` 设为 `true`，后端会生成 256 位令牌并写入 `${MELON_HOME}/bootstrap.token`。启用任一保护后，登录页才会显示令牌字段。首个管理员创建成功后，生成的令牌文件会被删除，初始化接口随即永久关闭。
 
 这是应用内嵌的 SQLite 数据库，无需安装或启动 PostgreSQL。可通过 `MELON_ENTERPRISE_DATABASE_PATH` 覆盖数据库文件位置。备份时至少应同时保存 `enterprise.db`、`config.yaml` 和 `workspaces/`。
 

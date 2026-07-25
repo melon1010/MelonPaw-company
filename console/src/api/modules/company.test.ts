@@ -25,7 +25,7 @@ describe("companyApi", () => {
       display_name: "Employee",
       password: "EmployeePassword123",
       enabled: true,
-      roles: ["EMPLOYEE"],
+      roles: ["USER"],
       default_skills: ["web-search", "documents"],
     };
 

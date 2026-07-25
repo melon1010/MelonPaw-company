@@ -77,15 +77,15 @@ describe("enterprise member management", () => {
         id: "employee-user",
         username: "employee",
         enabled: true,
-        roles: ["EMPLOYEE"],
+        roles: ["USER"],
         permissions: [],
       },
     ]);
     mockListRoles.mockResolvedValue({
       roles: [
         {
-          code: "EMPLOYEE",
-          name: "Employee",
+          code: "USER",
+          name: "User",
           description: "",
           system_role: true,
           permissions: [],

@@ -124,9 +124,10 @@ public class McpController {
             }
             Map<String, Object> merged = mergeClientBody(existing, body);
             merged.put("id", resolvedClientKey);
-            manager.unregister(resolvedClientKey);
             var config = McpClientManager.McpServerConfig.fromMap(merged);
-            manager.register(config);
+            if (manager.replace(resolvedClientKey, config) == null) {
+                return ResponseEntity.notFound().build();
+            }
             reloadAgent(resolvedAgentId);
             return ResponseEntity.ok(clientInfo(resolvedAgentId, manager, config));
         }));
@@ -352,6 +353,9 @@ public class McpController {
                 log.info("MCP server registered: agent={}, id={}, name={}",
                         scope(resolvedAgentId), config.getId(), config.getName());
                 return ResponseEntity.ok(serverMap(config));
+            } catch (IllegalArgumentException e) {
+                log.warn("Rejected MCP server configuration: {}", e.getMessage());
+                throw e;
             } catch (Exception e) {
                 log.error("Failed to register MCP server", e);
                 throw new IllegalStateException("Failed to register MCP server", e);

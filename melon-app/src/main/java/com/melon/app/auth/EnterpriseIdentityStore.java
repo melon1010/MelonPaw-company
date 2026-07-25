@@ -140,13 +140,14 @@ public class EnterpriseIdentityStore {
         if (roles == null || roles.isEmpty()) {
             throw new IllegalArgumentException("At least one role is required");
         }
+        Set<String> effectiveRoles = withBaseUserRole(roles);
         try (Connection connection = open()) {
             connection.setAutoCommit(false);
             try {
-                requireRoles(connection, roles);
+                requireRoles(connection, effectiveRoles);
                 String userId = UUID.randomUUID().toString();
                 insertUser(connection, userId, username, displayName, passwordHash, enabled);
-                for (String role : roles) {
+                for (String role : effectiveRoles) {
                     insertUserRole(connection, userId, role);
                 }
                 connection.commit();
@@ -194,12 +195,13 @@ public class EnterpriseIdentityStore {
         if (roles == null || roles.isEmpty()) {
             throw new IllegalArgumentException("At least one role is required");
         }
+        Set<String> effectiveRoles = withBaseUserRole(roles);
         try (Connection connection = open()) {
             connection.setAutoCommit(false);
             try {
                 StoredUser existing = requireUser(connection, userId);
-                requireRoles(connection, roles);
-                if (existing.roles().contains("SYSTEM_ADMIN") && !roles.contains("SYSTEM_ADMIN")
+                requireRoles(connection, effectiveRoles);
+                if (existing.roles().contains("SYSTEM_ADMIN") && !effectiveRoles.contains("SYSTEM_ADMIN")
                         && countEnabledSystemAdmins(connection) <= 1) {
                     throw new IllegalArgumentException("The last enabled system administrator must keep that role");
                 }
@@ -208,7 +210,7 @@ public class EnterpriseIdentityStore {
                     statement.setString(1, userId);
                     statement.executeUpdate();
                 }
-                for (String role : roles) {
+                for (String role : effectiveRoles) {
                     insertUserRole(connection, userId, role);
                 }
                 connection.commit();
@@ -368,6 +370,11 @@ public class EnterpriseIdentityStore {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Role name is required");
         }
+        Set<String> effectivePermissions = permissions == null ? Set.of() : Set.copyOf(permissions);
+        if (!EnterprisePermissions.ASSIGNABLE_ROLE_PERMISSIONS.containsAll(effectivePermissions)) {
+            throw new IllegalArgumentException(
+                    "Custom roles may only contain configurable management permissions");
+        }
         try (Connection connection = open()) {
             connection.setAutoCommit(false);
             try {
@@ -375,7 +382,7 @@ public class EnterpriseIdentityStore {
                 if (current != null && current.systemRole()) {
                     throw new IllegalArgumentException("Built-in roles cannot be modified");
                 }
-                requirePermissions(connection, permissions);
+                requirePermissions(connection, effectivePermissions);
                 String sql = "INSERT INTO enterprise_roles (code, name, description, system_role) VALUES (?, ?, ?, 0) "
                         + "ON CONFLICT(code) DO UPDATE SET name = excluded.name, description = excluded.description";
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -389,7 +396,7 @@ public class EnterpriseIdentityStore {
                     statement.setString(1, normalized);
                     statement.executeUpdate();
                 }
-                for (String permission : permissions == null ? Set.<String>of() : permissions) {
+                for (String permission : effectivePermissions) {
                     insertRolePermission(connection, normalized, permission);
                 }
                 connection.commit();
@@ -990,11 +997,21 @@ public class EnterpriseIdentityStore {
     private void seedPermissions(Connection connection) throws SQLException {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("users:read", "Read enterprise users");
-        values.put("users:manage", "Create and manage enterprise users");
+        values.put(EnterprisePermissions.USERS_MANAGE, "Open and manage the member administration menu");
         values.put("roles:read", "Read roles and permissions");
-        values.put("roles:manage", "Create and manage custom roles");
+        values.put(EnterprisePermissions.ROLES_MANAGE, "Open and manage the role administration menu");
         values.put("projects:read", "Read assigned project spaces");
-        values.put("projects:manage", "Create and manage every project space");
+        values.put(EnterprisePermissions.PROJECTS_MANAGE, "Create and manage every project space");
+        values.put(EnterprisePermissions.MODELS_MANAGE, "Open and manage the model administration menu");
+        values.put(EnterprisePermissions.SKILL_POOL_MANAGE, "Open and manage the skill pool menu");
+        values.put(EnterprisePermissions.ENVIRONMENT_MANAGE, "Open and manage the environment variable menu");
+        values.put(EnterprisePermissions.SECURITY_MANAGE, "Open and manage the security menu");
+        values.put(EnterprisePermissions.TOKEN_USAGE_READ, "Open and read the token usage menu");
+        values.put(EnterprisePermissions.BACKUPS_MANAGE, "Open and manage the backup menu");
+        values.put(EnterprisePermissions.QUOTAS_MANAGE, "Open and manage the quota menu");
+        values.put(EnterprisePermissions.TRANSCRIPTION_MANAGE, "Open and manage the transcription menu");
+        values.put(EnterprisePermissions.DEBUG_MANAGE, "Open and use the debug menu");
+        values.put(EnterprisePermissions.PLUGINS_MANAGE, "Open and manage the plugin menu");
         values.put("agents:use", "Use published AI services and agents");
         values.put("agents:manage", "Configure and publish AI services and agents");
         values.put("approvals:decide", "Approve or reject high-risk operations");
@@ -1020,51 +1037,15 @@ public class EnterpriseIdentityStore {
 
     private void seedRoles(Connection connection) throws SQLException {
         insertRole(connection, "SYSTEM_ADMIN", "System administrator", "Full platform administration", true);
-        insertRole(connection, "SERVICE_OPERATOR", "AI service operator", "Build and operate AI services", true);
-        insertRole(connection, "APPROVER", "Approver", "Approve high-risk operations", true);
-        insertRole(connection, "EMPLOYEE", "Employee", "Use assigned enterprise AI services", true);
-        insertRole(connection, "AUDITOR", "Auditor", "Read audit and operational records", true);
-        insertRole(connection, "ORG_ADMIN", "Organization administrator",
-                "Manage enterprise identities, roles and project spaces without host or Agent access", true);
+        insertRole(connection, "USER", "User", "Use the operations center and assigned project spaces", true);
 
         for (String permission : listPermissionCodes(connection)) {
             if (!EnterprisePermissions.DATA_BREAKGLASS.equals(permission)) {
                 insertRolePermission(connection, "SYSTEM_ADMIN", permission);
             }
         }
-        insertRolePermission(connection, "SERVICE_OPERATOR", "projects:read");
-        insertRolePermission(connection, "SERVICE_OPERATOR", "agents:use");
-        insertRolePermission(connection, "SERVICE_OPERATOR", "agents:manage");
-        insertRolePermission(connection, "SERVICE_OPERATOR", "approvals:decide");
-        insertRolePermission(connection, "APPROVER", "projects:read");
-        insertRolePermission(connection, "APPROVER", "agents:use");
-        insertRolePermission(connection, "APPROVER", "approvals:decide");
-        insertRolePermission(connection, "EMPLOYEE", "projects:read");
-        insertRolePermission(connection, "EMPLOYEE", "agents:use");
-        insertRolePermission(connection, "AUDITOR", "projects:read");
-        insertRolePermission(connection, "AUDITOR", "audit:read");
-
-        for (String permission : Set.of(
-                "users:read", "users:manage", "roles:read", "roles:manage",
-                "projects:read", "projects:manage", "audit:read")) {
-            insertRolePermission(connection, "ORG_ADMIN", permission);
-        }
-
-        // Existing custom roles that could use an Agent retain the personal capabilities
-        // that were implicit before these permissions became independently assignable.
-        for (String permission : EnterprisePermissions.PERSONAL_CAPABILITIES) {
-            inheritPermission(connection, "agents:use", permission);
-        }
-    }
-
-    private void inheritPermission(Connection connection, String sourcePermission, String targetPermission)
-            throws SQLException {
-        String sql = "INSERT OR IGNORE INTO enterprise_role_permissions (role_code, permission_code) "
-                + "SELECT role_code, ? FROM enterprise_role_permissions WHERE permission_code = ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, targetPermission);
-            statement.setString(2, sourcePermission);
-            statement.executeUpdate();
+        for (String permission : EnterprisePermissions.USER_BASE_PERMISSIONS) {
+            insertRolePermission(connection, "USER", permission);
         }
     }
 
@@ -1196,6 +1177,15 @@ public class EnterpriseIdentityStore {
                 throw new IllegalArgumentException("Unknown role: " + role);
             }
         }
+    }
+
+    private Set<String> withBaseUserRole(Set<String> roles) {
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        roles.forEach(role -> normalized.add(normalizeRoleCode(role)));
+        if (!normalized.contains("SYSTEM_ADMIN")) {
+            normalized.add("USER");
+        }
+        return Set.copyOf(normalized);
     }
 
     private void requirePermissions(Connection connection, Set<String> permissions) throws SQLException {
