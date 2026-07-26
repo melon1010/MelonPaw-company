@@ -109,9 +109,7 @@ MELON_EXECUTION_SANDBOX=docker MELON_SANDBOX_IMAGE=melonpaw-company-sandbox:late
   java -jar melon-app/target/melonpaw-company-web.jar
 ```
 
-既定の HTTP ポートは `8088` です。アプリのワークスペースには `MELON_WORKSPACE_ROOT`、Java サービスがコンテナ内の場合はホスト側のパスに `MELON_SANDBOX_HOST_WORKSPACE_ROOT` を設定します。許可された Agent のサブディレクトリだけをマウントし、ルート全体はマウントしません。stdio MCP は既定で Docker に従い、`MELON_MCP_STDIO_MODE=local|docker|disabled` で制御できます。`MELON_SANDBOX_RUNTIME=runsc` は Agent Shell と stdio MCP の両方に gVisor を適用し、runtime が利用できない場合はフォールバックせず失敗します。
-
-ローカル stdio MCP プロジェクトは `MELON_MCP_IMPORT_ROOTS` 配下に置く必要があります。検証後、内容ハッシュ単位で所有 Agent の `.melon/mcp-sources` にコピーし、コンテナには `/workspace/...` のみを渡します。元のホストディレクトリは MCP コンテナへ直接マウントしません。symlink escape、複数 root、上限超過を拒否し、Node/Python 依存関係は sandbox 内で準備・キャッシュします。この変数は Java プロセスの起動環境に属するため、変更後は再起動が必要です。同等の Spring 設定は `melon.execution.mcp.import.roots` です。Java 自体を Docker で動かす場合、信頼する import root は Java コンテナへ read-only でマウントし、MCP コンテナには Agent workspace だけを渡します。画面に保存されたパスと Java から見える read-only パスが異なる場合は、`MELON_MCP_PATH_MAPPINGS` に `{ "/home/mineru/Github": "/mcp-imports" }` のような JSON 前置辞マップを設定します。最長の前置辞を採用し、保存済み MCP JSON は変更せず、変換先は必ず `MELON_MCP_IMPORT_ROOTS` 内に実在する必要があります。
+既定の HTTP ポートは `8088` です。本番実行では Agent のファイル／コマンドツールと stdio MCP を Docker で分離し、現在許可された Agent workspace だけをマウントします。実行 profile、workspace のパス投影、信頼済みローカル MCP の取り込み、gVisor、Compose の設定は [デプロイ文書](docs/DEPLOYMENT.md) を参照してください。
 
 ユーザーが存在しない場合、初回管理者は bootstrap token なしで直接作成できます。初期化エンドポイントを外部公開する場合は、起動前に `MELON_BOOTSTRAP_TOKEN` を設定するか、`MELON_GENERATE_BOOTSTRAP_TOKEN=true` を指定して `${MELON_HOME}/bootstrap.token` にトークンを生成してください。いずれかの保護を有効にした場合のみ、画面にトークン入力欄が表示されます。最初の管理者作成後、生成されたファイルは削除され、bootstrap は永久に閉じます。SQLite は `${MELON_HOME}/enterprise.db` にあり、バックアップには DB、`config.yaml`、`workspaces` を含めますが `master.key` と `bootstrap.token` は公開しません。
 
