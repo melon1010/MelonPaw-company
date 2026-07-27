@@ -50,7 +50,10 @@ public class McpToolkitContributor implements ToolkitContributor {
         McpClientManager mcpClientManager = mcpClientRegistry.forAgent(agentId);
         for (McpClientManager.McpServerConfig server : mcpClientManager.listServers()) {
             if (!server.isEnabled()) continue;
-            if (!mcpClientManager.getConnectionState(server.getId()).connected()) {
+            if (server.getTools().isEmpty()) {
+                // Legacy or newly-created configurations have no cached schema yet. Discover once,
+                // persist it, and rebuild the Agent. Configurations with cached schemas remain
+                // completely lazy and do not start a process while the toolkit is being built.
                 mcpClientManager.connectAsync(server.getId()).thenAccept(connected -> {
                     MultiAgentManager manager = multiAgentManager.getIfAvailable();
                     if (connected && manager != null && manager.getAgent(agentId) != null) {
@@ -68,6 +71,10 @@ public class McpToolkitContributor implements ToolkitContributor {
     private void registerTools(String agentId, McpClientManager.McpServerConfig server,
                                McpClientManager mcpClientManager, Toolkit toolkit) {
         synchronized (toolkit) {
+            String groupName = groupName(server.getId());
+            if (toolkit.getToolGroup(groupName) == null) {
+                toolkit.createToolGroup(groupName, groupDescription(server), false);
+            }
             for (McpClientManager.McpTool tool : mcpClientManager.listTools(server.getId())) {
                 if (server.getToolWhitelist() != null && !server.getToolWhitelist().contains(tool.getName())) {
                     continue;
@@ -77,11 +84,39 @@ public class McpToolkitContributor implements ToolkitContributor {
                 if (toolkit.getToolNames().contains(toolName)) {
                     toolName = safeToolName("mcp_" + server.getId() + "_" + tool.getName());
                 }
-                toolkit.registerAgentTool(new McpBridgeTool(agentId, server.getId(), server.getName(), tool, toolName,
-                        mcpClientManager, accessPolicyService));
+                toolkit.registration()
+                        .agentTool(new McpBridgeTool(agentId, server.getId(), server.getName(), tool,
+                                toolName, mcpClientManager, accessPolicyService))
+                        .group(groupName)
+                        .apply();
                 log.info("Registered MCP tool into agent toolkit: server={}, tool={}", server.getId(), toolName);
             }
         }
+    }
+
+    private String groupName(String serverId) {
+        String id = serverId == null ? "server" : serverId;
+        return safeToolName("mcp_" + id) + "_" + Integer.toUnsignedString(id.hashCode(), 36);
+    }
+
+    private String groupDescription(McpClientManager.McpServerConfig server) {
+        StringBuilder description = new StringBuilder("Tools provided by MCP server '")
+                .append(server.getName() == null || server.getName().isBlank()
+                        ? server.getId() : server.getName())
+                .append("'");
+        if (server.getDescription() != null && !server.getDescription().isBlank()) {
+            description.append(": ").append(server.getDescription().strip());
+        } else {
+            List<String> capabilities = server.getTools().stream()
+                    .map(McpClientManager.McpTool::getName)
+                    .filter(name -> name != null && !name.isBlank())
+                    .limit(8)
+                    .toList();
+            if (!capabilities.isEmpty()) {
+                description.append(". Capabilities: ").append(String.join(", ", capabilities));
+            }
+        }
+        return description.toString();
     }
 
     private String safeToolName(String name) {
@@ -104,7 +139,9 @@ public class McpToolkitContributor implements ToolkitContributor {
                     .description(description(serverName, tool))
                     .inputSchema(schema(tool))
                     .readOnly(tool.isReadOnly())
-                    .concurrencySafe(false)
+                    // AgentScope may run tools from different MCP servers concurrently. The
+                    // manager still serializes requests within each individual stdio/HTTP session.
+                    .concurrencySafe(true)
                     .mcp(serverName != null && !serverName.isBlank() ? serverName : serverId));
             this.agentId = agentId;
             this.serverId = serverId;

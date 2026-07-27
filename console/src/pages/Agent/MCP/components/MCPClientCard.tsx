@@ -53,6 +53,7 @@ export const MCPClientCard = React.memo(function MCPClientCard({
   const [accessModalOpen, setAccessModalOpen] = useState(false);
   const [editedJson, setEditedJson] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
   const [oauthModalOpen, setOauthModalOpen] = useState(false);
   const [oauthClientId, setOauthClientId] = useState(
     client.oauth_status?.client_id || "",
@@ -83,6 +84,8 @@ export const MCPClientCard = React.memo(function MCPClientCard({
     ? "connected"
     : client.status === "connecting" || client.status === "reconnecting"
     ? client.status
+    : client.status === "idle"
+    ? "idle"
     : client.error
     ? "error"
     : "disconnected";
@@ -110,17 +113,29 @@ export const MCPClientCard = React.memo(function MCPClientCard({
     setJsonModalOpen(true);
   };
 
+  const closeJsonModal = () => {
+    if (savingConfig) return;
+    setJsonModalOpen(false);
+  };
+
   const handleSaveJson = async () => {
+    if (savingConfig) return;
+
     try {
       const parsed = JSON.parse(editedJson);
       const updates = { ...parsed };
       delete updates.key;
 
       // Send all updates directly to backend, let backend handle env masking check
-      const success = await onUpdate(client.key, updates);
-      if (success) {
-        setJsonModalOpen(false);
-        setIsEditing(false);
+      setSavingConfig(true);
+      try {
+        const success = await onUpdate(client.key, updates);
+        if (success) {
+          setJsonModalOpen(false);
+          setIsEditing(false);
+        }
+      } finally {
+        setSavingConfig(false);
       }
     } catch {
       alert("Invalid JSON format");
@@ -276,15 +291,24 @@ export const MCPClientCard = React.memo(function MCPClientCard({
       <Modal
         title={`${client.name} - Configuration`}
         open={jsonModalOpen}
-        onCancel={() => setJsonModalOpen(false)}
+        onCancel={closeJsonModal}
+        closable={!savingConfig}
+        maskClosable={!savingConfig}
+        keyboard={!savingConfig}
         footer={
           <div className={styles.modalFooter}>
-            <Button onClick={() => setJsonModalOpen(false)}>
+            <Button onClick={closeJsonModal} disabled={savingConfig}>
               {t("common.cancel")}
             </Button>
             {isEditing ? (
-              <Button type="primary" onClick={handleSaveJson}>
-                {t("common.save")}
+              <Button
+                type="primary"
+                loading={savingConfig}
+                onClick={handleSaveJson}
+              >
+                {savingConfig
+                  ? t("mcp.savingAndValidating")
+                  : t("common.save")}
               </Button>
             ) : (
               <Button type="primary" onClick={() => setIsEditing(true)}>
@@ -300,6 +324,7 @@ export const MCPClientCard = React.memo(function MCPClientCard({
           <Input.TextArea
             value={editedJson}
             onChange={(e) => setEditedJson(e.target.value)}
+            disabled={savingConfig}
             autoSize={{ minRows: 15, maxRows: 25 }}
             className={styles.jsonTextArea}
           />

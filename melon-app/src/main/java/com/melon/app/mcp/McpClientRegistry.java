@@ -1,7 +1,9 @@
 package com.melon.app.mcp;
 
+import com.melon.app.config.McpExecutionProperties;
 import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.config.ConfigManager;
+import com.melon.core.security.OutboundAddressGuard;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -19,27 +21,36 @@ public class McpClientRegistry {
     private final McpClientManager defaultManager;
     private final StdioMcpProcessLauncher stdioProcessLauncher;
     private final ScheduledExecutorService lifecycle;
+    private final McpStdioSessionPool stdioSessionPool;
+    /** Scoped managers share the same Spring-configured egress policy as the default manager. */
+    private final OutboundAddressGuard egressGuard;
     private final Map<String, McpClientManager> scopedManagers = new ConcurrentHashMap<>();
 
     public McpClientRegistry(ConfigManager configManager, McpClientManager defaultManager) {
         this(configManager, defaultManager, new StdioMcpProcessLauncher(),
-                (ScheduledExecutorService) null);
+                (ScheduledExecutorService) null, OutboundAddressGuard.strict(),
+                McpStdioSessionPool.standalone());
     }
 
     @Autowired
     public McpClientRegistry(ConfigManager configManager, McpClientManager defaultManager,
                              StdioMcpProcessLauncher stdioProcessLauncher,
-                             RuntimeExecutors executors) {
-        this(configManager, defaultManager, stdioProcessLauncher, executors.mcpLifecycle());
+                             RuntimeExecutors executors, McpExecutionProperties properties,
+                             McpStdioSessionPool stdioSessionPool) {
+        this(configManager, defaultManager, stdioProcessLauncher, executors.mcpLifecycle(),
+                McpClientManager.egressGuardFrom(properties), stdioSessionPool);
     }
 
     private McpClientRegistry(ConfigManager configManager, McpClientManager defaultManager,
                               StdioMcpProcessLauncher stdioProcessLauncher,
-                              ScheduledExecutorService lifecycle) {
+                              ScheduledExecutorService lifecycle, OutboundAddressGuard egressGuard,
+                              McpStdioSessionPool stdioSessionPool) {
         this.configManager = configManager;
         this.defaultManager = defaultManager;
         this.stdioProcessLauncher = stdioProcessLauncher;
         this.lifecycle = lifecycle;
+        this.egressGuard = egressGuard;
+        this.stdioSessionPool = stdioSessionPool;
     }
 
     public McpClientManager forAgent(String agentId) {
@@ -57,9 +68,11 @@ public class McpClientRegistry {
                 .resolve(".melon")
                 .resolve("mcp-clients.json");
         McpClientManager manager = lifecycle == null
-                ? new McpClientManager(configManager, configFile, workspaceDir, stdioProcessLauncher)
+                ? new McpClientManager(configManager, configFile, workspaceDir,
+                        stdioProcessLauncher, egressGuard, agentId, stdioSessionPool)
                 : new McpClientManager(configManager, configFile, workspaceDir,
-                        stdioProcessLauncher, lifecycle, false);
+                        stdioProcessLauncher, lifecycle, false, egressGuard, agentId,
+                        stdioSessionPool);
         manager.init();
         return manager;
     }

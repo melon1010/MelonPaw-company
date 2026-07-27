@@ -431,6 +431,7 @@
     "createError": "Не удалось создать MCP-клиент",
     "updateSuccess": "Конфигурация MCP обновлена; выполняется переподключение",
     "updateError": "Не удалось обновить MCP-клиент",
+    "savingAndValidating": "Проверка подключения...",
     "enableSuccess": "MCP-клиент успешно включён",
     "disableSuccess": "MCP-клиент успешно отключён",
     "toggleError": "Не удалось переключить статус MCP-клиента",

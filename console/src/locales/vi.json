@@ -531,6 +531,7 @@
     "createError": "Tạo MCP client thất bại",
     "updateSuccess": "Đã cập nhật cấu hình MCP; đang kết nối lại",
     "updateError": "Cập nhật MCP client thất bại",
+    "savingAndValidating": "Đang kiểm tra kết nối...",
     "enableSuccess": "Bật MCP client thành công",
     "disableSuccess": "Tắt MCP client thành công",
     "toggleError": "Thay đổi trạng thái thất bại",

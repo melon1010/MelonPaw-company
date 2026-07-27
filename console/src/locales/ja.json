@@ -431,6 +431,7 @@
     "createError": "MCPクライアントの作成に失敗しました",
     "updateSuccess": "MCP設定を更新しました。再接続しています",
     "updateError": "MCPクライアントの更新に失敗しました",
+    "savingAndValidating": "接続を確認中...",
     "enableSuccess": "MCPクライアントを有効化しました",
     "disableSuccess": "MCPクライアントを無効化しました",
     "toggleError": "MCPクライアントのステータス変更に失敗しました",

@@ -1,8 +1,9 @@
 package com.melon.tools.web;
 
+import com.melon.core.security.OutboundAddressGuard;
+
 import java.net.IDN;
 import java.net.Inet4Address;
-import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -128,40 +129,8 @@ final class WebAccessPolicy {
     }
 
     static boolean isPublicAddress(InetAddress address) {
-        if (address.isAnyLocalAddress() || address.isLoopbackAddress()
-                || address.isLinkLocalAddress() || address.isSiteLocalAddress()
-                || address.isMulticastAddress()) {
-            return false;
-        }
-        byte[] bytes = address.getAddress();
-        if (address instanceof Inet4Address && bytes.length == 4) {
-            int a = bytes[0] & 0xff;
-            int b = bytes[1] & 0xff;
-            int c = bytes[2] & 0xff;
-            return a != 0
-                    && a != 10
-                    && a != 127
-                    && !(a == 100 && b >= 64 && b <= 127)
-                    && !(a == 169 && b == 254)
-                    && !(a == 172 && b >= 16 && b <= 31)
-                    && !(a == 192 && b == 0 && c == 0)
-                    && !(a == 192 && b == 0 && c == 2)
-                    && !(a == 192 && b == 88 && c == 99)
-                    && !(a == 192 && b == 168)
-                    && !(a == 198 && (b == 18 || b == 19))
-                    && !(a == 198 && b == 51 && c == 100)
-                    && !(a == 203 && b == 0 && c == 113)
-                    && a < 224;
-        }
-        if (address instanceof Inet6Address && bytes.length == 16) {
-            int first = bytes[0] & 0xff;
-            int second = bytes[1] & 0xff;
-            boolean uniqueLocal = (first & 0xfe) == 0xfc;
-            boolean documentation = first == 0x20 && second == 0x01
-                    && (bytes[2] & 0xff) == 0x0d && (bytes[3] & 0xff) == 0xb8;
-            return !uniqueLocal && !documentation;
-        }
-        return false;
+        // Single source of truth lives in melon-core so web tools and MCP share identical judgment.
+        return OutboundAddressGuard.isPublicAddress(address);
     }
 
     private static String lower(String value) {

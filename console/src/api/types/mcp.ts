@@ -36,6 +36,7 @@ export interface MCPClientInfo {
   /** Live connection lifecycle state */
   status?:
     | "connected"
+    | "idle"
     | "connecting"
     | "reconnecting"
     | "disconnected"

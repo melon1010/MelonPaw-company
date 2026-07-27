@@ -1,7 +1,10 @@
 package com.melon.app.mcp;
 
+import com.melon.app.config.McpExecutionProperties;
 import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.config.ConfigManager;
+import com.melon.core.security.GuardedDns;
+import com.melon.core.security.OutboundAddressGuard;
 import com.melon.core.util.ExecutorUtils;
 import com.melon.core.util.JsonUtils;
 import com.melon.core.util.NamedThreadFactory;
@@ -12,12 +15,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+
 import java.io.*;
+import java.net.Proxy;
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -41,10 +50,32 @@ import java.util.concurrent.atomic.AtomicLong;
 public class McpClientManager {
 
     private static final Logger log = LoggerFactory.getLogger(McpClientManager.class);
-    private static final HttpClient HTTP = HttpClient.newBuilder()
+    /**
+     * Shared OkHttp template. Per-manager clients are derived from this via {@link
+     * OkHttpClient#newBuilder()} so they reuse its connection pool and dispatcher while installing a
+     * per-manager {@link GuardedDns}. All SSRF-relevant hardening lives here:
+     * <ul>
+     *   <li>{@code followRedirects(false)} + {@code followSslRedirects(false)}: a 3xx must not be
+     *       auto-followed to a private/metadata address after the DNS check passed; we surface it.
+     *   <li>{@code retryOnConnectionFailure(false)}: no silent re-resolution/reconnect that could
+     *       land on a different (rebound) address than the one just validated.
+     *   <li>{@code protocols(HTTP_1_1)}: disables HTTP/2, removing cross-host connection coalescing
+     *       from the threat model (a coalesced h2 connection could serve a different authority).
+     *   <li>{@code proxy(NO_PROXY)}: a proxy would resolve the target host itself, bypassing the
+     *       GuardedDns pin; force direct connections so our DNS is authoritative.
+     * </ul>
+     * Per-request read/write timeouts are applied by deriving a call-scoped client (see sendOnce).
+     */
+    private static final OkHttpClient HTTP_BASE = new OkHttpClient.Builder()
             .connectTimeout(Duration.ofSeconds(15))
-            .followRedirects(HttpClient.Redirect.NORMAL)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .retryOnConnectionFailure(false)
+            .protocols(List.of(Protocol.HTTP_1_1))
+            .proxy(Proxy.NO_PROXY)
             .build();
+    private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json");
+    private static final MediaType FORM_MEDIA_TYPE = MediaType.parse("application/x-www-form-urlencoded");
     private static final int MAX_RECONNECT_ATTEMPTS = 3;
     private static final long LIVENESS_INTERVAL_SECONDS = 30;
     private static final int TOOL_RESULT_RETENTION_DAYS = 7;
@@ -68,37 +99,116 @@ public class McpClientManager {
     private final Path persistedConfigFile;
     private final Path workspaceDir;
     private final StdioMcpProcessLauncher stdioProcessLauncher;
+    private final String workspaceScope;
+    private final McpStdioSessionPool stdioSessionPool;
+    /**
+     * SSRF guard for remote (HTTP/SSE) MCP endpoints and OAuth token URLs. Link-local (incl. the
+     * 169.254.169.254 metadata endpoint), any-local and multicast are always blocked; loopback and
+     * private egress are denied by default and opted into via melon.execution.mcp.egress.*
+     * (MELON_MCP_EGRESS_ALLOW_LOOPBACK / MELON_MCP_EGRESS_ALLOW_PRIVATE / MELON_MCP_EGRESS_ALLOWLIST).
+     */
+    private final OutboundAddressGuard egressGuard;
+    /**
+     * OkHttp client for remote MCP + OAuth traffic, pinned to this manager's {@link #egressGuard} via
+     * a {@link GuardedDns}: the addresses the guard validates are the exact addresses OkHttp connects
+     * to, closing the DNS-rebinding TOCTOU that a hostname re-resolved at connect time would leave
+     * open. TLS SNI and certificate hostname verification still use the request's real hostname.
+     */
+    private final OkHttpClient httpClient;
     private volatile boolean shuttingDown;
 
     @Autowired
     public McpClientManager(ConfigManager configManager, StdioMcpProcessLauncher stdioProcessLauncher,
-                            RuntimeExecutors executors) {
-        this(configManager, null, null, stdioProcessLauncher, executors.mcpLifecycle(), false);
+                            RuntimeExecutors executors, McpExecutionProperties properties,
+                            McpStdioSessionPool stdioSessionPool) {
+        this(configManager, null, null, stdioProcessLauncher, executors.mcpLifecycle(), false,
+                egressGuardFrom(properties), "default", stdioSessionPool);
     }
 
     public McpClientManager(ConfigManager configManager) {
-        this(configManager, null, null, new StdioMcpProcessLauncher(), standaloneLifecycle(), true);
+        this(configManager, OutboundAddressGuard.strict());
+    }
+
+    /** Standalone manager with a caller-supplied egress policy (tests, embedded use). */
+    public McpClientManager(ConfigManager configManager, OutboundAddressGuard egressGuard) {
+        this(configManager, null, null, new StdioMcpProcessLauncher(), standaloneLifecycle(), true, egressGuard);
     }
 
     /** Creates an isolated MCP registry backed by the supplied Agent-local file. */
     public McpClientManager(ConfigManager configManager, Path persistedConfigFile) {
-        this(configManager, persistedConfigFile, null, new StdioMcpProcessLauncher(), standaloneLifecycle(), true);
+        this(configManager, persistedConfigFile, null, new StdioMcpProcessLauncher(), standaloneLifecycle(), true,
+                OutboundAddressGuard.strict());
     }
 
     McpClientManager(ConfigManager configManager, Path persistedConfigFile, Path workspaceDir,
                      StdioMcpProcessLauncher stdioProcessLauncher) {
-        this(configManager, persistedConfigFile, workspaceDir, stdioProcessLauncher, standaloneLifecycle(), true);
+        this(configManager, persistedConfigFile, workspaceDir, stdioProcessLauncher,
+                OutboundAddressGuard.strict());
+    }
+
+    McpClientManager(ConfigManager configManager, Path persistedConfigFile, Path workspaceDir,
+                     StdioMcpProcessLauncher stdioProcessLauncher, OutboundAddressGuard egressGuard) {
+        this(configManager, persistedConfigFile, workspaceDir, stdioProcessLauncher, standaloneLifecycle(), true,
+                egressGuard);
+    }
+
+    McpClientManager(ConfigManager configManager, Path persistedConfigFile, Path workspaceDir,
+                     StdioMcpProcessLauncher stdioProcessLauncher, OutboundAddressGuard egressGuard,
+                     String workspaceScope, McpStdioSessionPool stdioSessionPool) {
+        this(configManager, persistedConfigFile, workspaceDir, stdioProcessLauncher,
+                standaloneLifecycle(), true, egressGuard, workspaceScope, stdioSessionPool);
     }
 
     McpClientManager(ConfigManager configManager, Path persistedConfigFile, Path workspaceDir,
                      StdioMcpProcessLauncher stdioProcessLauncher,
-                     ScheduledExecutorService lifecycle, boolean ownsLifecycle) {
+                     ScheduledExecutorService lifecycle, boolean ownsLifecycle,
+                     OutboundAddressGuard egressGuard) {
+        this(configManager, persistedConfigFile, workspaceDir, stdioProcessLauncher, lifecycle,
+                ownsLifecycle, egressGuard, standaloneScope(workspaceDir, persistedConfigFile),
+                McpStdioSessionPool.standalone());
+    }
+
+    McpClientManager(ConfigManager configManager, Path persistedConfigFile, Path workspaceDir,
+                     StdioMcpProcessLauncher stdioProcessLauncher,
+                     ScheduledExecutorService lifecycle, boolean ownsLifecycle,
+                     OutboundAddressGuard egressGuard, String workspaceScope,
+                     McpStdioSessionPool stdioSessionPool) {
         this.configManager = configManager;
         this.persistedConfigFile = persistedConfigFile;
         this.workspaceDir = workspaceDir == null ? null : workspaceDir.toAbsolutePath().normalize();
         this.stdioProcessLauncher = Objects.requireNonNull(stdioProcessLauncher);
+        this.workspaceScope = requireScope(workspaceScope);
+        this.stdioSessionPool = Objects.requireNonNull(stdioSessionPool);
         this.lifecycle = Objects.requireNonNull(lifecycle);
         this.ownsLifecycle = ownsLifecycle;
+        this.egressGuard = Objects.requireNonNull(egressGuard);
+        // Derive from the shared template (reuses pool/dispatcher) but pin DNS to THIS manager's
+        // guard, so validation and connection use the same addresses. Must run after egressGuard is
+        // assigned above — a field initializer would capture a null guard.
+        this.httpClient = HTTP_BASE.newBuilder()
+                .dns(new GuardedDns(egressGuard))
+                .build();
+    }
+
+    private static String standaloneScope(Path workspaceDir, Path persistedConfigFile) {
+        Path source = workspaceDir != null ? workspaceDir : persistedConfigFile;
+        return source == null ? "default" : "standalone-" + Integer.toUnsignedString(
+                source.toAbsolutePath().normalize().toString().hashCode(), 36);
+    }
+
+    private static String requireScope(String value) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException("MCP workspace scope is required");
+        return value;
+    }
+
+    /** Builds the shared MCP egress guard from Spring-bound execution properties. */
+    public static OutboundAddressGuard egressGuardFrom(McpExecutionProperties properties) {
+        McpExecutionProperties.Egress egress = properties.getEgress();
+        List<String> allowlist = Arrays.stream(egress.getAllowlist().split(","))
+                .map(String::trim)
+                .filter(host -> !host.isEmpty())
+                .toList();
+        return new OutboundAddressGuard(egress.isAllowLoopback(), egress.isAllowPrivate(), allowlist);
     }
 
     @PostConstruct
@@ -106,14 +216,10 @@ public class McpClientManager {
         if (!initialized.compareAndSet(false, true)) return;
         loadPersisted();
         cleanupSpilledResults();
-        for (McpServerConfig config : servers.values()) {
-            if (config.isEnabled()) {
-                connectAsync(config.getId());
-            }
-        }
         livenessTask = lifecycle.scheduleWithFixedDelay(this::checkLiveness,
                 LIVENESS_INTERVAL_SECONDS, LIVENESS_INTERVAL_SECONDS, TimeUnit.SECONDS);
-        log.info("McpClientManager initialized");
+        log.info("McpClientManager initialized with lazy connections: scope={}, servers={}",
+                workspaceScope, servers.size());
     }
 
     @PreDestroy
@@ -152,10 +258,10 @@ public class McpClientManager {
         }
         retryableConnectionFailures.remove(config.getId());
         connectionStates.put(config.getId(), state(config.getId(), false, null,
-                config.isEnabled() ? "DISCONNECTED" : "DISABLED", null));
+                disconnectedStatus(config), null));
         persist();
 
-        if (config.isEnabled()) {
+        if (config.isEnabled() && config.getTools().isEmpty()) {
             connectAsync(config.getId());
         }
         log.info("MCP server registered: id={}, name={}, transport={}",
@@ -164,8 +270,10 @@ public class McpClientManager {
     }
 
     /**
-     * Replaces an existing definition only after the new stdio artifact and runtime are valid.
-     * A failed update leaves the persisted configuration and live session untouched.
+     * Replaces an existing definition only after the replacement passes validation: stdio
+     * artifact/runtime checks, or the full egress policy (structure + DNS) for HTTP transports
+     * and any embedded OAuth token URL. Validation runs BEFORE the old session is disconnected,
+     * so a rejected replacement leaves the persisted configuration and live connection untouched.
      */
     public McpServerConfig replace(String id, McpServerConfig replacement) {
         if (id == null || id.isBlank() || !servers.containsKey(id)) return null;
@@ -178,10 +286,10 @@ public class McpClientManager {
             retryableConnectionFailures.remove(id);
             restartCounts.remove(id);
             connectionStates.put(id, state(id, false, null,
-                    replacement.isEnabled() ? "DISCONNECTED" : "DISABLED", null));
+                    disconnectedStatus(replacement), null));
             persist();
         }
-        if (replacement.isEnabled()) connectAsync(id);
+        if (replacement.isEnabled() && replacement.getTools().isEmpty()) connectAsync(id);
         log.info("MCP server replaced: id={}, name={}, transport={}",
                 id, replacement.getName(), replacement.getTransport());
         return replacement;
@@ -199,12 +307,48 @@ public class McpClientManager {
     }
 
     private void prepareServerConfig(McpServerConfig config) {
-        if (!"stdio".equals(config.getTransport())) return;
-        try {
-            stdioProcessLauncher.validateAndPrepare(config, workspaceDir);
-        } catch (IOException | RuntimeException e) {
-            throw new IllegalArgumentException("Invalid stdio MCP configuration: "
-                    + connectionError(e), e);
+        if (isHttpTransport(config.getTransport())) {
+            // Full egress policy (structure + DNS) runs BEFORE the config is persisted: bad
+            // schemes, credentials, blocked IP literals AND hostnames that resolve to blocked or
+            // no addresses are rejected at save time instead of "created OK" turning into an
+            // async ERROR. The same check re-runs at connect time and before every request, so a
+            // later DNS change cannot ride on a stale save-time verdict.
+            try {
+                egressGuard.requireAllowedUrl(config.getUrl());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Invalid remote MCP configuration: "
+                        + e.getMessage(), e);
+            }
+        } else if ("stdio".equals(config.getTransport())) {
+            try {
+                stdioProcessLauncher.validateAndPrepare(config, workspaceDir);
+            } catch (IOException | RuntimeException e) {
+                throw new IllegalArgumentException("Invalid stdio MCP configuration: "
+                        + connectionError(e), e);
+            }
+        }
+        // OAuth embedded in a create/update body gets the SAME save-time policy as the MCP
+        // endpoint. Previously a blocked or malformed token_url persisted fine and only failed at
+        // the first token fetch; the dedicated configureOAuth() path already validates eagerly.
+        OAuthConfig oauth = config.getOAuth();
+        if (oauth != null && oauth.isEnabled()) {
+            if (!notBlank(oauth.getTokenUrl())) {
+                throw new IllegalArgumentException("Invalid OAuth configuration: token_url is required");
+            }
+            try {
+                egressGuard.requireAllowedUrl(oauth.getTokenUrl());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Invalid OAuth token_url: "
+                        + e.getMessage(), e);
+            }
+            if (!"client_credentials".equals(oauth.getGrantType())) {
+                throw new IllegalArgumentException(
+                        "Invalid OAuth configuration: only client_credentials is supported");
+            }
+            if (!notBlank(oauth.getClientId()) || !notBlank(oauth.getClientSecret())) {
+                throw new IllegalArgumentException(
+                        "Invalid OAuth configuration: client_id and client_secret are required");
+            }
         }
     }
 
@@ -252,9 +396,15 @@ public class McpClientManager {
     public boolean setEnabled(String id, boolean enabled) {
         McpServerConfig config = servers.get(id);
         if (config == null) return false;
+        // Legacy files and manually edited state may predate current validation. Revalidate before
+        // changing or persisting the flag so the toggle endpoint cannot return success for a
+        // configuration that is already known to be unusable or forbidden.
+        if (enabled) prepareServerConfig(config);
         config.setEnabled(enabled);
-        if (enabled) {
+        if (enabled && config.getTools().isEmpty()) {
             connectAsync(id);
+        } else if (enabled) {
+            connectionStates.put(id, state(id, false, null, disconnectedStatus(config), null));
         } else {
             disconnect(id);
         }
@@ -318,24 +468,16 @@ public class McpClientManager {
         closeSessions(id);
         retryableConnectionFailures.remove(id);
         McpServerConfig config = servers.get(id);
-        connectionStates.put(id, state(id, false, null,
-                config != null && !config.isEnabled() ? "DISABLED" : "DISCONNECTED", null));
+        connectionStates.put(id, state(id, false, null, disconnectedStatus(config), null));
     }
 
-    /**
-     * 热重载: 断开所有服务器, 重新连接所有已启用的服务器.
-     */
+    /** Disconnects live sessions. Enabled servers reconnect lazily on their next tool call. */
     public void reload() {
         log.info("Hot-reloading MCP servers: {} total", servers.size());
         for (String id : servers.keySet()) {
             disconnect(id);
         }
-        for (McpServerConfig config : servers.values()) {
-            if (config.isEnabled()) {
-                connectAsync(config.getId());
-            }
-        }
-        log.info("MCP servers reloaded");
+        log.info("MCP servers disconnected and ready for lazy reconnect");
     }
 
     /**
@@ -371,9 +513,8 @@ public class McpClientManager {
         if (config == null) {
             return Map.of("error", "MCP server not found: " + id);
         }
-        ConnectionState state = connectionStates.get(id);
-        if (state == null || !state.connected()) {
-            if (!connect(id)) return Map.of("error", "MCP server not connected: " + id);
+        if (!config.isEnabled()) {
+            return Map.of("error", "MCP server is disabled: " + id);
         }
 
         McpTool tool = config.getTools().stream()
@@ -390,16 +531,9 @@ public class McpClientManager {
         log.info("Calling MCP tool: server={}, tool={}, args={}", id, toolName, args != null ? args.size() : 0);
 
         if ("stdio".equals(config.getTransport())) {
-            StdioSession session = stdioSessions.get(id);
-            if (session == null || !session.isAlive()) {
-                if (!connect(id)) {
-                    return Map.of("error", "MCP server not connected: " + id);
-                }
-                session = stdioSessions.get(id);
-            }
-            try {
+            try (StdioInvocation invocation = acquireStdioInvocation(config)) {
                 return governToolResult(config, toolName,
-                        session.callTool(toolName, args == null ? Map.of() : args,
+                        invocation.session().callTool(toolName, args == null ? Map.of() : args,
                                 config.timeoutSeconds(toolName)));
             } catch (Exception e) {
                 log.error("MCP tool call failed: server={}, tool={}", id, toolName, e);
@@ -408,6 +542,10 @@ public class McpClientManager {
             }
         }
 
+        ConnectionState state = connectionStates.get(id);
+        if (state == null || !state.connected()) {
+            if (!connect(id)) return Map.of("error", "MCP server not connected: " + id);
+        }
         HttpSession session = httpSessions.get(id);
         if (session == null) {
             if (!connect(id)) {
@@ -426,25 +564,21 @@ public class McpClientManager {
         }
     }
 
-    /**
-     * 获取所有已连接服务器的全部工具.
-     */
+    /** Returns cached tools for enabled servers without forcing their runtime processes to start. */
     public List<Map<String, Object>> listAllTools() {
         List<Map<String, Object>> all = new ArrayList<>();
         for (McpServerConfig config : servers.values()) {
-            ConnectionState state = connectionStates.get(config.getId());
-            if (state != null && state.connected()) {
-                for (McpTool tool : config.getTools()) {
-                    if (config.getToolWhitelist() != null && !config.getToolWhitelist().contains(tool.getName())) {
-                        continue;
-                    }
-                    all.add(Map.of(
-                            "server_id", config.getId(),
-                            "server_name", config.getName(),
-                            "tool_name", tool.getName(),
-                            "description", tool.getDescription() != null ? tool.getDescription() : ""
-                    ));
+            if (!config.isEnabled()) continue;
+            for (McpTool tool : config.getTools()) {
+                if (config.getToolWhitelist() != null && !config.getToolWhitelist().contains(tool.getName())) {
+                    continue;
                 }
+                all.add(Map.of(
+                        "server_id", config.getId(),
+                        "server_name", config.getName(),
+                        "tool_name", tool.getName(),
+                        "description", tool.getDescription() != null ? tool.getDescription() : ""
+                ));
             }
         }
         return all;
@@ -522,7 +656,49 @@ public class McpClientManager {
 
     // ======================== Internal ========================
 
+    private StdioInvocation acquireStdioInvocation(McpServerConfig config) throws IOException {
+        String id = config.getId();
+        McpStdioSessionPool.SessionKey key = stdioSessionPool.key(workspaceScope, id);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            synchronized (connectionLocks.computeIfAbsent(id, ignored -> new Object())) {
+                if (!isSessionHealthy(config) && !connectNow(config, false)) {
+                    String detail = getConnectionState(id).error();
+                    throw new IOException(detail == null || detail.isBlank()
+                            ? "MCP server not connected: " + id : detail);
+                }
+                McpStdioSessionPool.UseLease lease = stdioSessionPool.tryAcquireUse(key, true);
+                StdioSession session = stdioSessions.get(id);
+                if (lease != null && session != null && session.isAlive()) {
+                    return new StdioInvocation(session, lease);
+                }
+                if (lease != null) lease.close();
+            }
+            Thread.yield();
+        }
+        throw new IOException("MCP stdio session was reclaimed while acquiring it: " + id);
+    }
+
     private void attemptConnection(String id, int attempt, CompletableFuture<Boolean> result) {
+        try {
+            attemptConnectionInternal(id, attempt, result);
+        } catch (VirtualMachineError fatal) {
+            result.completeExceptionally(fatal);
+            throw fatal;
+        } catch (ThreadDeath fatal) {
+            result.completeExceptionally(fatal);
+            throw fatal;
+        } catch (Throwable failure) {
+            // Executor task boundaries must settle the public future even for linkage/classpath
+            // failures. Otherwise callers and the UI remain in CONNECTING forever.
+            closeSessions(id);
+            retryableConnectionFailures.put(id, false);
+            connectionStates.put(id, state(id, false, connectionError(failure), "ERROR", null));
+            log.error("Unexpected MCP connection task failure: id={}", id, failure);
+            result.completeExceptionally(failure);
+        }
+    }
+
+    private void attemptConnectionInternal(String id, int attempt, CompletableFuture<Boolean> result) {
         if (result.isDone() || shuttingDown) return;
         McpServerConfig config = servers.get(id);
         if (config == null || !config.isEnabled()) {
@@ -570,21 +746,34 @@ public class McpClientManager {
             if ("stdio".equals(config.getTransport())) {
                 log.info("  command: {}, args={}", config.getCommand(),
                         config.getArgs() == null ? 0 : config.getArgs().size());
-                StdioSession session = StdioSession.start(config, stdioProcessLauncher, workspaceDir);
-                try {
-                    List<McpTool> tools = session.listTools(config.getStartupTimeoutSeconds()).stream()
-                            .map(McpTool::fromMap).toList();
-                    if (shuttingDown || !config.isEnabled() || servers.get(id) != config) {
+                McpStdioSessionPool.SessionKey key = stdioSessionPool.key(workspaceScope, id);
+                try (McpStdioSessionPool.Reservation reservation = stdioSessionPool.reserve(key)) {
+                    StdioSession session = StdioSession.start(config, stdioProcessLauncher, workspaceDir);
+                    try {
+                        List<McpTool> tools = session.listTools(config.getStartupTimeoutSeconds()).stream()
+                                .map(McpTool::fromMap).toList();
+                        if (shuttingDown || !config.isEnabled() || servers.get(id) != config) {
+                            session.close();
+                            return false;
+                        }
+                        stdioSessions.put(id, session);
+                        try {
+                            reservation.activate(() -> evictClaimedStdioSession(
+                                    id, key, "capacity pressure"));
+                        } catch (RuntimeException e) {
+                            stdioSessions.remove(id, session);
+                            throw e;
+                        }
+                        config.setTools(new ArrayList<>(tools));
+                    } catch (Exception e) {
                         session.close();
-                        return false;
+                        throw e;
                     }
-                    stdioSessions.put(id, session);
-                    config.setTools(new ArrayList<>(tools));
-                } catch (Exception e) {
-                    session.close();
-                    throw e;
                 }
             } else if (isHttpTransport(config.getTransport())) {
+                // SSRF gate: full check (structure + DNS) at connect time. sendOnce re-resolves
+                // before every request to narrow DNS-rebinding windows.
+                egressGuard.requireAllowedUrl(config.getUrl());
                 HttpSession session = new HttpSession(config);
                 session.initialize(config.getStartupTimeoutSeconds());
                 List<McpTool> tools = session.listTools(config.getStartupTimeoutSeconds()).stream()
@@ -620,8 +809,17 @@ public class McpClientManager {
                 int timeout = Math.min(config.getStartupTimeoutSeconds(), 10);
                 StdioSession stdio = stdioSessions.get(id);
                 if (stdio != null) {
-                    if (!stdio.isAlive()) throw new EOFException("MCP stdio process exited");
-                    stdio.ping(timeout);
+                    McpStdioSessionPool.SessionKey key = stdioSessionPool.key(workspaceScope, id);
+                    if (stdioSessionPool.claimIfExpired(key)) {
+                        evictClaimedStdioSession(id, key, "idle timeout");
+                        continue;
+                    }
+                    try (McpStdioSessionPool.UseLease lease =
+                                 stdioSessionPool.tryAcquireUse(key, false)) {
+                        if (lease == null) continue;
+                        if (!stdio.isAlive()) throw new EOFException("MCP stdio process exited");
+                        stdio.ping(timeout);
+                    }
                 } else {
                     HttpSession http = httpSessions.get(id);
                     if (http == null) throw new IOException("MCP HTTP session is missing");
@@ -654,9 +852,31 @@ public class McpClientManager {
     }
 
     private void closeSessions(String id) {
-        StdioSession session = stdioSessions.remove(id);
-        if (session != null) session.close();
-        httpSessions.remove(id);
+        StdioSession session;
+        synchronized (connectionLocks.computeIfAbsent(id, ignored -> new Object())) {
+            session = stdioSessions.remove(id);
+            httpSessions.remove(id);
+        }
+        if (session != null) {
+            session.close();
+            stdioSessionPool.release(stdioSessionPool.key(workspaceScope, id));
+        }
+    }
+
+    private void evictClaimedStdioSession(
+            String id, McpStdioSessionPool.SessionKey key, String reason) {
+        StdioSession session;
+        synchronized (connectionLocks.computeIfAbsent(id, ignored -> new Object())) {
+            session = stdioSessions.remove(id);
+            McpServerConfig config = servers.get(id);
+            connectionStates.put(id, state(id, false, null, disconnectedStatus(config), null));
+        }
+        if (session != null) {
+            session.close();
+            log.info("Closed idle MCP stdio session: scope={}, id={}, reason={}",
+                    workspaceScope, id, reason);
+        }
+        stdioSessionPool.release(key);
     }
 
     private ConnectionState state(String id, boolean connected, String error, String status, String nextRetryAt) {
@@ -741,7 +961,7 @@ public class McpClientManager {
                     if (config.getId() != null && !config.getId().isBlank()) {
                         servers.put(config.getId(), config);
                         connectionStates.put(config.getId(), state(config.getId(), false, null,
-                                config.isEnabled() ? "DISCONNECTED" : "DISABLED", null));
+                                disconnectedStatus(config), null));
                     }
                 }
             }
@@ -763,6 +983,11 @@ public class McpClientManager {
 
     private static boolean isHttpTransport(String transport) {
         return "sse".equals(transport) || "streamable_http".equals(transport) || "http".equals(transport);
+    }
+
+    private static String disconnectedStatus(McpServerConfig config) {
+        if (config == null || !config.isEnabled()) return "DISABLED";
+        return config.getTools() != null && !config.getTools().isEmpty() ? "IDLE" : "DISCONNECTED";
     }
 
     /**
@@ -904,18 +1129,27 @@ public class McpClientManager {
         form.put("client_id", oauth.getClientId());
         form.put("client_secret", oauth.getClientSecret());
 
-        HttpRequest request = HttpRequest.newBuilder(oauthTokenUri(oauth.getTokenUrl()))
-                .timeout(Duration.ofSeconds(15))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(formEncode(form)))
+        // oauthTokenUri still runs the structural + requireAllowedHost early reject; GuardedDns then
+        // re-resolves and pins the address at connect time, so the checked host and the connected
+        // host cannot diverge. Content-Type is supplied by the form RequestBody's media type.
+        Request request = new Request.Builder()
+                .url(oauthTokenUri(oauth.getTokenUrl()).toString())
+                .header("Accept", "application/json")
+                .post(RequestBody.create(formEncode(form), FORM_MEDIA_TYPE))
                 .build();
-        try {
-            HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IOException("OAuth token request failed: HTTP " + response.statusCode());
+        try (Response response = executeCall(request, 15)) {
+            int status = response.code();
+            if (status >= 300 && status < 400) {
+                throw new IOException("OAuth token endpoint attempted a redirect (HTTP " + status
+                        + "); redirects are not followed for SSRF safety. Configure token_url as the final endpoint.");
             }
+            if (status < 200 || status >= 300) {
+                throw new IOException("OAuth token request failed: HTTP " + status);
+            }
+            ResponseBody responseBody = response.body();
+            String bodyString = responseBody == null ? "" : responseBody.string();
             @SuppressWarnings("unchecked")
-            Map<String, Object> payload = JsonUtils.getMapper().readValue(response.body(), LinkedHashMap.class);
+            Map<String, Object> payload = JsonUtils.getMapper().readValue(bodyString, LinkedHashMap.class);
             String tokenField = firstNonBlank(oauth.getTokenField(), "access_token");
             Object accessToken = payload.get(tokenField);
             if (accessToken == null || String.valueOf(accessToken).isBlank()) {
@@ -934,10 +1168,20 @@ public class McpClientManager {
                 }
             }
             return new OAuthToken(String.valueOf(accessToken), tokenType, Instant.now().plusSeconds(Math.max(expiresIn, 1L)));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("OAuth token request interrupted", e);
         }
+    }
+
+    /**
+     * Executes {@code request} on a call-scoped OkHttp client derived from {@link #httpClient}: it
+     * shares the connection pool, dispatcher, hardening, and GuardedDns pin, and adds a total-call
+     * timeout (OkHttp's documented per-call configuration recipe). The returned {@link Response}
+     * must be closed by the caller (try-with-resources).
+     */
+    private Response executeCall(Request request, long timeoutSeconds) throws IOException {
+        OkHttpClient scoped = httpClient.newBuilder()
+                .callTimeout(Duration.ofSeconds(Math.max(1, timeoutSeconds)))
+                .build();
+        return scoped.newCall(request).execute();
     }
 
     private String formEncode(Map<String, String> form) {
@@ -955,6 +1199,12 @@ public class McpClientManager {
                     || uri.getHost() == null || uri.getHost().isBlank()
                     || uri.getUserInfo() != null || uri.getFragment() != null) {
                 throw new IOException("OAuth token_url must be an absolute HTTP(S) URL without credentials or fragments");
+            }
+            // Same SSRF gate as the MCP endpoint: the token URL is attacker-influenceable config too.
+            try {
+                egressGuard.requireAllowedHost(uri.getHost());
+            } catch (IllegalArgumentException e) {
+                throw new IOException("OAuth token_url is not an allowed outbound target: " + e.getMessage(), e);
             }
             return uri;
         } catch (IllegalArgumentException e) {
@@ -1345,6 +1595,10 @@ public class McpClientManager {
         public void setExtraTokenParams(Map<String, String> extraTokenParams) { this.extraTokenParams = extraTokenParams == null ? new LinkedHashMap<>() : extraTokenParams; }
     }
 
+    /** Minimal view of an OkHttp response the MCP session needs (body fully read and released). */
+    private record HttpResult(int status, String sessionId, String body) {
+    }
+
     private final class HttpSession {
         private static final AtomicLong IDS = new AtomicLong();
         private final McpServerConfig config;
@@ -1428,14 +1682,21 @@ public class McpClientManager {
         private Map<String, Object> send(
                 Map<String, Object> payload, boolean expectBody, int timeoutSeconds) throws IOException {
             synchronized (lock) {
-                HttpResponse<String> response = sendOnce(payload, timeoutSeconds);
-                if (response.statusCode() == 401 && config.getOAuth() != null) {
+                HttpResult response = sendOnce(payload, timeoutSeconds);
+                if (response.status() == 401 && config.getOAuth() != null) {
                     oauthTokens.remove(config.getId());
                     response = sendOnce(payload, timeoutSeconds);
                 }
-                response.headers().firstValue("mcp-session-id").ifPresent(value -> sessionId = value);
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                    throw new IOException("MCP HTTP request failed: HTTP " + response.statusCode());
+                if (response.sessionId() != null && !response.sessionId().isBlank()) {
+                    sessionId = response.sessionId();
+                }
+                int status = response.status();
+                if (status >= 300 && status < 400) {
+                    throw new IOException("MCP HTTP endpoint attempted a redirect (HTTP " + status
+                            + "); redirects are not followed for SSRF safety. Point the MCP url at the final endpoint.");
+                }
+                if (status < 200 || status >= 300) {
+                    throw new IOException("MCP HTTP request failed: HTTP " + status);
                 }
                 if (!expectBody || response.body() == null || response.body().isBlank()) {
                     return new LinkedHashMap<>();
@@ -1444,26 +1705,34 @@ public class McpClientManager {
             }
         }
 
-        private HttpResponse<String> sendOnce(Map<String, Object> payload, int timeoutSeconds) throws IOException {
+        private HttpResult sendOnce(Map<String, Object> payload, int timeoutSeconds) throws IOException {
             if (config.getUrl() == null || config.getUrl().isBlank()) {
                 throw new IOException("HTTP/SSE MCP url is required");
             }
-            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(config.getUrl()))
-                    .timeout(Duration.ofSeconds(Math.max(1, timeoutSeconds)))
-                    .header("Content-Type", "application/json")
+            URI uri = URI.create(config.getUrl());
+            // Early structural reject on the raw host. The authoritative connect-time check is the
+            // GuardedDns installed on httpClient: it resolves and validates in the SAME lookup OkHttp
+            // connects with, so a rebinding host cannot show a public address to this check and a
+            // private/metadata one to the socket. Content-Type comes from the JSON RequestBody.
+            try {
+                egressGuard.requireAllowedHost(uri.getHost());
+            } catch (IllegalArgumentException e) {
+                throw new IOException("MCP endpoint blocked by egress policy: " + e.getMessage(), e);
+            }
+            Request.Builder builder = new Request.Builder()
+                    .url(uri.toString())
                     .header("Accept", "application/json, text/event-stream")
-                    .POST(HttpRequest.BodyPublishers.ofString(JsonUtils.toJson(payload)));
+                    .post(RequestBody.create(JsonUtils.toJson(payload), JSON_MEDIA_TYPE));
             Map<String, String> headers = new LinkedHashMap<>();
             if (config.getHeaders() != null) headers.putAll(config.getHeaders());
             String auth = authorizationHeader(config);
             if (auth != null && !auth.isBlank()) headers.put("Authorization", auth);
             if (sessionId != null && !sessionId.isBlank()) headers.put("Mcp-Session-Id", sessionId);
             headers.forEach(builder::header);
-            try {
-                return HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IOException("MCP HTTP request interrupted", e);
+            try (Response response = executeCall(builder.build(), timeoutSeconds)) {
+                ResponseBody responseBody = response.body();
+                String body = responseBody == null ? null : responseBody.string();
+                return new HttpResult(response.code(), response.header("mcp-session-id"), body);
             }
         }
 
@@ -1487,6 +1756,14 @@ public class McpClientManager {
         }
     }
 
+    private record StdioInvocation(
+            StdioSession session, McpStdioSessionPool.UseLease lease) implements AutoCloseable {
+        @Override
+        public void close() {
+            lease.close();
+        }
+    }
+
     private static final class StdioSession implements AutoCloseable {
         private static final int STDERR_LIMIT = 8192;
         private static final AtomicLong IDS = new AtomicLong();
@@ -1496,6 +1773,7 @@ public class McpClientManager {
         private final BlockingQueue<ReadResult> responses = new LinkedBlockingQueue<>();
         private final StringBuilder stderr = new StringBuilder();
         private final Object lock = new Object();
+        private final AtomicBoolean closed = new AtomicBoolean();
 
         private StdioSession(StdioMcpProcessLauncher.LaunchedProcess launchedProcess, String id) {
             this.launchedProcess = launchedProcess;
@@ -1675,6 +1953,16 @@ public class McpClientManager {
 
         @Override
         public void close() {
+            if (!closed.compareAndSet(false, true)) return;
+            try {
+                stdin.close();
+                if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroy();
+            } catch (IOException ignored) {
+                process.destroy();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                process.destroy();
+            }
             launchedProcess.close();
         }
 

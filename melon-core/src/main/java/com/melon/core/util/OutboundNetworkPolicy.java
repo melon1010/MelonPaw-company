@@ -1,5 +1,7 @@
 package com.melon.core.util;
 
+import com.melon.core.security.OutboundAddressGuard;
+
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -49,18 +51,8 @@ public final class OutboundNetworkPolicy {
     }
 
     private static boolean isPrivate(InetAddress address) {
-        if (address.isAnyLocalAddress() || address.isLoopbackAddress()
-                || address.isLinkLocalAddress() || address.isSiteLocalAddress()
-                || address.isMulticastAddress()) {
-            return true;
-        }
-        byte[] bytes = address.getAddress();
-        if (bytes.length == 4) {
-            int first = bytes[0] & 0xff;
-            int second = bytes[1] & 0xff;
-            return first == 0 || first == 127
-                    || (first == 100 && second >= 64 && second <= 127);
-        }
-        return bytes.length == 16 && (bytes[0] & 0xfe) == 0xfc;
+        // Project-wide single source of truth for address classification lives in
+        // OutboundAddressGuard; anything not publicly routable is private for this policy.
+        return !OutboundAddressGuard.isPublicAddress(address);
     }
 }

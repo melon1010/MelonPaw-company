@@ -90,6 +90,7 @@ function MCPPage() {
     refreshClients,
   } = useMCP();
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [activeTab, setActiveTab] = useState<"json" | "form">("json");
 
   // JSON-import state
@@ -131,6 +132,12 @@ function MCPPage() {
     setActiveTab("json");
   }, []);
 
+  const closeCreateModal = useCallback(() => {
+    if (creating) return;
+    setCreateModalOpen(false);
+    resetModal();
+  }, [creating, resetModal]);
+
   const handleToggleEnabled = async (
     client: MCPClientInfo,
     e?: React.MouseEvent,
@@ -146,6 +153,8 @@ function MCPPage() {
 
   // ---------- JSON import ----------
   const handleCreateFromJson = async () => {
+    if (creating) return;
+
     try {
       const parsed = JSON.parse(newClientJson) as Record<string, unknown>;
       const clientsToCreate: Array<{
@@ -188,15 +197,20 @@ function MCPPage() {
         });
       }
 
-      let allSuccess = true;
-      for (const { key, data } of clientsToCreate) {
-        const success = await createClient(key, data);
-        if (!success) allSuccess = false;
-      }
+      setCreating(true);
+      try {
+        let allSuccess = true;
+        for (const { key, data } of clientsToCreate) {
+          const success = await createClient(key, data);
+          if (!success) allSuccess = false;
+        }
 
-      if (allSuccess) {
-        setCreateModalOpen(false);
-        resetModal();
+        if (allSuccess) {
+          setCreateModalOpen(false);
+          resetModal();
+        }
+      } finally {
+        setCreating(false);
       }
     } catch {
       alert("Invalid JSON format");
@@ -205,6 +219,8 @@ function MCPPage() {
 
   // ---------- Form create ----------
   const handleCreateFromForm = async () => {
+    if (creating) return;
+
     const key = form.key.trim();
     const name = form.name.trim();
     if (!key) {
@@ -258,10 +274,15 @@ function MCPPage() {
       cwd: form.cwd.trim(),
     };
 
-    const success = await createClient(key, clientData);
-    if (success) {
-      setCreateModalOpen(false);
-      resetModal();
+    setCreating(true);
+    try {
+      const success = await createClient(key, clientData);
+      if (success) {
+        setCreateModalOpen(false);
+        resetModal();
+      }
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -311,29 +332,27 @@ function MCPPage() {
       <Modal
         title={t("mcp.create")}
         open={createModalOpen}
-        onCancel={() => {
-          setCreateModalOpen(false);
-          resetModal();
-        }}
+        onCancel={closeCreateModal}
+        closable={!creating}
+        maskClosable={!creating}
+        keyboard={!creating}
         footer={
           <div className={styles.modalFooter}>
-            <Button
-              onClick={() => {
-                setCreateModalOpen(false);
-                resetModal();
-              }}
-            >
+            <Button onClick={closeCreateModal} disabled={creating}>
               {t("common.cancel")}
             </Button>
             <Button
               type="primary"
+              loading={creating}
               onClick={
                 activeTab === "json"
                   ? handleCreateFromJson
                   : handleCreateFromForm
               }
             >
-              {t("common.create")}
+              {creating
+                ? t("mcp.savingAndValidating")
+                : t("common.create")}
             </Button>
           </div>
         }

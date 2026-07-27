@@ -1004,6 +1004,7 @@
     "createError": "Failed to create MCP client",
     "updateSuccess": "MCP configuration updated; reconnecting to the server",
     "updateError": "Failed to update MCP client",
+    "savingAndValidating": "Checking connection...",
     "enableSuccess": "MCP client enabled successfully",
     "disableSuccess": "MCP client disabled successfully",
     "toggleError": "Failed to toggle MCP client status",
@@ -1018,6 +1019,7 @@
     "toolSchema": "Description & Parameters",
     "status": {
       "connected": "Connected",
+      "idle": "Ready on demand",
       "connecting": "Connecting",
       "reconnecting": "Reconnecting",
       "disconnected": "Disconnected",

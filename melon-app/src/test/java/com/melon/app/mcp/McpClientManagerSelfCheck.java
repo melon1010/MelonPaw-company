@@ -1,6 +1,7 @@
 package com.melon.app.mcp;
 
 import com.melon.core.config.ConfigManager;
+import com.melon.core.security.OutboundAddressGuard;
 import com.melon.core.util.JsonUtils;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -78,7 +79,10 @@ public final class McpClientManagerSelfCheck {
             Path home = Files.createTempDirectory("melon-mcp-check");
             ConfigManager configManager = new ConfigManager();
             configManager.setHomeDir(home.toString());
-            McpClientManager manager = new McpClientManager(configManager);
+            // Production default denies loopback; this self-check's MCP + OAuth servers live on
+            // 127.0.0.1, so inject a loopback-permitting guard instead of weakening the default.
+            McpClientManager manager = new McpClientManager(configManager,
+                    new OutboundAddressGuard(true, false, List.of()));
             try {
                 int port = server.getAddress().getPort();
 

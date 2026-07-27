@@ -761,6 +761,7 @@
     "createError": "Gagal membuat klien MCP",
     "updateSuccess": "Konfigurasi MCP diperbarui; sedang menghubungkan ulang",
     "updateError": "Gagal memperbarui klien MCP",
+    "savingAndValidating": "Memeriksa koneksi...",
     "enableSuccess": "Klien MCP berhasil diaktifkan",
     "disableSuccess": "Klien MCP berhasil dinonaktifkan",
     "toggleError": "Gagal mengubah status klien MCP",

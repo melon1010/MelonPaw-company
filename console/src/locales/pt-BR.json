@@ -595,6 +595,7 @@
     "createError": "Falha ao Criar MCP client",
     "updateSuccess": "Configuração MCP atualizada; reconectando ao servidor",
     "updateError": "Falha ao Atualizar MCP client",
+    "savingAndValidating": "Verificando a conexão...",
     "enableSuccess": "MCP client Ativado successfully",
     "disableSuccess": "MCP client Desativado successfully",
     "toggleError": "Falha ao toggle MCP client Status",

@@ -659,17 +659,8 @@ public class StdioMcpProcessLauncher {
                 process.destroyForcibly();
             }
             if (dockerCommand != null && containerName != null) {
-                try {
-                    Process cleanup = new ProcessBuilder(dockerCommand, "rm", "-f", containerName)
-                            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                            .redirectError(ProcessBuilder.Redirect.DISCARD)
-                            .start();
-                    if (!cleanup.waitFor(5, TimeUnit.SECONDS)) cleanup.destroyForcibly();
-                } catch (IOException ignored) {
-                    // The Docker CLI process is already stopped; --rm normally removes the container.
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
+                runDockerCleanup(dockerCommand, "stop", "--time", "2", containerName);
+                runDockerCleanup(dockerCommand, "rm", "-f", containerName);
             }
             if (environmentFile != null) {
                 try {
@@ -677,6 +668,20 @@ public class StdioMcpProcessLauncher {
                 } catch (IOException ignored) {
                     // The file has owner-only permissions and will be removed by normal temp cleanup.
                 }
+            }
+        }
+
+        private void runDockerCleanup(String... command) {
+            try {
+                Process cleanup = new ProcessBuilder(command)
+                        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                        .redirectError(ProcessBuilder.Redirect.DISCARD)
+                        .start();
+                if (!cleanup.waitFor(5, TimeUnit.SECONDS)) cleanup.destroyForcibly();
+            } catch (IOException ignored) {
+                // The daemon or container may already be gone; cleanup remains idempotent.
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
         }
     }

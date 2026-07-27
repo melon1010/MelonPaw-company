@@ -40,6 +40,14 @@ melon:
       sandbox-user: ${MELON_MCP_SANDBOX_USER:10001:10001}
       # Node/Python 依赖在沙箱内准备的最长等待时间，单位为秒。
       prepare-timeout-seconds: ${MELON_MCP_PREPARE_TIMEOUT_SECONDS:300}
+      # 当前 Java 实例允许同时存活的 stdio MCP 会话总数。达到上限时优先回收无调用的 LRU 会话。
+      max-active-stdio-sessions: ${MELON_MCP_MAX_ACTIVE_STDIO_SESSIONS:32}
+      # 单个个人/团队空间允许同时存活的 stdio MCP 会话数，不能大于全局上限。
+      max-active-stdio-sessions-per-workspace: ${MELON_MCP_MAX_ACTIVE_STDIO_SESSIONS_PER_WORKSPACE:8}
+      # 所有容量都被活跃调用占用时，新 MCP 等待可用槽位的最长时间。
+      session-acquire-timeout-seconds: ${MELON_MCP_SESSION_ACQUIRE_TIMEOUT_SECONDS:30}
+      # MCP 完成最后一次实际工具调用后保持热连接的时间；超时后关闭容器，后续按需重启。
+      session-idle-timeout-seconds: ${MELON_MCP_SESSION_IDLE_TIMEOUT_SECONDS:600}
       import:
         # 允许 Java 只读导入的宿主机父目录。多个目录在 macOS/Linux 用冒号分隔，Windows 用分号。
         # 各运行 Profile 决定默认目录；生产环境建议只使用专门的 MCP 源目录。
@@ -51,12 +59,28 @@ melon:
         max-files: ${MELON_MCP_IMPORT_MAX_FILES:20000}
         # 单次源码快照允许导入的最大总字节数，默认 256 MiB。
         max-bytes: ${MELON_MCP_IMPORT_MAX_BYTES:268435456}
+      egress:
+        # 远程(HTTP/SSE)MCP 及其 OAuth token 地址的出站 SSRF 策略。
+        # link-local(含 169.254.169.254 元数据)、any-local、多播始终拦截，任何开关都无法放开。
+        # loopback 与私网默认拒绝；连本机或内网自建 MCP 时用 allowlist 精确放行（推荐），
+        # 或按需打开对应开关。
+        allow-loopback: ${MELON_MCP_EGRESS_ALLOW_LOOPBACK:false}
+        allow-private: ${MELON_MCP_EGRESS_ALLOW_PRIVATE:false}
+        # 逗号分隔的主机名/IP 精确放行列表，例如 "127.0.0.1,mcp.internal.example"。
+        allowlist: ${MELON_MCP_EGRESS_ALLOWLIST:}
   runtime:
     channel:
       # 渠道消息阻塞任务线程池；队列满时拒绝新任务，避免无界堆积。
       core-threads: ${MELON_CHANNEL_CORE_THREADS:4}
       max-threads: ${MELON_CHANNEL_MAX_THREADS:16}
       queue-capacity: ${MELON_CHANNEL_QUEUE_CAPACITY:256}
+    web-blocking:
+      # WebFlux 控制器访问 SQLite、文件系统和同步 SDK 时使用的有界线程池。
+      # 不要把此池设置为无限队列；队列满时拒绝请求，避免事件循环和内存被拖垮。
+      # 默认核心线程数与最大线程数相同，避免 ThreadPoolExecutor 先排满队列才扩容。
+      core-threads: ${MELON_WEB_BLOCKING_CORE_THREADS:16}
+      max-threads: ${MELON_WEB_BLOCKING_MAX_THREADS:16}
+      queue-capacity: ${MELON_WEB_BLOCKING_QUEUE_CAPACITY:256}
     # 历史记录投影固定使用单线程，以保证 SQLite 写入顺序。
     history-queue-capacity: ${MELON_HISTORY_QUEUE_CAPACITY:512}
     skill-install:

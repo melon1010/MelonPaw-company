@@ -1,6 +1,7 @@
 package com.melon.app.mcp;
 
 import com.melon.core.config.ConfigManager;
+import com.melon.core.security.OutboundAddressGuard;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -49,17 +51,22 @@ class McpClientManagerOAuthTest {
         ConfigManager configManager = new ConfigManager();
         configManager.setConfigPath(tempDir.resolve("config.yaml"));
         configManager.setHomeDir(tempDir.toString());
-        McpClientManager manager = new McpClientManager(configManager);
+        // Production default denies loopback; the token server here lives on 127.0.0.1, so the
+        // test injects a loopback-permitting guard instead of weakening the default policy.
+        McpClientManager manager = new McpClientManager(configManager,
+                new OutboundAddressGuard(true, false, List.of()));
         try {
+            // Save-time validation now resolves hostnames, so the endpoint must be a real
+            // (loopback) address rather than a placeholder name.
+            String baseUrl = "http://127.0.0.1:" + tokenServer.getAddress().getPort();
             McpClientManager.McpServerConfig config = McpClientManager.McpServerConfig.fromMap(Map.of(
                     "id", "remote",
                     "name", "remote",
                     "transport", "streamable_http",
-                    "url", "https://mcp.example.test/mcp",
+                    "url", baseUrl + "/mcp",
                     "enabled", false));
             manager.register(config);
 
-            String baseUrl = "http://127.0.0.1:" + tokenServer.getAddress().getPort();
             Map<String, Object> status = manager.configureOAuth("remote", Map.of(
                     "grant_type", "client_credentials",
                     "token_url", baseUrl + "/token",

@@ -844,6 +844,7 @@
     "createError": "MCP 客户端创建失败",
     "updateSuccess": "MCP 配置已更新，正在重新连接",
     "updateError": "MCP 客户端更新失败",
+    "savingAndValidating": "验证连接中...",
     "enableSuccess": "MCP 客户端启用成功",
     "disableSuccess": "MCP 客户端禁用成功",
     "toggleError": "切换 MCP 客户端状态失败",
@@ -858,6 +859,7 @@
     "toolSchema": "描述与参数",
     "status": {
       "connected": "已连接",
+      "idle": "按需就绪",
       "connecting": "连接中",
       "reconnecting": "重连中",
       "disconnected": "未连接",
