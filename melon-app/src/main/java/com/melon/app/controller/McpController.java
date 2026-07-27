@@ -1,5 +1,6 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.auth.ProjectAgentService;
@@ -48,17 +49,29 @@ public class McpController {
     private final McpAccessPolicyService accessPolicyService;
     private final EnterpriseAgentAccessService agentAccessService;
     private final ProjectAgentService projectAgentService;
+    private final RuntimeExecutors executors;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public McpController(McpClientRegistry mcpClientRegistry, ConfigManager configManager,
                          MultiAgentManager multiAgentManager, McpAccessPolicyService accessPolicyService,
                          EnterpriseAgentAccessService agentAccessService,
-                         ProjectAgentService projectAgentService) {
+                         ProjectAgentService projectAgentService,
+                         RuntimeExecutors executors) {
         this.mcpClientRegistry = mcpClientRegistry;
         this.configManager = configManager;
         this.multiAgentManager = multiAgentManager;
         this.accessPolicyService = accessPolicyService;
         this.agentAccessService = agentAccessService;
         this.projectAgentService = projectAgentService;
+        this.executors = executors;
+    }
+
+    public McpController(McpClientRegistry mcpClientRegistry, ConfigManager configManager,
+                         MultiAgentManager multiAgentManager, McpAccessPolicyService accessPolicyService,
+                         EnterpriseAgentAccessService agentAccessService,
+                         ProjectAgentService projectAgentService) {
+        this(mcpClientRegistry, configManager, multiAgentManager, accessPolicyService,
+                agentAccessService, projectAgentService, null);
     }
 
     @GetMapping
@@ -437,9 +450,7 @@ public class McpController {
         });
     }
 
-    /**
-     * 列出所有已连接服务器的全部工具.
-     */
+    /** Lists cached tools for all enabled servers without starting idle stdio processes. */
     @GetMapping("/tools")
     public Mono<ResponseEntity<?>> listAllTools(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
@@ -553,7 +564,8 @@ public class McpController {
     }
 
     private <T> Mono<T> blocking(Callable<T> task) {
-        return Mono.fromCallable(task).subscribeOn(Schedulers.boundedElastic());
+        return Mono.defer(() -> Mono.fromCallable(task))
+                .subscribeOn(executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler());
     }
 
     private String scope(String agentId) {

@@ -1,6 +1,7 @@
 package com.melon.app.controller;
 
 import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.task.EnterpriseQuotaService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,9 +25,16 @@ import java.util.Map;
 public class EnterpriseQuotaController {
 
     private final EnterpriseQuotaService quotaService;
+    private final RuntimeExecutors executors;
 
     public EnterpriseQuotaController(EnterpriseQuotaService quotaService) {
+        this(quotaService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public EnterpriseQuotaController(EnterpriseQuotaService quotaService, RuntimeExecutors executors) {
         this.quotaService = quotaService;
+        this.executors = executors;
     }
 
     @GetMapping
@@ -55,6 +63,7 @@ public class EnterpriseQuotaController {
     }
 
     private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
-        return Mono.fromCallable(callable).subscribeOn(Schedulers.boundedElastic());
+        return Mono.defer(() -> Mono.fromCallable(callable))
+                .subscribeOn(executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler());
     }
 }

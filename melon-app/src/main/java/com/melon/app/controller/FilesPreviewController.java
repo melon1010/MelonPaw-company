@@ -1,6 +1,7 @@
 package com.melon.app.controller;
 
 import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.service.FileGuardService;
 import com.melon.core.config.ConfigManager;
 import org.springframework.core.io.ByteArrayResource;
@@ -33,10 +34,18 @@ public class FilesPreviewController {
 
     private final ConfigManager configManager;
     private final FileGuardService fileGuardService;
+    private final RuntimeExecutors executors;
 
     public FilesPreviewController(ConfigManager configManager, FileGuardService fileGuardService) {
+        this(configManager, fileGuardService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public FilesPreviewController(ConfigManager configManager, FileGuardService fileGuardService,
+                                  RuntimeExecutors executors) {
         this.configManager = configManager;
         this.fileGuardService = fileGuardService;
+        this.executors = executors;
     }
 
     @RequestMapping(value = "/preview/{*filePath}", method = {RequestMethod.GET, RequestMethod.HEAD})
@@ -44,7 +53,7 @@ public class FilesPreviewController {
                                            @AuthenticationPrincipal EnterprisePrincipal principal,
                                            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
                                            @PathVariable String filePath) {
-        return Mono.fromCallable(() -> {
+        return Mono.defer(() -> Mono.fromCallable(() -> {
             Path workspace = configManager.resolveWorkspaceDir(AgentRequestSupport.agentId(agentId)).toAbsolutePath().normalize();
             Path file = resolvePreviewPath(workspace, filePath);
             fileGuardService.assertAllowed(file);
@@ -70,7 +79,8 @@ public class FilesPreviewController {
                     .header("Referrer-Policy", "no-referrer")
                     .contentType(contentType == null ? MediaType.APPLICATION_OCTET_STREAM : MediaType.parseMediaType(contentType))
                     .body(new ByteArrayResource(Files.readAllBytes(file)));
-        });
+        })).subscribeOn(executors == null ? reactor.core.scheduler.Schedulers.boundedElastic()
+                : executors.webBlockingScheduler());
     }
 
     private boolean containsSymbolicLink(Path workspace, Path file) {

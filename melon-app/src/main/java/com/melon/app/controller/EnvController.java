@@ -1,5 +1,6 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.service.EnvService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,9 +22,16 @@ public class EnvController {
     private static final Logger log = LoggerFactory.getLogger(EnvController.class);
 
     private final EnvService envService;
+    private final RuntimeExecutors executors;
 
     public EnvController(EnvService envService) {
+        this(envService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public EnvController(EnvService envService, RuntimeExecutors executors) {
         this.envService = envService;
+        this.executors = executors;
     }
 
     /**
@@ -31,12 +39,12 @@ public class EnvController {
      */
     @GetMapping
     public Mono<ResponseEntity<?>> listEnvs() {
-        return Mono.fromCallable(() -> ResponseEntity.ok(envList()));
+        return blocking(() -> ResponseEntity.ok(envList()));
     }
 
     @PutMapping
     public Mono<ResponseEntity<?>> saveEnvs(@RequestBody Map<String, String> body) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             for (String key : envService.listEnvs().keySet()) {
                 envService.deleteEnv(key);
             }
@@ -52,7 +60,7 @@ public class EnvController {
      */
     @GetMapping("/{key}")
     public Mono<ResponseEntity<?>> getEnv(@PathVariable String key) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String value = envService.getEnv(key);
             if (value == null) {
                 return ResponseEntity.notFound().build();
@@ -68,7 +76,7 @@ public class EnvController {
     public Mono<ResponseEntity<?>> setEnv(
             @PathVariable String key,
             @RequestBody Map<String, String> body) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             try {
                 if (body == null) {
                     return ResponseEntity.badRequest()
@@ -94,7 +102,7 @@ public class EnvController {
      */
     @DeleteMapping("/{key}")
     public Mono<ResponseEntity<?>> deleteEnv(@PathVariable String key) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             envService.deleteEnv(key);
             return ResponseEntity.ok(envList());
         });
@@ -109,5 +117,11 @@ public class EnvController {
                     return item;
                 })
                 .toList();
+    }
+
+    private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
+        return Mono.defer(() -> Mono.fromCallable(callable))
+                .subscribeOn(executors == null ? reactor.core.scheduler.Schedulers.boundedElastic()
+                        : executors.webBlockingScheduler());
     }
 }

@@ -26,7 +26,6 @@ import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.nio.charset.StandardCharsets;
 
@@ -58,8 +57,9 @@ public class SecurityConfig {
     public SecurityWebFilterChain springSecurityFilterChain(
             ServerHttpSecurity http,
             AuthService authService,
-            EnterpriseAgentAccessService agentAccessService) {
-        AuthenticationWebFilter bearerFilter = bearerFilter(authService);
+            EnterpriseAgentAccessService agentAccessService,
+            RuntimeExecutors executors) {
+        AuthenticationWebFilter bearerFilter = bearerFilter(authService, executors);
         return http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
@@ -192,12 +192,24 @@ public class SecurityConfig {
                         .anyExchange().authenticated()
                 )
                 .addFilterAt(bearerFilter, SecurityWebFiltersOrder.AUTHENTICATION)
-                .addFilterAfter(agentScopeFilter(agentAccessService), SecurityWebFiltersOrder.AUTHENTICATION)
+                .addFilterAfter(agentScopeFilter(agentAccessService, executors),
+                        SecurityWebFiltersOrder.AUTHENTICATION)
                 .build();
     }
 
     WebFilter agentScopeFilter(EnterpriseAgentAccessService agentAccessService) {
-        return (exchange, chain) -> ReactiveSecurityContextHolder.getContext()
+        return agentScopeFilter(agentAccessService, null);
+    }
+
+    WebFilter agentScopeFilter(EnterpriseAgentAccessService agentAccessService,
+                               RuntimeExecutors executors) {
+        return (exchange, chain) -> {
+            Mono<org.springframework.security.core.context.SecurityContext> securityContext =
+                    ReactiveSecurityContextHolder.getContext();
+            if (executors != null) {
+                securityContext = securityContext.publishOn(executors.webBlockingScheduler());
+            }
+            return securityContext
                 .map(context -> context.getAuthentication().getPrincipal())
                 .ofType(EnterprisePrincipal.class)
                 .map(principal -> {
@@ -249,6 +261,7 @@ public class SecurityConfig {
                     return decision.mutationAgentId() == null ? response : response.doFinally(
                             ignored -> agentAccessService.endConfigurationMutation(decision.mutationAgentId()));
                 });
+        };
     }
 
     boolean isPersonalExecutionPath(String path) {
@@ -317,10 +330,11 @@ public class SecurityConfig {
             String mutationAgentId) {
     }
 
-    private AuthenticationWebFilter bearerFilter(AuthService authService) {
+    private AuthenticationWebFilter bearerFilter(AuthService authService, RuntimeExecutors executors) {
         ReactiveAuthenticationManager authenticationManager = authentication ->
-                Mono.fromCallable(() -> authService.authenticateToken(String.valueOf(authentication.getCredentials())))
-                        .subscribeOn(Schedulers.boundedElastic())
+                Mono.defer(() -> Mono.fromCallable(
+                                () -> authService.authenticateToken(String.valueOf(authentication.getCredentials()))))
+                        .subscribeOn(executors.webBlockingScheduler())
                         .flatMap(Mono::justOrEmpty)
                         .map(principal -> (Authentication) UsernamePasswordAuthenticationToken.authenticated(
                                 principal, authentication.getCredentials(), principal.authorities()))

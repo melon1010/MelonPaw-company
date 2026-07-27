@@ -1,5 +1,6 @@
 package com.melon.app.auth;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.service.SkillService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,24 +34,33 @@ public class UserAdminController {
     private final EnterpriseIdentityStore store;
     private final EnterpriseAgentAccessService agentAccessService;
     private final SkillService skillService;
+    private final RuntimeExecutors executors;
 
     @Autowired
     public UserAdminController(AuthService authService, EnterpriseIdentityStore store,
                                EnterpriseAgentAccessService agentAccessService,
-                               SkillService skillService) {
+                               SkillService skillService,
+                               RuntimeExecutors executors) {
         this.authService = authService;
         this.store = store;
         this.agentAccessService = agentAccessService;
         this.skillService = skillService;
+        this.executors = executors;
     }
 
     public UserAdminController(AuthService authService, EnterpriseIdentityStore store,
                                EnterpriseAgentAccessService agentAccessService) {
-        this(authService, store, agentAccessService, null);
+        this(authService, store, agentAccessService, null, null);
+    }
+
+    public UserAdminController(AuthService authService, EnterpriseIdentityStore store,
+                               EnterpriseAgentAccessService agentAccessService,
+                               SkillService skillService) {
+        this(authService, store, agentAccessService, skillService, null);
     }
 
     public UserAdminController(AuthService authService, EnterpriseIdentityStore store) {
-        this(authService, store, null, null);
+        this(authService, store, null, null, null);
     }
 
     @GetMapping
@@ -211,7 +221,8 @@ public class UserAdminController {
     }
 
     private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
-        return Mono.fromCallable(callable).subscribeOn(Schedulers.boundedElastic());
+        return Mono.defer(() -> Mono.fromCallable(callable))
+                .subscribeOn(executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler());
     }
 
     private Set<String> stringSet(Object value) {

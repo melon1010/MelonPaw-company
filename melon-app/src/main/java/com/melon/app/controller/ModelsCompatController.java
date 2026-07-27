@@ -1,5 +1,6 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.config.ConfigManager;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.provider.ProviderManager;
@@ -31,14 +32,23 @@ public class ModelsCompatController {
     private final ProviderManager providerManager;
     private final ConfigManager configManager;
     private final MultiAgentManager multiAgentManager;
+    private final RuntimeExecutors executors;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
-    public ModelsCompatController(ProviderManager providerManager, ConfigManager configManager, MultiAgentManager multiAgentManager) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public ModelsCompatController(ProviderManager providerManager, ConfigManager configManager,
+                                  MultiAgentManager multiAgentManager, RuntimeExecutors executors) {
         this.providerManager = providerManager;
         this.configManager = configManager;
         this.multiAgentManager = multiAgentManager;
+        this.executors = executors;
+    }
+
+    public ModelsCompatController(ProviderManager providerManager, ConfigManager configManager,
+                                  MultiAgentManager multiAgentManager) {
+        this(providerManager, configManager, multiAgentManager, null);
     }
 
     @GetMapping
@@ -96,7 +106,7 @@ public class ModelsCompatController {
                     "message", message,
                     "detail", ok ? "" : message
             ));
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(webBlockingScheduler());
     }
 
     @PostMapping("/{providerId}/models/test")
@@ -121,7 +131,7 @@ public class ModelsCompatController {
                     "message", test.message(),
                     "detail", test.success() ? "" : test.message()
             ));
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(webBlockingScheduler());
     }
 
     @PostMapping("/{providerId}/discover")
@@ -160,7 +170,7 @@ public class ModelsCompatController {
                     "provider_id", providerId,
                     "saved", save && success
             ));
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(webBlockingScheduler());
     }
 
     @PostMapping("/{providerId}/models")
@@ -324,7 +334,7 @@ public class ModelsCompatController {
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))
                         .stream()
                         .toList()
-        ))).subscribeOn(Schedulers.boundedElastic());
+        ))).subscribeOn(webBlockingScheduler());
     }
 
     @PostMapping("/openrouter/discover-extended")
@@ -341,7 +351,7 @@ public class ModelsCompatController {
                     "providers", new ArrayList<>(providers),
                     "total_count", models.size()
             ));
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(webBlockingScheduler());
     }
 
     @PostMapping("/openrouter/models/filter")
@@ -353,7 +363,7 @@ public class ModelsCompatController {
                     "models", models,
                     "total_count", models.size()
             ));
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(webBlockingScheduler());
     }
 
     private Map<String, Object> providerPayload(String providerId, List<String> models) {
@@ -867,5 +877,9 @@ public class ModelsCompatController {
     private String maskKey(String apiKey) {
         if (!hasText(apiKey)) return "";
         return apiKey.length() <= 8 ? "********" : apiKey.substring(0, 4) + "..." + apiKey.substring(apiKey.length() - 4);
+    }
+
+    private reactor.core.scheduler.Scheduler webBlockingScheduler() {
+        return executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler();
     }
 }

@@ -2,6 +2,7 @@ package com.melon.app.controller;
 
 import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.auth.EnterpriseIdentityStore;
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.cron.CronExecutor;
 import com.melon.app.cron.CronManager;
 import com.melon.app.cron.CronSchedulingService;
@@ -34,24 +35,38 @@ public class CronCompatController {
     private final ChannelConfigService channelConfigService;
     private final InboxStore inboxStore;
     private final EnterpriseIdentityStore identityStore;
+    private final RuntimeExecutors executors;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public CronCompatController(ConfigManager configManager,
                                 CronSchedulingService schedulingService,
                                  CronExecutor cronExecutor,
                                  ChannelConfigService channelConfigService,
                                  InboxStore inboxStore,
-                                 EnterpriseIdentityStore identityStore) {
+                                 EnterpriseIdentityStore identityStore,
+                                 RuntimeExecutors executors) {
         this.configManager = configManager;
         this.schedulingService = schedulingService;
         this.cronExecutor = cronExecutor;
         this.channelConfigService = channelConfigService;
         this.inboxStore = inboxStore;
         this.identityStore = identityStore;
+        this.executors = executors;
+    }
+
+    public CronCompatController(ConfigManager configManager,
+                                CronSchedulingService schedulingService,
+                                CronExecutor cronExecutor,
+                                ChannelConfigService channelConfigService,
+                                InboxStore inboxStore,
+                                EnterpriseIdentityStore identityStore) {
+        this(configManager, schedulingService, cronExecutor, channelConfigService,
+                inboxStore, identityStore, null);
     }
 
     @GetMapping("/jobs")
     public Mono<ResponseEntity<?>> listJobs(@RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             List<Map<String, Object>> jobs = loadJobs(agentId);
             String effectiveAgent = AgentRequestSupport.agentId(agentId);
             schedulingService.syncAll(effectiveAgent, workspaceDir(effectiveAgent), jobs);
@@ -63,7 +78,7 @@ public class CronCompatController {
     public Mono<ResponseEntity<?>> createJob(@RequestBody Map<String, Object> body,
                                              @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                              @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String effectiveAgent = AgentRequestSupport.agentId(agentId);
             Map<String, Object> candidate = new LinkedHashMap<>(body);
             stampOwner(candidate, principal);
@@ -76,7 +91,7 @@ public class CronCompatController {
     @GetMapping("/jobs/{id}")
     public Mono<ResponseEntity<?>> getJob(@PathVariable String id,
                                           @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             Map<String, Object> job = findJob(agentId, id);
             if (job == null) {
                 return ResponseEntity.notFound().build();
@@ -92,7 +107,7 @@ public class CronCompatController {
     public Mono<ResponseEntity<?>> replaceJob(@PathVariable String id, @RequestBody Map<String, Object> body,
                                                @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                                @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String effectiveAgent = AgentRequestSupport.agentId(agentId);
             Map<String, Object> previous = findJob(effectiveAgent, id);
             if (previous == null) return ResponseEntity.notFound().build();
@@ -109,7 +124,7 @@ public class CronCompatController {
     @DeleteMapping("/jobs/{id}")
     public Mono<ResponseEntity<?>> deleteJob(@PathVariable String id,
                                              @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String effectiveAgent = AgentRequestSupport.agentId(agentId);
             boolean deleted = schedulingService.delete(effectiveAgent, workspaceDir(effectiveAgent), id);
             return deleted ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
@@ -131,7 +146,7 @@ public class CronCompatController {
     @PostMapping("/jobs/{id}/run")
     public Mono<ResponseEntity<?>> runJob(@PathVariable String id,
                                           @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             Map<String, Object> job = findJob(agentId, id);
             if (job == null) {
                 return ResponseEntity.notFound().build();
@@ -186,7 +201,7 @@ public class CronCompatController {
     @GetMapping("/jobs/{id}/state")
     public Mono<ResponseEntity<?>> jobState(@PathVariable String id,
                                             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             Map<String, Object> job = findJob(agentId, id);
             if (job == null) {
                 return ResponseEntity.notFound().build();
@@ -198,7 +213,7 @@ public class CronCompatController {
     @GetMapping("/jobs/{id}/history")
     public Mono<ResponseEntity<?>> history(@PathVariable String id,
                                            @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             Map<String, Object> job = findJob(agentId, id);
             if (job == null) {
                 return ResponseEntity.notFound().build();
@@ -209,7 +224,7 @@ public class CronCompatController {
 
     @GetMapping("/dispatch-targets")
     public Mono<ResponseEntity<?>> dispatchTargets(@RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             Map<String, Map<String, Object>> channels = channelConfigService.list(AgentRequestSupport.agentId(agentId));
             List<String> enabled = channels.entrySet().stream()
                     .filter(entry -> booleanValue(entry.getValue().get("enabled"), false))
@@ -237,7 +252,7 @@ public class CronCompatController {
     }
 
     private Mono<ResponseEntity<?>> setEnabled(String agentId, String id, boolean enabled) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String effectiveAgent = AgentRequestSupport.agentId(agentId);
             boolean updated = schedulingService.setEnabled(
                     effectiveAgent, workspaceDir(effectiveAgent), id, enabled);
@@ -427,6 +442,12 @@ public class CronCompatController {
         Object visible = out.getMeta().get("visible_text");
         String text = visible != null ? String.valueOf(visible) : "";
         return text.isBlank() ? out.getText() : text;
+    }
+
+    private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
+        return Mono.defer(() -> Mono.fromCallable(callable))
+                .subscribeOn(executors == null ? reactor.core.scheduler.Schedulers.boundedElastic()
+                        : executors.webBlockingScheduler());
     }
 
 }

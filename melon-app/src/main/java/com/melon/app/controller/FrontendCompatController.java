@@ -15,6 +15,7 @@ import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.auth.EnterpriseIdentityStore;
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.util.LanguageNormalizer;
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.config.AgentConfig;
 import com.melon.core.config.HeartbeatConfig;
@@ -61,6 +62,7 @@ public class FrontendCompatController {
     private final SkillService skillService;
     private final EnterpriseAgentAccessService agentAccessService;
     private final EnterpriseIdentityStore identityStore;
+    private final RuntimeExecutors executors;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3))
             .build();
@@ -79,6 +81,24 @@ public class FrontendCompatController {
                                     SkillService skillService,
                                     EnterpriseAgentAccessService agentAccessService,
                                     EnterpriseIdentityStore identityStore) {
+        this(configManager, providerManager, approvalService, multiAgentManager, cronExecutor,
+                agentStatsService, securitySettingsService, auditLogService, builtinSkillService,
+                skillService, agentAccessService, identityStore, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public FrontendCompatController(ConfigManager configManager, ProviderManager providerManager,
+                                    ApprovalService approvalService,
+                                    MultiAgentManager multiAgentManager,
+                                    CronExecutor cronExecutor,
+                                    AgentStatsService agentStatsService,
+                                    SecuritySettingsService securitySettingsService,
+                                    AuditLogService auditLogService,
+                                    BuiltinSkillService builtinSkillService,
+                                    SkillService skillService,
+                                    EnterpriseAgentAccessService agentAccessService,
+                                    EnterpriseIdentityStore identityStore,
+                                    RuntimeExecutors executors) {
         this.configManager = configManager;
         this.providerManager = providerManager;
         this.approvalService = approvalService;
@@ -91,6 +111,7 @@ public class FrontendCompatController {
         this.skillService = skillService;
         this.agentAccessService = agentAccessService;
         this.identityStore = identityStore;
+        this.executors = executors;
     }
 
     @GetMapping("/version")
@@ -192,7 +213,7 @@ public class FrontendCompatController {
                     Map.of("source", "heartbeat", "channel", "console", "execution_user_id", ownerUserId),
                     reply -> {}, err -> {});
             return ResponseEntity.ok(Map.of("started", true));
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(webBlockingScheduler());
     }
 
     @SuppressWarnings("unchecked")
@@ -395,7 +416,7 @@ public class FrontendCompatController {
     public Mono<ResponseEntity<?>> localModelServer(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId) {
         return Mono.<ResponseEntity<?>>fromCallable(() -> ResponseEntity.ok(localServerStatus(agentId)))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(webBlockingScheduler());
     }
 
     @PostMapping("/local-models/server")
@@ -427,12 +448,13 @@ public class FrontendCompatController {
                     "port", integerValue(ollamaConfig().get("port"), 11434),
                     "model_name", modelId
             ));
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(webBlockingScheduler());
     }
 
     @GetMapping("/local-models/models")
     public Mono<ResponseEntity<?>> localModels() {
-        return Mono.<ResponseEntity<?>>fromCallable(() -> ResponseEntity.ok(localModelList())).subscribeOn(Schedulers.boundedElastic());
+        return Mono.<ResponseEntity<?>>fromCallable(() -> ResponseEntity.ok(localModelList()))
+                .subscribeOn(webBlockingScheduler());
     }
 
     @PostMapping("/local-models/models/download")
@@ -505,7 +527,7 @@ public class FrontendCompatController {
                 return ResponseEntity.ok(Map.of("status", "deleted", "message", "Model deleted"));
             }
             return ResponseEntity.badRequest().body(Map.of("status", "error", "message", response.body()));
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(webBlockingScheduler());
     }
 
     private Map<String, Object> localModelConfigPayload() {
@@ -885,7 +907,7 @@ public class FrontendCompatController {
                                                    @RequestParam(value = "end_date", required = false) String endDate) {
         String id = AgentRequestSupport.agentId(agentId);
         return Mono.fromCallable(() -> ResponseEntity.ok((Object) agentStatsService.getSummary(id, startDate, endDate)))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(webBlockingScheduler());
     }
 
     @GetMapping("/")
@@ -946,5 +968,9 @@ public class FrontendCompatController {
         Map<String, Object> result = new LinkedHashMap<>();
         map.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
+    }
+
+    private reactor.core.scheduler.Scheduler webBlockingScheduler() {
+        return executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler();
     }
 }

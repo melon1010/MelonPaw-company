@@ -16,6 +16,7 @@ import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.ServerWebInputException;
 
 import java.util.Map;
+import java.util.concurrent.RejectedExecutionException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -63,6 +64,13 @@ public class ApiExceptionHandler {
             EnterpriseQuotaService.QuotaExceededException error, ServerWebExchange exchange) {
         return response(HttpStatus.TOO_MANY_REQUESTS, "quota_exceeded", detail(error, "Quota exceeded"), exchange,
                 Map.of("scope_type", error.scopeType(), "limit_type", error.limitType()));
+    }
+
+    @ExceptionHandler(RejectedExecutionException.class)
+    public ResponseEntity<ApiErrorResponse> overloaded(
+            RejectedExecutionException error, ServerWebExchange exchange) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "runtime_overloaded",
+                "The runtime is busy; retry after the current work drains", exchange);
     }
 
     @ExceptionHandler(ResponseStatusException.class)

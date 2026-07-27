@@ -9,6 +9,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class RuntimeConcurrencyPropertiesTest {
 
@@ -18,6 +19,9 @@ class RuntimeConcurrencyPropertiesTest {
                 "melon.runtime.channel.core-threads", "6",
                 "melon.runtime.channel.max-threads", "12",
                 "melon.runtime.channel.queue-capacity", "128",
+                "melon.runtime.web-blocking.core-threads", "8",
+                "melon.runtime.web-blocking.max-threads", "10",
+                "melon.runtime.web-blocking.queue-capacity", "96",
                 "melon.runtime.history-queue-capacity", "64",
                 "melon.runtime.channel-long-poll-threads", "24",
                 "melon.runtime.channel-pending-per-session", "8",
@@ -30,9 +34,21 @@ class RuntimeConcurrencyPropertiesTest {
         assertEquals(6, properties.getChannel().getCoreThreads());
         assertEquals(12, properties.getChannel().getMaxThreads());
         assertEquals(128, properties.getChannel().getQueueCapacity());
+        assertEquals(8, properties.getWebBlocking().getCoreThreads());
+        assertEquals(10, properties.getWebBlocking().getMaxThreads());
+        assertEquals(96, properties.getWebBlocking().getQueueCapacity());
         assertEquals(64, properties.getHistoryQueueCapacity());
         assertEquals(24, properties.getChannelLongPollThreads());
         assertEquals(8, properties.getChannelPendingPerSession());
         assertFalse(properties.isConfigWatcherEnabled());
+    }
+
+    @Test
+    void rejectsWebBlockingCoreThreadsAboveMaximum() {
+        RuntimeConcurrencyProperties properties = new RuntimeConcurrencyProperties();
+        properties.getWebBlocking().setCoreThreads(5);
+        properties.getWebBlocking().setMaxThreads(4);
+
+        assertThrows(IllegalArgumentException.class, () -> new RuntimeExecutors(properties));
     }
 }

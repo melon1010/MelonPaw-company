@@ -2,6 +2,7 @@ package com.melon.app.controller;
 
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.auth.EnterprisePrincipal;
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.agent.MultiAgentManager;
 import com.melon.core.agent.WorkspaceManager;
 import com.melon.app.service.FileGuardService;
@@ -76,21 +77,33 @@ public class WorkspaceController {
     private final FileGuardService fileGuardService;
     private final EnterpriseAgentAccessService agentAccessService;
     private final WorkspaceMemoryService workspaceMemoryService;
+    private final RuntimeExecutors executors;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public WorkspaceController(ConfigManager configManager, WorkspaceManager workspaceManager,
                                MultiAgentManager multiAgentManager, FileGuardService fileGuardService,
                                EnterpriseAgentAccessService agentAccessService,
-                               WorkspaceMemoryService workspaceMemoryService) {
+                               WorkspaceMemoryService workspaceMemoryService,
+                               RuntimeExecutors executors) {
         this.configManager = configManager;
         this.workspaceManager = workspaceManager;
         this.multiAgentManager = multiAgentManager;
         this.fileGuardService = fileGuardService;
         this.agentAccessService = agentAccessService;
         this.workspaceMemoryService = workspaceMemoryService;
+        this.executors = executors;
+    }
+
+    public WorkspaceController(ConfigManager configManager, WorkspaceManager workspaceManager,
+                               MultiAgentManager multiAgentManager, FileGuardService fileGuardService,
+                               EnterpriseAgentAccessService agentAccessService,
+                               WorkspaceMemoryService workspaceMemoryService) {
+        this(configManager, workspaceManager, multiAgentManager, fileGuardService,
+                agentAccessService, workspaceMemoryService, null);
     }
 
     /**
@@ -568,12 +581,10 @@ public class WorkspaceController {
         return storeFilePart(filePart, path, MAX_TRANSCRIPTION_UPLOAD_BYTES)
                 .then(Mono.<ResponseEntity<?>>fromCallable(
                                 () -> forwardExternalTranscription(path, filePart.filename(), config))
-                        .subscribeOn(Schedulers.boundedElastic()))
+                        .subscribeOn(webBlockingScheduler()))
                 .onErrorResume(PayloadTooLargeException.class,
                         error -> Mono.just(payloadTooLargeResponse(error)))
-                .doFinally(signal -> {
-                    deleteQuietly(path);
-                });
+                .doFinally(signal -> scheduleBlocking(() -> deleteQuietly(path)));
     }
 
     private ResponseEntity<?> forwardExternalTranscription(Path file, String filename, Map<String, Object> transcriptionConfig) throws Exception {
@@ -854,7 +865,7 @@ public class WorkspaceController {
             } finally {
                 if (!handedOff) deleteQuietly(zip);
             }
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(webBlockingScheduler());
     }
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -905,13 +916,11 @@ public class WorkspaceController {
 
     Flux<DataBuffer> streamFileAndDelete(Path file) {
         return DataBufferUtils.read(file, DefaultDataBufferFactory.sharedInstance, FILE_STREAM_BUFFER_BYTES)
-                .concatWith(Flux.defer(() -> {
-                    deleteQuietly(file);
-                    return Flux.empty();
-                }))
-                .doOnError(error -> deleteQuietly(file))
-                .doOnCancel(() -> deleteQuietly(file))
-                .doFinally(signal -> deleteQuietly(file));
+                .concatWith(Flux.defer(() -> Mono.fromRunnable(() -> deleteQuietly(file))
+                        .subscribeOn(webBlockingScheduler()).thenMany(Flux.<DataBuffer>empty())))
+                .doOnError(error -> scheduleBlocking(() -> deleteQuietly(file)))
+                .doOnCancel(() -> scheduleBlocking(() -> deleteQuietly(file)))
+                .doFinally(signal -> scheduleBlocking(() -> deleteQuietly(file)));
     }
 
     private Mono<Long> storeFilePart(FilePart filePart, Path target, long maxBytes) {
@@ -949,8 +958,8 @@ public class WorkspaceController {
                 .then(Mono.fromCallable(() -> {
                     moveReplacing(temporary, target);
                     return total.get();
-                }))
-                .doFinally(signal -> deleteQuietly(temporary));
+                }).subscribeOn(webBlockingScheduler()))
+                .doFinally(signal -> scheduleBlocking(() -> deleteQuietly(temporary)));
     }
 
     private void moveReplacing(Path source, Path target) throws IOException {
@@ -1110,6 +1119,19 @@ public class WorkspaceController {
             return Files.getLastModifiedTime(path).toMillis();
         } catch (IOException e) {
             return 0L;
+        }
+    }
+
+    private reactor.core.scheduler.Scheduler webBlockingScheduler() {
+        return executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler();
+    }
+
+    private void scheduleBlocking(Runnable task) {
+        try {
+            webBlockingScheduler().schedule(task);
+        } catch (java.util.concurrent.RejectedExecutionException error) {
+            log.warn("Web blocking pool rejected workspace cleanup; using emergency fallback", error);
+            Schedulers.boundedElastic().schedule(task);
         }
     }
 

@@ -9,6 +9,10 @@ import java.time.Duration;
 public class RuntimeConcurrencyProperties {
 
     private final Pool channel = new Pool(4, 16, 256);
+    /** WebFlux controller boundary for SQLite, filesystem and synchronous SDK calls. */
+    // ThreadPoolExecutor fills its queue before growing beyond coreThreads. Keep the default
+    // core/max values equal so normal blocking traffic can use the advertised concurrency.
+    private final Pool webBlocking = new Pool(16, 16, 256);
     private final Pool skillInstall = new Pool(2, 2, 20);
     private int historyQueueCapacity = 512;
     private int mcpLifecycleThreads = 4;
@@ -21,6 +25,10 @@ public class RuntimeConcurrencyProperties {
 
     public Pool getChannel() {
         return channel;
+    }
+
+    public Pool getWebBlocking() {
+        return webBlocking;
     }
 
     public Pool getSkillInstall() {

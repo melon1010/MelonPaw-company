@@ -75,13 +75,14 @@ public class SkillController {
     private final Map<String, Future<?>> hubInstallFutures = new ConcurrentHashMap<>();
     private final ExecutorService hubInstallExecutor;
     private final boolean ownsHubInstallExecutor;
+    private final RuntimeExecutors executors;
 
     public SkillController(SkillService skillService, BuiltinSkillService builtinSkillService,
                            SecuritySettingsService securitySettingsService,
                            MultiAgentManager multiAgentManager,
                            EnterpriseAgentAccessService agentAccessService) {
         this(skillService, builtinSkillService, securitySettingsService,
-                multiAgentManager, agentAccessService, null, standaloneInstallExecutor(), true);
+                multiAgentManager, agentAccessService, null, standaloneInstallExecutor(), true, null);
     }
 
     public SkillController(SkillService skillService, BuiltinSkillService builtinSkillService,
@@ -90,7 +91,7 @@ public class SkillController {
                            EnterpriseAgentAccessService agentAccessService,
                            ProjectAgentService projectAgentService) {
         this(skillService, builtinSkillService, securitySettingsService,
-                multiAgentManager, agentAccessService, projectAgentService, standaloneInstallExecutor(), true);
+                multiAgentManager, agentAccessService, projectAgentService, standaloneInstallExecutor(), true, null);
     }
 
     @Autowired
@@ -101,7 +102,8 @@ public class SkillController {
                            ProjectAgentService projectAgentService,
                            RuntimeExecutors executors) {
         this(skillService, builtinSkillService, securitySettingsService,
-                multiAgentManager, agentAccessService, projectAgentService, executors.skillInstall(), false);
+                multiAgentManager, agentAccessService, projectAgentService,
+                executors.skillInstall(), false, executors);
     }
 
     private SkillController(SkillService skillService, BuiltinSkillService builtinSkillService,
@@ -110,7 +112,8 @@ public class SkillController {
                             EnterpriseAgentAccessService agentAccessService,
                             ProjectAgentService projectAgentService,
                             ExecutorService hubInstallExecutor,
-                            boolean ownsHubInstallExecutor) {
+                            boolean ownsHubInstallExecutor,
+                            RuntimeExecutors executors) {
         this.skillService = skillService;
         this.builtinSkillService = builtinSkillService;
         this.securitySettingsService = securitySettingsService;
@@ -120,6 +123,7 @@ public class SkillController {
         this.skillScanner = new SkillScanner();
         this.hubInstallExecutor = hubInstallExecutor;
         this.ownsHubInstallExecutor = ownsHubInstallExecutor;
+        this.executors = executors;
     }
 
     @PreDestroy
@@ -1317,13 +1321,9 @@ public class SkillController {
                 return Mono.error(e);
             }
             return filePart.transferTo(path)
-                    .then(Mono.fromCallable(() -> (ResponseEntity<?>) responseForImport(importer.importZip(path))))
-                    .doFinally(signal -> {
-                        try {
-                            Files.deleteIfExists(path);
-                        } catch (Exception ignored) {
-                        }
-                    });
+                    .then(Mono.fromCallable(() -> (ResponseEntity<?>) responseForImport(importer.importZip(path)))
+                            .subscribeOn(webBlockingScheduler()))
+                    .doFinally(signal -> scheduleBlocking(() -> deleteQuietly(path)));
         }).onErrorResume(e -> {
             log.warn("Skill zip upload failed: {}", e.getMessage());
             ResponseEntity<?> response = ResponseEntity.badRequest().body(Map.of("detail", e.getMessage()));
@@ -1337,6 +1337,28 @@ public class SkillController {
             return ResponseEntity.status(409).body(Map.of("detail", result));
         }
         return ResponseEntity.ok(result);
+    }
+
+    private reactor.core.scheduler.Scheduler webBlockingScheduler() {
+        return executors == null ? reactor.core.scheduler.Schedulers.boundedElastic()
+                : executors.webBlockingScheduler();
+    }
+
+    private void scheduleBlocking(Runnable task) {
+        try {
+            webBlockingScheduler().schedule(task);
+        } catch (RejectedExecutionException error) {
+            log.warn("Web blocking pool rejected skill cleanup; using emergency fallback", error);
+            reactor.core.scheduler.Schedulers.boundedElastic().schedule(task);
+        }
+    }
+
+    private void deleteQuietly(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (Exception error) {
+            log.debug("Failed to remove temporary skill file {}", path, error);
+        }
     }
 
     private ResponseEntity<?> badRequest(Throwable e) {

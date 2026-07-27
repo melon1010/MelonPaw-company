@@ -170,6 +170,47 @@ class AgentSessionLogReaderSkillPrivacyTest {
         assertEquals("second answer", firstText(messages.get(3)));
     }
 
+    @Test
+    void preservesExplicitTerminalAnswerWhenLaterProgressMessagesExist() {
+        ConfigManager configManager = configManager();
+        ChatManager chatManager = new ChatManager(configManager);
+        chatManager.saveSessionShadow("default", "console", "default", "phase-session", Map.of(
+                "context", List.of(
+                        message("u1", "USER", "user", "执行任务"),
+                        messageWithPhase("p1", "正在查询。", "runtime-turn", "progress", false),
+                        messageWithPhase("a1", "这是最终结果。", "runtime-turn", "final", true),
+                        messageWithPhase("p2", "正在整理后台统计。", "runtime-turn", "progress", false))));
+        AgentSessionLogReader reader = new AgentSessionLogReader(configManager, chatManager);
+
+        List<Map<String, Object>> messages = reader.readFrontendMessages(
+                "default", "default", "console", "phase-session");
+
+        assertEquals(List.of("input", "progress", "final", "progress"), messages.stream()
+                .map(item -> String.valueOf(((Map<?, ?>) item.get("metadata")).get("phase")))
+                .toList());
+        assertEquals("runtime-turn", ((Map<?, ?>) messages.get(2).get("metadata")).get("turn_id"));
+        assertEquals(true, ((Map<?, ?>) messages.get(2).get("metadata")).get("terminal"));
+        assertEquals(false, ((Map<?, ?>) messages.get(3).get("metadata")).get("terminal"));
+    }
+
+    @Test
+    void doesNotPromoteProtocolProgressWhileTurnIsStillRunning() {
+        ConfigManager configManager = configManager();
+        ChatManager chatManager = new ChatManager(configManager);
+        chatManager.saveSessionShadow("default", "console", "default", "running-phase-session", Map.of(
+                "context", List.of(
+                        message("u1", "USER", "user", "执行任务"),
+                        messageWithPhase("p1", "仍在执行。", "runtime-turn", "progress", false))));
+        AgentSessionLogReader reader = new AgentSessionLogReader(configManager, chatManager);
+
+        List<Map<String, Object>> messages = reader.readFrontendMessages(
+                "default", "default", "console", "running-phase-session");
+
+        Map<?, ?> metadata = (Map<?, ?>) messages.get(1).get("metadata");
+        assertEquals("progress", metadata.get("phase"));
+        assertEquals(false, metadata.get("terminal"));
+    }
+
     private ConfigManager configManager() {
         ConfigManager configManager = new ConfigManager();
         configManager.setHomeDir(home.toString());
@@ -194,6 +235,16 @@ class AgentSessionLogReaderSkillPrivacyTest {
                 "name", name,
                 "content", List.of(Map.of("type", "text", "text", text)),
                 "metadata", Map.of());
+    }
+
+    private Map<String, Object> messageWithPhase(
+            String id, String text, String turnId, String phase, boolean terminal) {
+        return Map.of(
+                "id", id,
+                "role", "ASSISTANT",
+                "name", "default",
+                "content", List.of(Map.of("type", "text", "text", text)),
+                "metadata", Map.of("turn_id", turnId, "phase", phase, "terminal", terminal));
     }
 
     private String firstText(Map<String, Object> message) {

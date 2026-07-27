@@ -1,5 +1,6 @@
 package com.melon.app.auth;
 
+import com.melon.app.config.RuntimeExecutors;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,21 +27,24 @@ public class ProjectSpaceController {
     private final EnterpriseIdentityStore store;
     private final ProjectWorkspaceService workspaceService;
     private final ProjectAgentService projectAgentService;
+    private final RuntimeExecutors executors;
 
     public ProjectSpaceController(
             EnterpriseIdentityStore store,
             ProjectWorkspaceService workspaceService) {
-        this(store, workspaceService, null);
+        this(store, workspaceService, null, null);
     }
 
     @Autowired
     public ProjectSpaceController(
             EnterpriseIdentityStore store,
             ProjectWorkspaceService workspaceService,
-            ProjectAgentService projectAgentService) {
+            ProjectAgentService projectAgentService,
+            RuntimeExecutors executors) {
         this.store = store;
         this.workspaceService = workspaceService;
         this.projectAgentService = projectAgentService;
+        this.executors = executors;
     }
 
     @GetMapping
@@ -289,7 +293,8 @@ public class ProjectSpaceController {
     }
 
     private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
-        return Mono.fromCallable(callable).subscribeOn(Schedulers.boundedElastic());
+        return Mono.defer(() -> Mono.fromCallable(callable))
+                .subscribeOn(executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler());
     }
 
     private Mono<ResponseEntity<?>> projectAgentMutation(

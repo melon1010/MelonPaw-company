@@ -1,5 +1,6 @@
 package com.melon.app.auth;
 
+import com.melon.app.config.RuntimeExecutors;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -26,9 +27,16 @@ import static com.melon.app.auth.EnterprisePermissions.SYSTEM_MANAGE;
 public class RoleController {
 
     private final EnterpriseIdentityStore store;
+    private final RuntimeExecutors executors;
 
     public RoleController(EnterpriseIdentityStore store) {
+        this(store, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RoleController(EnterpriseIdentityStore store, RuntimeExecutors executors) {
         this.store = store;
+        this.executors = executors;
     }
 
     @GetMapping
@@ -98,7 +106,8 @@ public class RoleController {
     }
 
     private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
-        return Mono.fromCallable(callable).subscribeOn(Schedulers.boundedElastic());
+        return Mono.defer(() -> Mono.fromCallable(callable))
+                .subscribeOn(executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler());
     }
 
     private Set<String> stringSet(Object value) {

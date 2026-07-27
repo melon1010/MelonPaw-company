@@ -1,5 +1,6 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.auth.EnterpriseIdentityStore;
 import com.melon.app.auth.EnterprisePrincipal;
@@ -41,6 +42,24 @@ public class AgentManagementController {
     private final SkillService skillService;
     private final EnterpriseAgentAccessService agentAccessService;
     private final ProviderManager providerManager;
+    private final RuntimeExecutors executors;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AgentManagementController(ConfigManager configManager,
+                                     WorkspaceManager workspaceManager,
+                                     MultiAgentManager multiAgentManager,
+                                     SkillService skillService,
+                                     EnterpriseAgentAccessService agentAccessService,
+                                     ProviderManager providerManager,
+                                     RuntimeExecutors executors) {
+        this.configManager = configManager;
+        this.workspaceManager = workspaceManager;
+        this.multiAgentManager = multiAgentManager;
+        this.skillService = skillService;
+        this.agentAccessService = agentAccessService;
+        this.providerManager = providerManager;
+        this.executors = executors;
+    }
 
     public AgentManagementController(ConfigManager configManager,
                                      WorkspaceManager workspaceManager,
@@ -48,17 +67,13 @@ public class AgentManagementController {
                                      SkillService skillService,
                                      EnterpriseAgentAccessService agentAccessService,
                                      ProviderManager providerManager) {
-        this.configManager = configManager;
-        this.workspaceManager = workspaceManager;
-        this.multiAgentManager = multiAgentManager;
-        this.skillService = skillService;
-        this.agentAccessService = agentAccessService;
-        this.providerManager = providerManager;
+        this(configManager, workspaceManager, multiAgentManager, skillService,
+                agentAccessService, providerManager, null);
     }
 
     @GetMapping
     public Mono<ResponseEntity<?>> list(@AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> ResponseEntity.ok(Map.of(
+        return blocking(() -> ResponseEntity.ok(Map.of(
                 "agents", agentAccessService.accessibleAgentIds(principal).stream()
                         .map(id -> Map.entry(id, configManager.getConfig().getAgent(id)))
                         .filter(entry -> entry.getValue() != null)
@@ -72,7 +87,7 @@ public class AgentManagementController {
     public Mono<ResponseEntity<?>> get(
             @PathVariable String id,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             if (!agentAccessService.canAccess(principal, id)) {
                 return ResponseEntity.status(403).body(Map.of("detail", "Agent access denied"));
             }
@@ -88,7 +103,7 @@ public class AgentManagementController {
     public Mono<ResponseEntity<?>> create(
             @RequestBody(required = false) Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String id = sanitizeId(trimmedStringValue(value(body, "id", "agent_id", "name"), "agent"));
             Map<String, AgentConfig> agents = mutableAgents();
             if (agents.containsKey(id)) {
@@ -134,7 +149,7 @@ public class AgentManagementController {
             @PathVariable String id,
             @RequestBody(required = false) Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             if (!agentAccessService.canAccess(principal, id)) {
                 return ResponseEntity.status(403).body(Map.of("detail", "Agent access denied"));
             }
@@ -172,7 +187,7 @@ public class AgentManagementController {
     public Mono<ResponseEntity<?>> delete(
             @PathVariable String id,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             if (!agentAccessService.canAccess(principal, id)) {
                 return ResponseEntity.status(403).body(Map.of("detail", "Agent access denied"));
             }
@@ -202,7 +217,7 @@ public class AgentManagementController {
     public Mono<ResponseEntity<?>> reorder(
             @RequestBody(required = false) Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             if (!principal.hasPermission(SYSTEM_MANAGE)) {
                 return ResponseEntity.status(403).body(Map.of(
                         "detail", "Only a system administrator can change the global Agent order"));
@@ -228,7 +243,7 @@ public class AgentManagementController {
             @PathVariable String id,
             @RequestBody(required = false) Map<String, Object> body,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             if (!agentAccessService.canAccess(principal, id)) {
                 return ResponseEntity.status(403).body(Map.of("detail", "Agent access denied"));
             }
@@ -254,6 +269,12 @@ public class AgentManagementController {
 
     private Map<String, AgentConfig> mutableAgents() {
         return new LinkedHashMap<>(configManager.getConfig().getAgents());
+    }
+
+    private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
+        return Mono.defer(() -> Mono.fromCallable(callable))
+                .subscribeOn(executors == null ? reactor.core.scheduler.Schedulers.boundedElastic()
+                        : executors.webBlockingScheduler());
     }
 
     private Map<String, Object> agentPayload(String id, AgentConfig config, boolean includeInternalDetails) {

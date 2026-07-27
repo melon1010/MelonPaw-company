@@ -1,6 +1,9 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.service.BackupService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -23,22 +26,31 @@ import java.util.*;
 @RequestMapping("/api/backups")
 public class BackupCompatController {
 
+    private static final Logger log = LoggerFactory.getLogger(BackupCompatController.class);
+
     private final BackupService backupService;
+    private final RuntimeExecutors executors;
 
     public BackupCompatController(BackupService backupService) {
+        this(backupService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public BackupCompatController(BackupService backupService, RuntimeExecutors executors) {
         this.backupService = backupService;
+        this.executors = executors;
     }
 
     @GetMapping
     public Mono<ResponseEntity<?>> listBackups() {
-        return Mono.fromCallable(() -> ResponseEntity.ok(backupService.listBackups().stream()
+        return blocking(() -> ResponseEntity.ok(backupService.listBackups().stream()
                 .map(this::backupMeta)
                 .toList()));
     }
 
     @GetMapping("/{id}")
     public Mono<ResponseEntity<?>> getBackup(@PathVariable String id) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             Path backup = findBackup(id);
             if (backup == null) {
                 return ResponseEntity.notFound().build();
@@ -51,7 +63,7 @@ public class BackupCompatController {
 
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<Map<String, Object>>> createBackupStream(@RequestBody(required = false) Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
                     Map<String, Object> scope = mapValue(body != null ? body.get("scope") : null);
                     Path backup = backupService.createBackup(
                             stringValue(body != null ? body.get("name") : null, ""),
@@ -75,7 +87,7 @@ public class BackupCompatController {
 
     @PostMapping("/{id}/restore")
     public Mono<ResponseEntity<?>> restoreBackup(@PathVariable String id) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             Path backup = findBackup(id);
             if (backup == null) {
                 return ResponseEntity.notFound().build();
@@ -87,7 +99,7 @@ public class BackupCompatController {
 
     @PostMapping("/delete")
     public Mono<ResponseEntity<?>> deleteBackups(@RequestBody Map<String, Object> body) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             List<String> ids = stringList(body.get("ids"));
             List<String> deleted = new ArrayList<>();
             List<Map<String, Object>> failed = new ArrayList<>();
@@ -109,7 +121,7 @@ public class BackupCompatController {
 
     @GetMapping("/{id}/export")
     public Mono<ResponseEntity<?>> exportBackup(@PathVariable String id) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             Path backup = findBackup(id);
             if (backup == null) {
                 return ResponseEntity.notFound().build();
@@ -135,16 +147,11 @@ public class BackupCompatController {
                 return Mono.error(e);
             }
             return filePart.transferTo(temp)
-                    .then(Mono.<ResponseEntity<?>>fromCallable(() -> {
+                    .then(blocking(() -> {
                         Path imported = backupService.importBackup(temp, filePart.filename());
                         return ResponseEntity.ok(backupMeta(imported));
                     }))
-                    .doFinally(signal -> {
-                        try {
-                            Files.deleteIfExists(temp);
-                        } catch (Exception ignored) {
-                        }
-                    });
+                    .doFinally(signal -> scheduleBlocking(() -> deleteQuietly(temp)));
         }).onErrorResume(e -> Mono.just(ResponseEntity.badRequest().body(Map.of("detail", e.getMessage()))));
     }
 
@@ -206,5 +213,29 @@ public class BackupCompatController {
             return result;
         }
         return Map.of();
+    }
+
+    private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
+        return Mono.defer(() -> Mono.fromCallable(callable))
+                .subscribeOn(executors == null ? reactor.core.scheduler.Schedulers.boundedElastic()
+                        : executors.webBlockingScheduler());
+    }
+
+    private void scheduleBlocking(Runnable task) {
+        try {
+            (executors == null ? reactor.core.scheduler.Schedulers.boundedElastic()
+                    : executors.webBlockingScheduler()).schedule(task);
+        } catch (java.util.concurrent.RejectedExecutionException error) {
+            // Cleanup must still run when the bounded request pool is draining.
+            reactor.core.scheduler.Schedulers.boundedElastic().schedule(task);
+        }
+    }
+
+    private void deleteQuietly(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (Exception ignored) {
+            log.debug("Failed to delete temporary backup upload {}", path);
+        }
     }
 }

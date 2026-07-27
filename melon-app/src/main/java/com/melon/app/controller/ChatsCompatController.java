@@ -1,5 +1,6 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.auth.EnterpriseAgentAccessService;
 import com.melon.app.runner.AgentSessionLogReader;
@@ -24,12 +25,21 @@ public class ChatsCompatController {
     private final ChatManager chatManager;
     private final AgentSessionLogReader sessionLogReader;
     private final EnterpriseAgentAccessService agentAccessService;
+    private final RuntimeExecutors executors;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ChatsCompatController(ChatManager chatManager, AgentSessionLogReader sessionLogReader,
-                                 EnterpriseAgentAccessService agentAccessService) {
+                                 EnterpriseAgentAccessService agentAccessService,
+                                 RuntimeExecutors executors) {
         this.chatManager = chatManager;
         this.sessionLogReader = sessionLogReader;
         this.agentAccessService = agentAccessService;
+        this.executors = executors;
+    }
+
+    public ChatsCompatController(ChatManager chatManager, AgentSessionLogReader sessionLogReader,
+                                 EnterpriseAgentAccessService agentAccessService) {
+        this(chatManager, sessionLogReader, agentAccessService, null);
     }
 
     @GetMapping
@@ -37,7 +47,7 @@ public class ChatsCompatController {
                                              @RequestParam(value = "channel", required = false) String channel,
                                              @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                              @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
             String ownerFilter = agentAccessService.isProjectAgent(resolvedAgentId) ? null : principal.id();
             return ResponseEntity.ok(chatManager.list(resolvedAgentId, ownerFilter, channel));
@@ -48,7 +58,7 @@ public class ChatsCompatController {
     public Mono<ResponseEntity<?>> createChat(@RequestBody(required = false) Map<String, Object> body,
                                               @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
             String name = body != null ? stringValue(body.get("name"), stringValue(body.get("title"), "New Chat")) : "New Chat";
             String channel = body != null ? stringValue(body.get("channel"), "console") : "console";
@@ -61,7 +71,7 @@ public class ChatsCompatController {
     public Mono<ResponseEntity<?>> getChat(@PathVariable String chatId,
                                            @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                            @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
             ChatSpec spec = chatManager.get(resolvedAgentId, chatId);
             if (spec == null) {
@@ -79,7 +89,7 @@ public class ChatsCompatController {
     public Mono<ResponseEntity<?>> updateChat(@PathVariable String chatId, @RequestBody Map<String, Object> body,
                                               @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
             ChatSpec spec = chatManager.get(resolvedAgentId, chatId);
             if (spec == null) {
@@ -97,7 +107,7 @@ public class ChatsCompatController {
     public Mono<ResponseEntity<?>> deleteChat(@PathVariable String chatId,
                                               @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                               @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
             ChatSpec spec = chatManager.get(resolvedAgentId, chatId);
             if (spec == null) return ResponseEntity.notFound().build();
@@ -114,7 +124,7 @@ public class ChatsCompatController {
     public Mono<ResponseEntity<?>> batchDelete(@RequestBody List<String> chatIds,
                                                @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                                @AuthenticationPrincipal EnterprisePrincipal principal) {
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
             String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
             int count = 0;
             if (chatIds != null) {
@@ -138,5 +148,11 @@ public class ChatsCompatController {
         if (!agentAccessService.isProjectAgent(agentId) && !principal.id().equals(spec.getUserId())) {
             throw new SecurityException("The chat belongs to another user");
         }
+    }
+
+    private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
+        return Mono.defer(() -> Mono.fromCallable(callable))
+                .subscribeOn(executors == null ? reactor.core.scheduler.Schedulers.boundedElastic()
+                        : executors.webBlockingScheduler());
     }
 }

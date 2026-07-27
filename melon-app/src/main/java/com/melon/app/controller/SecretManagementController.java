@@ -1,5 +1,6 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.service.SecretRotationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,9 +16,16 @@ import reactor.core.scheduler.Schedulers;
 public class SecretManagementController {
 
     private final SecretRotationService secretRotationService;
+    private final RuntimeExecutors executors;
 
     public SecretManagementController(SecretRotationService secretRotationService) {
+        this(secretRotationService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SecretManagementController(SecretRotationService secretRotationService, RuntimeExecutors executors) {
         this.secretRotationService = secretRotationService;
+        this.executors = executors;
     }
 
     @PostMapping("/rotate")
@@ -25,6 +33,6 @@ public class SecretManagementController {
     public Mono<ResponseEntity<?>> rotate() {
         return Mono.<ResponseEntity<?>>fromCallable(
                         () -> ResponseEntity.ok(secretRotationService.reencryptAll()))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler());
     }
 }

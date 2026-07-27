@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.auth.EnterpriseAgentAccessService;
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.runner.AgentRunner;
 import com.melon.app.runner.ChatManager;
 import com.melon.app.runner.ChatSpec;
@@ -75,14 +76,17 @@ public class ConsoleCompatController {
     private final InboxStore inboxStore;
     private final EnterpriseAgentAccessService agentAccessService;
     private final EnterpriseTaskService taskService;
+    private final RuntimeExecutors executors;
     private final Map<String, Flux<ServerSentEvent<String>>> activeConsoleStreams = new ConcurrentHashMap<>();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ConsoleCompatController(AgentRunner agentRunner, ChatManager chatManager, ApprovalService approvalService,
                                    ConfigManager configManager, CommandDispatcher commandDispatcher,
                                    SkillService skillService, MultiAgentManager multiAgentManager,
                                    InboxStore inboxStore,
                                    EnterpriseAgentAccessService agentAccessService,
-                                   EnterpriseTaskService taskService) {
+                                   EnterpriseTaskService taskService,
+                                   RuntimeExecutors executors) {
         this.agentRunner = agentRunner;
         this.chatManager = chatManager;
         this.approvalService = approvalService;
@@ -93,6 +97,17 @@ public class ConsoleCompatController {
         this.inboxStore = inboxStore;
         this.agentAccessService = agentAccessService;
         this.taskService = taskService;
+        this.executors = executors;
+    }
+
+    public ConsoleCompatController(AgentRunner agentRunner, ChatManager chatManager, ApprovalService approvalService,
+                                   ConfigManager configManager, CommandDispatcher commandDispatcher,
+                                   SkillService skillService, MultiAgentManager multiAgentManager,
+                                   InboxStore inboxStore,
+                                   EnterpriseAgentAccessService agentAccessService,
+                                   EnterpriseTaskService taskService) {
+        this(agentRunner, chatManager, approvalService, configManager, commandDispatcher,
+                skillService, multiAgentManager, inboxStore, agentAccessService, taskService, null);
     }
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -100,6 +115,12 @@ public class ConsoleCompatController {
             @RequestBody Map<String, Object> body,
             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String requestedAgentId,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return Flux.defer(() -> chatInternal(body, requestedAgentId, principal))
+                .subscribeOn(webBlockingScheduler());
+    }
+
+    private Flux<ServerSentEvent<String>> chatInternal(
+            Map<String, Object> body, String requestedAgentId, EnterprisePrincipal principal) {
         String agentId = agentAccessService.resolveExecution(principal, requestedAgentId);
         String userId = principal.id();
         String sessionId = stringValue(body.get("session_id"), "default");
@@ -189,35 +210,39 @@ public class ConsoleCompatController {
         Flux<ServerSentEvent<String>> execution = agentEvents
                 .doOnSubscribe(s -> log.info("Console chat started: agent={}, user={}, session={}, chat={}", agentId, userId, sessionId, chatId))
                 .flatMapIterable(envelope::translate)
-                .concatWith(Flux.defer(() -> {
+                .concatWith(Flux.defer(() -> blocking(() -> {
                     List<ServerSentEvent<String>> completedEvents = envelope.finish();
                     persistConsoleSession(agentId, channel, userId, sessionId,
                             frontendContext, envelope, false);
                     taskService.succeed(task, envelope.visibleAssistantText());
                     taskSettled.set(true);
                     markConsoleChatIdle(agentId, chatId, userId, sessionId, turnId);
-                    return Flux.fromIterable(completedEvents);
-                }))
+                    return completedEvents;
+                }).flatMapMany(Flux::fromIterable)))
                 .startWith(envelope.start())
                 .onErrorResume(e -> {
                     log.error("Console chat failed: agent={}, user={}, session={}, chat={}", agentId, userId, sessionId, chatId, e);
-                    List<ServerSentEvent<String>> errorEvents = envelope.error(e);
-                    persistConsoleSession(agentId, channel, userId, sessionId,
-                            frontendContext, envelope, true);
-                    if (taskSettled.compareAndSet(false, true)) {
-                        taskService.fail(task, e);
-                    }
-                    markConsoleChatIdle(agentId, chatId, userId, sessionId, turnId);
-                    return Flux.fromIterable(errorEvents);
+                    return blocking(() -> {
+                        List<ServerSentEvent<String>> errorEvents = envelope.error(e);
+                        persistConsoleSession(agentId, channel, userId, sessionId,
+                                frontendContext, envelope, true);
+                        if (taskSettled.compareAndSet(false, true)) {
+                            taskService.fail(task, e);
+                        }
+                        markConsoleChatIdle(agentId, chatId, userId, sessionId, turnId);
+                        return errorEvents;
+                    }).flatMapMany(Flux::fromIterable);
                 })
                 .doFinally(signal -> {
                     try {
                         if (signal == reactor.core.publisher.SignalType.CANCEL
                                 && taskSettled.compareAndSet(false, true)) {
-                            persistConsoleSession(agentId, channel, userId, sessionId,
-                                    frontendContext, envelope, true);
-                            taskService.cancel(task, "execution cancelled");
-                            markConsoleChatIdle(agentId, chatId, userId, sessionId, turnId);
+                            scheduleBlocking(() -> {
+                                persistConsoleSession(agentId, channel, userId, sessionId,
+                                        frontendContext, envelope, true);
+                                taskService.cancel(task, "execution cancelled");
+                                markConsoleChatIdle(agentId, chatId, userId, sessionId, turnId);
+                            });
                         }
                     } finally {
                         Flux<ServerSentEvent<String>> detached = detachedRef.get();
@@ -278,80 +303,82 @@ public class ConsoleCompatController {
             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
             @AuthenticationPrincipal EnterprisePrincipal principal,
             @RequestBody(required = false) Map<String, Object> body) {
-        Map<String, Object> payload = body != null ? body : Map.of();
-        String effectiveAgentId = agentAccessService.resolveExecution(principal, agentId);
-        String chatId = stringValue(payload.get("chat_id"), stringValue(chatIdParam, ""));
-        ChatSpec chat = chatManager.get(effectiveAgentId, chatId);
-        String userId = principal.id();
-        boolean sharedChat = agentAccessService.isProjectAgent(effectiveAgentId);
-        if (chat != null && !sharedChat && !userId.equals(chat.getUserId())) {
-            return Mono.error(new SecurityException("The chat belongs to another user"));
-        }
-        String requestedSessionId = stringValue(payload.get("session_id"), stringValue(sessionIdParam, ""));
-        if (chat == null && !requestedSessionId.isBlank()) {
-            chat = chatManager.list(effectiveAgentId, sharedChat ? null : userId, null).stream()
-                    .filter(item -> requestedSessionId.equals(item.getSessionId()))
-                    .findFirst()
-                    .orElse(null);
-        }
-        if (chat == null) {
-            return Mono.just(ResponseEntity.status(404).body(Map.of("detail", "Owned chat not found")));
-        }
-        String chatSessionId = stringValue(chat.getSessionId(), "default");
-        // A stop request is always scoped to the owned chat. Never let a caller
-        // replace the session id after ownership has been established.
-        String sessionId = chatSessionId;
-        String executionUserId = chatManager.activeUserId(effectiveAgentId, chat.getId(), chat.getUserId());
-        String activeTurnId = chatManager.activeTurnId(effectiveAgentId, chat.getId());
-
-        boolean interrupted = false;
-        String detail = "";
-        try {
-            HarnessAgent agent = multiAgentManager.getAgent(effectiveAgentId);
-            if (agent != null) {
-                agent.getDelegate().interrupt(executionUserId, sessionId);
-                interrupted = true;
-            } else {
-                detail = "agent is not running";
+        return Mono.<ResponseEntity<?>>defer(() -> {
+            Map<String, Object> payload = body != null ? body : Map.of();
+            String effectiveAgentId = agentAccessService.resolveExecution(principal, agentId);
+            String chatId = stringValue(payload.get("chat_id"), stringValue(chatIdParam, ""));
+            ChatSpec chat = chatManager.get(effectiveAgentId, chatId);
+            String userId = principal.id();
+            boolean sharedChat = agentAccessService.isProjectAgent(effectiveAgentId);
+            if (chat != null && !sharedChat && !userId.equals(chat.getUserId())) {
+                return Mono.error(new SecurityException("The chat belongs to another user"));
             }
-        } catch (Exception e) {
-            log.warn("Failed to interrupt chat: agent={}, user={}, session={}, chat={}",
-                    effectiveAgentId, userId, sessionId, chatId, e);
-            return Mono.error(new IllegalStateException("Failed to interrupt chat", e));
-        }
+            String requestedSessionId = stringValue(payload.get("session_id"), stringValue(sessionIdParam, ""));
+            if (chat == null && !requestedSessionId.isBlank()) {
+                chat = chatManager.list(effectiveAgentId, sharedChat ? null : userId, null).stream()
+                        .filter(item -> requestedSessionId.equals(item.getSessionId()))
+                        .findFirst()
+                        .orElse(null);
+            }
+            if (chat == null) {
+                return Mono.just(ResponseEntity.status(404).body(Map.of("detail", "Owned chat not found")));
+            }
+            String chatSessionId = stringValue(chat.getSessionId(), "default");
+            // A stop request is always scoped to the owned chat. Never let a caller
+            // replace the session id after ownership has been established.
+            String sessionId = chatSessionId;
+            String executionUserId = chatManager.activeUserId(effectiveAgentId, chat.getId(), chat.getUserId());
+            String activeTurnId = chatManager.activeTurnId(effectiveAgentId, chat.getId());
 
-        boolean executionCancelled = agentRunner.cancel(effectiveAgentId, executionUserId, sessionId);
+            boolean interrupted = false;
+            String detail = "";
+            try {
+                HarnessAgent agent = multiAgentManager.getAgent(effectiveAgentId);
+                if (agent != null) {
+                    agent.getDelegate().interrupt(executionUserId, sessionId);
+                    interrupted = true;
+                } else {
+                    detail = "agent is not running";
+                }
+            } catch (Exception e) {
+                log.warn("Failed to interrupt chat: agent={}, user={}, session={}, chat={}",
+                        effectiveAgentId, userId, sessionId, chatId, e);
+                return Mono.error(new IllegalStateException("Failed to interrupt chat", e));
+            }
 
-        boolean approvalCancelled = sharedChat
-                ? approvalService.cancelPendingApproval(effectiveAgentId, sessionId)
-                : approvalService.cancelPendingApproval(effectiveAgentId, sessionId, userId);
-        int pendingConfirmationsClosed = agentRunner.abandonPendingConfirmations(
-                effectiveAgentId, executionUserId, sessionId);
-        boolean planCancelled = approvalService.cancelPendingPlan(effectiveAgentId, sessionId);
-        if (sharedChat) {
-            taskService.cancelActiveAgentSession(effectiveAgentId, sessionId, "cancelled from shared chat");
-        } else {
-            taskService.cancelActiveSession(userId, effectiveAgentId, sessionId, "cancelled from chat");
-        }
-        int shellCancelled = 0;
-        if (!chatId.isBlank()) {
-            chatManager.endTurn(effectiveAgentId, chatId, executionUserId, activeTurnId);
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("stopped", true);
-        result.put("interrupted", interrupted);
-        result.put("execution_cancelled", executionCancelled);
-        result.put("approval_cancelled", approvalCancelled);
-        result.put("pending_confirmations_closed", pendingConfirmationsClosed);
-        result.put("plan_cancelled", planCancelled);
-        result.put("shell_cancelled", shellCancelled);
-        result.put("chat_id", chatId);
-        result.put("agent_id", effectiveAgentId);
-        result.put("session_id", sessionId);
-        result.put("user_id", userId);
-        result.put("execution_user_id", executionUserId);
-        result.put("detail", detail);
-        return Mono.just(ResponseEntity.ok(result));
+            boolean executionCancelled = agentRunner.cancel(effectiveAgentId, executionUserId, sessionId);
+
+            boolean approvalCancelled = sharedChat
+                    ? approvalService.cancelPendingApproval(effectiveAgentId, sessionId)
+                    : approvalService.cancelPendingApproval(effectiveAgentId, sessionId, userId);
+            int pendingConfirmationsClosed = agentRunner.abandonPendingConfirmations(
+                    effectiveAgentId, executionUserId, sessionId);
+            boolean planCancelled = approvalService.cancelPendingPlan(effectiveAgentId, sessionId);
+            if (sharedChat) {
+                taskService.cancelActiveAgentSession(effectiveAgentId, sessionId, "cancelled from shared chat");
+            } else {
+                taskService.cancelActiveSession(userId, effectiveAgentId, sessionId, "cancelled from chat");
+            }
+            int shellCancelled = 0;
+            if (!chatId.isBlank()) {
+                chatManager.endTurn(effectiveAgentId, chatId, executionUserId, activeTurnId);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("stopped", true);
+            result.put("interrupted", interrupted);
+            result.put("execution_cancelled", executionCancelled);
+            result.put("approval_cancelled", approvalCancelled);
+            result.put("pending_confirmations_closed", pendingConfirmationsClosed);
+            result.put("plan_cancelled", planCancelled);
+            result.put("shell_cancelled", shellCancelled);
+            result.put("chat_id", chatId);
+            result.put("agent_id", effectiveAgentId);
+            result.put("session_id", sessionId);
+            result.put("user_id", userId);
+            result.put("execution_user_id", executionUserId);
+            result.put("detail", detail);
+            return Mono.just(ResponseEntity.ok(result));
+        }).subscribeOn(webBlockingScheduler());
     }
 
     @GetMapping("/push-messages")
@@ -359,18 +386,20 @@ public class ConsoleCompatController {
             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
             @RequestParam(value = "session_id", required = false) String sessionId,
             @AuthenticationPrincipal EnterprisePrincipal principal) {
-        boolean elevated = principal.hasAnyPermission(APPROVALS_DECIDE, AGENTS_MANAGE);
-        List<Map<String, Object>> pending = sessionId != null
-                ? optionalList(elevated
-                    ? approvalService.getPendingApproval(agentId, sessionId)
-                    : approvalService.getPendingApproval(agentId, sessionId, principal.id()))
-                : (elevated
-                    ? approvalService.getPendingApprovals(agentId)
-                    : approvalService.getPendingApprovals(agentId, principal.id()));
-        return Mono.just(ResponseEntity.ok(Map.of(
-                "messages", List.of(),
-                "pending_approvals", pending
-        )));
+        return blocking(() -> {
+            boolean elevated = principal.hasAnyPermission(APPROVALS_DECIDE, AGENTS_MANAGE);
+            List<Map<String, Object>> pending = sessionId != null
+                    ? optionalList(elevated
+                        ? approvalService.getPendingApproval(agentId, sessionId)
+                        : approvalService.getPendingApproval(agentId, sessionId, principal.id()))
+                    : (elevated
+                        ? approvalService.getPendingApprovals(agentId)
+                        : approvalService.getPendingApprovals(agentId, principal.id()));
+            return ResponseEntity.ok(Map.of(
+                    "messages", List.of(),
+                    "pending_approvals", pending
+            ));
+        });
     }
 
     @GetMapping("/inbox/events")
@@ -380,7 +409,7 @@ public class ConsoleCompatController {
                                                @RequestParam(required = false) String status,
                                                @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
                                                @RequestParam(value = "unread_only", defaultValue = "false") boolean unreadOnly) {
-        return Mono.just(ResponseEntity.ok(Map.of(
+        return blocking(() -> ResponseEntity.ok(Map.of(
                 "events",
                 inboxStore.listEvents(Math.min(Math.max(limit, 1), 500), Math.max(offset, 0),
                         sourceType, status, agentId, unreadOnly)
@@ -391,37 +420,43 @@ public class ConsoleCompatController {
     public Mono<ResponseEntity<?>> markInboxRead(
             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
             @RequestBody(required = false) Map<String, Object> body) {
-        int updated = body != null && Boolean.TRUE.equals(body.get("all"))
-                ? inboxStore.markAllRead(agentId)
-                : inboxStore.markRead(stringList(body != null ? body.get("event_ids") : null), agentId);
-        return Mono.just(ResponseEntity.ok(Map.of("updated", updated)));
+        return blocking(() -> {
+            int updated = body != null && Boolean.TRUE.equals(body.get("all"))
+                    ? inboxStore.markAllRead(agentId)
+                    : inboxStore.markRead(stringList(body != null ? body.get("event_ids") : null), agentId);
+            return ResponseEntity.ok(Map.of("updated", updated));
+        });
     }
 
     @DeleteMapping("/inbox/events/{eventId}")
     public Mono<ResponseEntity<?>> deleteInboxEvent(
             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
             @PathVariable String eventId) {
-        Map<String, Object> result = inboxStore.deleteEvent(eventId, agentId);
-        if (!Boolean.TRUE.equals(result.get("deleted"))) {
-            return Mono.just(ResponseEntity.status(404).body(Map.of("detail", "event not found")));
-        }
-        return Mono.just(ResponseEntity.ok(result));
+        return blocking(() -> {
+            Map<String, Object> result = inboxStore.deleteEvent(eventId, agentId);
+            if (!Boolean.TRUE.equals(result.get("deleted"))) {
+                return ResponseEntity.status(404).body(Map.of("detail", "event not found"));
+            }
+            return ResponseEntity.ok(result);
+        });
     }
 
     @GetMapping("/inbox/traces/{runId}")
     public Mono<ResponseEntity<?>> inboxTrace(
             @RequestHeader(value = "X-Agent-Id", defaultValue = "default") String agentId,
             @PathVariable String runId) {
-        Map<String, Object> trace = inboxStore.getTrace(runId, agentId);
-        if ("not_found".equals(trace.get("status"))) {
-            return Mono.just(ResponseEntity.status(404).body(Map.of("detail", "trace not found")));
-        }
-        return Mono.just(ResponseEntity.ok(trace));
+        return blocking(() -> {
+            Map<String, Object> trace = inboxStore.getTrace(runId, agentId);
+            if ("not_found".equals(trace.get("status"))) {
+                return ResponseEntity.status(404).body(Map.of("detail", "trace not found"));
+            }
+            return ResponseEntity.ok(trace);
+        });
     }
 
     @GetMapping("/debug/backend-logs")
     public Mono<ResponseEntity<?>> backendLogs(@RequestParam(defaultValue = "200") int lines) {
-        return Mono.fromCallable(() -> ResponseEntity.ok(backendLogsPayload(lines)));
+        return blocking(() -> ResponseEntity.ok(backendLogsPayload(lines)));
     }
 
     private Map<String, Object> backendLogsPayload(int lines) {
@@ -510,17 +545,17 @@ public class ConsoleCompatController {
         String stored = UUID.randomUUID().toString().replace("-", "") + "_" + safeFileName(original);
         Path mediaDir = SafePathUtil.resolveSafe(configManager.resolveWorkspaceDir(agentId), "media");
         Path target = SafePathUtil.resolveSafe(mediaDir, stored);
-        return Mono.fromCallable(() -> {
+        return blocking(() -> {
                     Files.createDirectories(mediaDir);
                     return target;
                 })
                 .flatMap(path -> file.transferTo(path).thenReturn(path))
-                .map(path -> ResponseEntity.ok(Map.of(
+                .flatMap(path -> blocking(() -> ResponseEntity.ok(Map.of(
                         "url", path.toAbsolutePath().normalize().toString(),
                         "file_name", original,
                         "stored_name", stored,
-                        "size", path.toFile().length()
-                )));
+                        "size", Files.size(path)
+                ))));
     }
 
     private String titleFromText(String text) {
@@ -704,19 +739,19 @@ public class ConsoleCompatController {
                                                 EnterprisePrincipal principal) {
         if (!result.isSuccess()) return Mono.just(CommandOutcome.message(result.getMessage()));
         return switch (result.getAction()) {
-            case SWITCH_MODEL -> Mono.fromCallable(() -> {
+            case SWITCH_MODEL -> blocking(() -> {
                 if (!principal.hasPermission("agents:manage")) {
                     return CommandOutcome.message("Model selection is managed by your organization.");
                 }
                 return CommandOutcome.message(switchModel(
                         agentId, stringValue(result.getData().get("model"), "")));
             });
-            case LIST_SKILLS -> Mono.fromCallable(() -> CommandOutcome.message(listSkills(agentId)));
-            case ADD_SKILL -> Mono.fromCallable(() -> CommandOutcome.message(
+            case LIST_SKILLS -> blocking(() -> CommandOutcome.message(listSkills(agentId)));
+            case ADD_SKILL -> blocking(() -> CommandOutcome.message(
                     addSkill(agentId, stringValue(result.getData().get("skill"), ""))));
-            case REMOVE_SKILL -> Mono.fromCallable(() -> CommandOutcome.message(
+            case REMOVE_SKILL -> blocking(() -> CommandOutcome.message(
                     removeSkill(agentId, stringValue(result.getData().get("skill"), ""))));
-            case CLEAR_HISTORY -> Mono.fromCallable(() -> {
+            case CLEAR_HISTORY -> blocking(() -> {
                 agentRunner.cancel(agentId, userId, sessionId);
                 boolean shared = agentAccessService.isProjectAgent(agentId);
                 if (shared) {
@@ -742,7 +777,7 @@ public class ConsoleCompatController {
                     .map(compacted -> CommandOutcome.message(compacted
                             ? "Conversation context compacted and persisted."
                             : "There is not enough conversation context to compact."));
-            case NEW_SESSION -> Mono.fromCallable(() -> {
+            case NEW_SESSION -> blocking(() -> {
                 String name = stringValue(result.getData().get("session_name"), "New chat");
                 ChatSpec created = chatManager.create(agentId, name, userId, channel, null);
                 return new CommandOutcome("Created a new chat: " + created.getName(),
@@ -831,6 +866,24 @@ public class ConsoleCompatController {
             return ExplicitSkillInvocation.modelPrompt(requested, instructions, request);
         } catch (java.io.IOException e) {
             throw new IllegalStateException("Failed to load skill '" + requested + "'", e);
+        }
+    }
+
+    private reactor.core.scheduler.Scheduler webBlockingScheduler() {
+        return executors == null ? reactor.core.scheduler.Schedulers.boundedElastic()
+                : executors.webBlockingScheduler();
+    }
+
+    private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
+        return Mono.defer(() -> Mono.fromCallable(callable)).subscribeOn(webBlockingScheduler());
+    }
+
+    private void scheduleBlocking(Runnable task) {
+        try {
+            webBlockingScheduler().schedule(task);
+        } catch (java.util.concurrent.RejectedExecutionException error) {
+            log.warn("Web blocking pool rejected chat finalization; using emergency fallback", error);
+            reactor.core.scheduler.Schedulers.boundedElastic().schedule(task);
         }
     }
 

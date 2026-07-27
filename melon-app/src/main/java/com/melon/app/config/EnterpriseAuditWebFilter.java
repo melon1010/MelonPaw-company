@@ -13,7 +13,6 @@ import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.net.InetSocketAddress;
 import java.util.Map;
@@ -32,9 +31,11 @@ public class EnterpriseAuditWebFilter implements WebFilter {
             "/api/backups", "/api/quotas", "/api/config/security", "/api/envs", "/api/local-models");
 
     private final EnterpriseAuditService auditService;
+    private final RuntimeExecutors executors;
 
-    public EnterpriseAuditWebFilter(EnterpriseAuditService auditService) {
+    public EnterpriseAuditWebFilter(EnterpriseAuditService auditService, RuntimeExecutors executors) {
         this.auditService = auditService;
+        this.executors = executors;
     }
 
     @Override
@@ -70,7 +71,7 @@ public class EnterpriseAuditWebFilter implements WebFilter {
                         Map.of(),
                         Map.of(),
                         Map.of("method", method.name(), "path", path)))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(executors.webBlockingScheduler())
                 .then();
     }
 

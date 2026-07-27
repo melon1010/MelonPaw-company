@@ -99,6 +99,56 @@ export function isProgressMessage(
   );
 }
 
+function hasVisibleMessageContent(message: IAgentScopeRuntimeMessage): boolean {
+  return (message.content ?? []).some((content) => {
+    if (content.type === ConversationContentType.DATA) return false;
+    if (
+      content.type === ConversationContentType.TEXT ||
+      content.type === ConversationContentType.REFUSAL
+    ) {
+      return Boolean(getMessageText(message).trim());
+    }
+    return true;
+  });
+}
+
+/**
+ * Older history projections can contain a completed response whose only
+ * visible assistant text is still tagged as progress. Restore the last such
+ * message as the answer while leaving reasoning and tool-only responses alone.
+ */
+export function recoverCompletedAnswer(
+  messages: IAgentScopeRuntimeMessage[],
+  completed: boolean,
+): IAgentScopeRuntimeMessage[] {
+  if (!completed || hasVisibleAnswerContent(messages)) return messages;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      message.role !== "assistant" ||
+      message.type !== ConversationMessageType.MESSAGE ||
+      !isProgressMessage(message) ||
+      !hasVisibleMessageContent(message)
+    ) {
+      continue;
+    }
+    const metadata = (
+      message as IAgentScopeRuntimeMessage & {
+        metadata?: Record<string, unknown> | null;
+      }
+    ).metadata;
+    const recovered = messages.slice();
+    recovered[index] = {
+      ...message,
+      metadata: { ...(metadata ?? {}), phase: "final", terminal: true },
+    } as IAgentScopeRuntimeMessage;
+    return recovered;
+  }
+
+  return messages;
+}
+
 export function isConversationProcessMessage(
   message: IAgentScopeRuntimeMessage,
 ): boolean {
@@ -255,16 +305,7 @@ export function hasVisibleAnswerContent(
     ) {
       return false;
     }
-    return (message.content ?? []).some((content) => {
-      if (content.type === ConversationContentType.DATA) return false;
-      if (
-        content.type === ConversationContentType.TEXT ||
-        content.type === ConversationContentType.REFUSAL
-      ) {
-        return Boolean(getMessageText(message).trim());
-      }
-      return true;
-    });
+    return hasVisibleMessageContent(message);
   });
 }
 

@@ -2,6 +2,7 @@ package com.melon.app.task;
 
 import com.melon.app.auth.EnterprisePrincipal;
 import com.melon.app.auth.EnterpriseAgentAccessService;
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.runner.AgentRunner;
 import com.melon.app.service.ApprovalService;
 import com.melon.core.agent.MultiAgentManager;
@@ -34,17 +35,29 @@ public class EnterpriseTaskController {
     private final ApprovalService approvalService;
     private final MultiAgentManager multiAgentManager;
     private final EnterpriseAgentAccessService agentAccessService;
+    private final RuntimeExecutors executors;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public EnterpriseTaskController(EnterpriseTaskService tasks, EnterpriseTaskRetryCoordinator retryCoordinator,
                                     AgentRunner agentRunner,
                                     ApprovalService approvalService, MultiAgentManager multiAgentManager,
-                                    EnterpriseAgentAccessService agentAccessService) {
+                                    EnterpriseAgentAccessService agentAccessService,
+                                    RuntimeExecutors executors) {
         this.tasks = tasks;
         this.retryCoordinator = retryCoordinator;
         this.agentRunner = agentRunner;
         this.approvalService = approvalService;
         this.multiAgentManager = multiAgentManager;
         this.agentAccessService = agentAccessService;
+        this.executors = executors;
+    }
+
+    public EnterpriseTaskController(EnterpriseTaskService tasks, EnterpriseTaskRetryCoordinator retryCoordinator,
+                                    AgentRunner agentRunner,
+                                    ApprovalService approvalService, MultiAgentManager multiAgentManager,
+                                    EnterpriseAgentAccessService agentAccessService) {
+        this(tasks, retryCoordinator, agentRunner, approvalService, multiAgentManager,
+                agentAccessService, null);
     }
 
     @PostMapping
@@ -200,6 +213,7 @@ public class EnterpriseTaskController {
     }
 
     private <T> Mono<T> blocking(Callable<T> task) {
-        return Mono.fromCallable(task).subscribeOn(Schedulers.boundedElastic());
+        return Mono.defer(() -> Mono.fromCallable(task))
+                .subscribeOn(executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler());
     }
 }

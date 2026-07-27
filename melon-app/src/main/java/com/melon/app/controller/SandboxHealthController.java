@@ -1,5 +1,6 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.service.SandboxHealthService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,14 +17,21 @@ import java.util.Map;
 public class SandboxHealthController {
 
     private final SandboxHealthService healthService;
+    private final RuntimeExecutors executors;
 
     public SandboxHealthController(SandboxHealthService healthService) {
+        this(healthService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SandboxHealthController(SandboxHealthService healthService, RuntimeExecutors executors) {
         this.healthService = healthService;
+        this.executors = executors;
     }
 
     @GetMapping("/health")
     public Mono<ResponseEntity<Map<String, Object>>> health() {
         return Mono.fromCallable(() -> ResponseEntity.ok(healthService.inspect()))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler());
     }
 }

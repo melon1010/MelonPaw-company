@@ -289,6 +289,7 @@ const chatSpecToSession = (chat: ChatSpec): ExtendedSession =>
     status: chat.status ?? "idle",
     createdAt: chat.created_at ?? null,
     updatedAt: chat.updated_at ?? null,
+    generating: chat.status === "running",
     pinned: chat.pinned ?? false,
   }) as ExtendedSession;
 
@@ -482,13 +483,27 @@ class SessionApi implements IAgentScopeRuntimeWebUISessionAPI {
   /** LRU cache: backendId → { session, timestamp } */
   private convertedSessionCache = new Map<
     string,
-    { session: ExtendedSession; timestamp: number }
+    { session: ExtendedSession; timestamp: number; version: string }
   >();
 
-  private getCachedConvertedSession(backendId: string): ExtendedSession | null {
+  private conversationVersion(session?: ExtendedSession): string {
+    if (!session) return "";
+    return [
+      session.updatedAt ?? session.createdAt ?? "",
+      session.status ?? "",
+    ].join("|");
+  }
+
+  private getCachedConvertedSession(
+    backendId: string,
+    version: string,
+  ): ExtendedSession | null {
     const entry = this.convertedSessionCache.get(backendId);
     if (!entry) return null;
-    if (Date.now() - entry.timestamp > SessionApi.CONVERTED_CACHE_TTL) {
+    if (
+      entry.version !== version ||
+      Date.now() - entry.timestamp > SessionApi.CONVERTED_CACHE_TTL
+    ) {
       this.convertedSessionCache.delete(backendId);
       return null;
     }
@@ -501,6 +516,7 @@ class SessionApi implements IAgentScopeRuntimeWebUISessionAPI {
   private setCachedConvertedSession(
     backendId: string,
     session: ExtendedSession,
+    version: string,
   ): void {
     if (this.convertedSessionCache.size >= SessionApi.CONVERTED_CACHE_MAX) {
       // Evict oldest (first entry in Map iteration order)
@@ -510,6 +526,7 @@ class SessionApi implements IAgentScopeRuntimeWebUISessionAPI {
     this.convertedSessionCache.set(backendId, {
       session,
       timestamp: Date.now(),
+      version,
     });
   }
 
@@ -992,9 +1009,12 @@ class SessionApi implements IAgentScopeRuntimeWebUISessionAPI {
     signal?: AbortSignal,
   ): Promise<ExtendedSession> {
     // Check LRU cache for non-generating sessions
-    const isIdle = !listEntry?.generating;
+    const isRunning =
+      listEntry?.status === "running" || listEntry?.generating === true;
+    const cacheVersion = this.conversationVersion(listEntry);
+    const isIdle = !isRunning;
     if (isIdle) {
-      const cached = this.getCachedConvertedSession(backendId);
+      const cached = this.getCachedConvertedSession(backendId, cacheVersion);
       if (cached) {
         // Update mutable fields that may differ
         cached.id = displayId;
@@ -1019,13 +1039,21 @@ class SessionApi implements IAgentScopeRuntimeWebUISessionAPI {
       messages,
       meta: listEntry?.meta || {},
       realId: listEntry?.realId,
+      status: chatHistory.status ?? listEntry?.status ?? "idle",
+      createdAt: listEntry?.createdAt ?? null,
+      updatedAt: listEntry?.updatedAt ?? null,
+      pinned: listEntry?.pinned ?? false,
       generating,
     };
     this.updateWindowVariables(session);
 
     // Cache non-generating sessions
     if (!generating) {
-      this.setCachedConvertedSession(backendId, session);
+      this.setCachedConvertedSession(
+        backendId,
+        session,
+        this.conversationVersion(session),
+      );
     }
 
     return session;

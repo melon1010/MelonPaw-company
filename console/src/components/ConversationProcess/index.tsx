@@ -442,4 +442,5 @@ export {
   hasVisibleAnswerContent,
   isPersistentToolResultMessage,
   pairToolMessages,
+  recoverCompletedAnswer,
 } from "./model";

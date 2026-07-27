@@ -1,5 +1,6 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.plugin.PluginManager;
 import com.melon.core.plugin.PluginDescriptor;
 import com.melon.core.util.OutboundNetworkPolicy;
@@ -51,9 +52,16 @@ public class PluginController {
             .build();
 
     private final PluginManager pluginManager;
+    private final RuntimeExecutors executors;
 
     public PluginController(PluginManager pluginManager) {
+        this(pluginManager, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public PluginController(PluginManager pluginManager, RuntimeExecutors executors) {
         this.pluginManager = pluginManager;
+        this.executors = executors;
     }
 
     /**
@@ -96,7 +104,7 @@ public class PluginController {
     @PostMapping("/install")
     public Mono<ResponseEntity<?>> installPlugin(@RequestBody(required = false) Map<String, Object> body) {
         return Mono.<ResponseEntity<?>>fromCallable(() -> ResponseEntity.ok(installFromSource(body)))
-                .subscribeOn(Schedulers.boundedElastic())
+                .subscribeOn(webBlockingScheduler())
                 .onErrorResume(e -> Mono.just(badRequest(e)));
     }
 
@@ -111,13 +119,8 @@ public class PluginController {
             }
             return filePart.transferTo(path)
                     .then(Mono.fromCallable(() -> (ResponseEntity<?>) ResponseEntity.ok(installZip(path, true)))
-                            .subscribeOn(Schedulers.boundedElastic()))
-                    .doFinally(signal -> {
-                        try {
-                            Files.deleteIfExists(path);
-                        } catch (Exception ignored) {
-                        }
-                    });
+                            .subscribeOn(webBlockingScheduler()))
+                    .doFinally(signal -> scheduleBlocking(() -> deleteQuietly(path)));
         }).onErrorResume(e -> {
             log.warn("Plugin upload failed: {}", e.getMessage());
             return Mono.just(badRequest(e));
@@ -185,6 +188,27 @@ public class PluginController {
         }
         throw new IllegalArgumentException(
                 "Local server paths are not accepted; upload a ZIP or folder from the browser");
+    }
+
+    private reactor.core.scheduler.Scheduler webBlockingScheduler() {
+        return executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler();
+    }
+
+    private void scheduleBlocking(Runnable task) {
+        try {
+            webBlockingScheduler().schedule(task);
+        } catch (java.util.concurrent.RejectedExecutionException error) {
+            log.warn("Web blocking pool rejected plugin cleanup; using emergency fallback", error);
+            Schedulers.boundedElastic().schedule(task);
+        }
+    }
+
+    private void deleteQuietly(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (Exception ignored) {
+            log.debug("Failed to delete temporary plugin upload {}", path);
+        }
     }
 
     private Path downloadRemoteZip(String source) throws Exception {

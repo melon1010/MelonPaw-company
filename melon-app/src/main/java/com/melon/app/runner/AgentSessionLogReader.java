@@ -93,32 +93,54 @@ public class AgentSessionLogReader {
         while (start < messages.size()) {
             int end = start + 1;
             while (end < messages.size() && !"user".equals(lower(messages.get(end).get("role")))) end++;
-            String turnId = "user".equals(lower(messages.get(start).get("role")))
-                    ? stringValue(messages.get(start).get("id")) : "turn-" + start;
-            if (turnId.isBlank()) turnId = "turn-" + start;
+            String turnId = turnId(messages, start, end);
 
-            int finalText = -1;
+            int explicitFinalText = -1;
+            int fallbackFinalText = -1;
+            boolean hasPhaseProtocol = false;
             for (int i = start; i < end; i++) {
                 Map<String, Object> message = messages.get(i);
                 if ("assistant".equals(lower(message.get("role")))
-                        && "message".equals(lower(message.get("type")))) finalText = i;
+                        && "message".equals(lower(message.get("type")))) {
+                    Map<String, Object> metadata = messageMetadata(message);
+                    hasPhaseProtocol |= hasPhaseMetadata(metadata);
+                    if (!hasVisibleContent(message)) continue;
+                    fallbackFinalText = i;
+                    if ("final".equals(lower(metadata.get("phase")))
+                            || booleanValue(metadata.get("terminal"))) {
+                        explicitFinalText = i;
+                    }
+                }
             }
+            int finalText = explicitFinalText >= 0
+                    ? explicitFinalText : (hasPhaseProtocol ? -1 : fallbackFinalText);
             for (int i = start; i < end; i++) {
                 Map<String, Object> copy = new LinkedHashMap<>(messages.get(i));
-                Map<String, Object> metadata = copy.get("metadata") instanceof Map<?, ?> raw
-                        ? asMap(raw) : new LinkedHashMap<>();
+                Map<String, Object> metadata = messageMetadata(copy);
                 String role = lower(copy.get("role"));
                 String type = lower(copy.get("type"));
                 metadata.put("turn_id", turnId);
                 if ("user".equals(role)) {
-                    metadata.put("phase", "input");
+                    metadata.putIfAbsent("phase", "input");
                 } else if ("assistant".equals(role) && "message".equals(type)) {
-                    metadata.put("phase", i == finalText ? "final" : "progress");
-                    metadata.put("terminal", i == finalText);
+                    if (i == finalText) {
+                        metadata.put("phase", "final");
+                        metadata.put("terminal", true);
+                    } else if (!hasPhaseMetadata(metadata)) {
+                        metadata.put("phase", "progress");
+                        metadata.put("terminal", false);
+                    } else if ("final".equals(lower(metadata.get("phase")))
+                            || booleanValue(metadata.get("terminal"))) {
+                        metadata.put("phase", "final");
+                        metadata.put("terminal", true);
+                    } else {
+                        metadata.putIfAbsent("phase", "progress");
+                        metadata.putIfAbsent("terminal", false);
+                    }
                 } else if ("reasoning".equals(type)) {
-                    metadata.put("phase", "reasoning");
+                    metadata.putIfAbsent("phase", "reasoning");
                 } else {
-                    metadata.put("phase", "tool");
+                    metadata.putIfAbsent("phase", "tool");
                 }
                 copy.put("metadata", metadata);
                 result.add(copy);
@@ -126,6 +148,45 @@ public class AgentSessionLogReader {
             start = end;
         }
         return result;
+    }
+
+    private String turnId(List<Map<String, Object>> messages, int start, int end) {
+        for (int i = start; i < end; i++) {
+            String explicit = stringValue(messageMetadata(messages.get(i)).get("turn_id"));
+            if (!explicit.isBlank()) return explicit;
+        }
+        String fallback = "user".equals(lower(messages.get(start).get("role")))
+                ? stringValue(messages.get(start).get("id")) : "";
+        return fallback.isBlank() ? "turn-" + start : fallback;
+    }
+
+    private Map<String, Object> messageMetadata(Map<String, Object> message) {
+        return message.get("metadata") instanceof Map<?, ?> raw
+                ? asMap(raw) : new LinkedHashMap<>();
+    }
+
+    private boolean hasVisibleContent(Map<String, Object> message) {
+        Object content = message.get("content");
+        if (!(content instanceof List<?> blocks)) return false;
+        for (Object item : blocks) {
+            if (!(item instanceof Map<?, ?> raw)) continue;
+            Map<String, Object> block = asMap(raw);
+            String type = lower(block.get("type"));
+            if ("text".equals(type) || "refusal".equals(type)) {
+                if (!stringValue(block.get("text"), stringValue(block.get("refusal"))).isBlank()) return true;
+            } else if (!"data".equals(type)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean booleanValue(Object value) {
+        return value instanceof Boolean bool ? bool : Boolean.parseBoolean(stringValue(value));
+    }
+
+    private boolean hasPhaseMetadata(Map<String, Object> metadata) {
+        return metadata.containsKey("phase") || metadata.containsKey("terminal");
     }
 
     private List<Map<String, Object>> deduplicateMessages(List<Map<String, Object>> messages) {
@@ -486,11 +547,20 @@ public class AgentSessionLogReader {
 
     private Map<String, Object> stateMetadata(Map<String, Object> raw) {
         Map<String, Object> metadata = new LinkedHashMap<>();
+        Map<String, Object> sourceMetadata = raw.get("metadata") instanceof Map<?, ?> map
+                ? asMap(map) : Map.of();
         metadata.put("original_id", raw.get("id"));
         metadata.put("original_name", raw.get("name"));
-        metadata.put("metadata", raw.get("metadata") instanceof Map<?, ?> map ? asMap(map) : Map.of());
+        metadata.put("metadata", sourceMetadata);
         metadata.put("timestamp", raw.get("timestamp"));
+        copyProtocolMetadata(sourceMetadata, metadata, "turn_id");
+        copyProtocolMetadata(sourceMetadata, metadata, "phase");
+        copyProtocolMetadata(sourceMetadata, metadata, "terminal");
         return metadata;
+    }
+
+    private void copyProtocolMetadata(Map<String, Object> source, Map<String, Object> target, String key) {
+        if (source.containsKey(key)) target.put(key, source.get(key));
     }
 
     private boolean isInternalStateMessage(Map<String, Object> raw) {

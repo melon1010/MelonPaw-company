@@ -9,6 +9,7 @@ import {
   isProgressMessage,
   isPersistentToolResultMessage,
   pairToolMessages,
+  recoverCompletedAnswer,
 } from "./model";
 
 function message(
@@ -169,5 +170,56 @@ describe("ConversationProcess model", () => {
     expect(isProgressMessage(progress)).toBe(true);
     expect(buildConversationRenderSegments([progress, answer]).map((segment) => segment.type))
       .toEqual(["process", "answer"]);
+  });
+
+  it("recovers the last visible progress message for completed legacy history", () => {
+    const firstProgress = {
+      ...message("progress-1", ConversationMessageType.MESSAGE, [
+        {
+          type: ConversationContentType.TEXT,
+          text: "I am checking.",
+          status: ConversationRunStatus.COMPLETED,
+        },
+      ]),
+      metadata: { phase: "progress", terminal: false },
+    } as IAgentScopeRuntimeMessage;
+    const lastProgress = {
+      ...message("progress-2", ConversationMessageType.MESSAGE, [
+        {
+          type: ConversationContentType.TEXT,
+          text: "Completed result.",
+          status: ConversationRunStatus.COMPLETED,
+        },
+      ]),
+      metadata: { phase: "progress", terminal: false },
+    } as IAgentScopeRuntimeMessage;
+
+    const recovered = recoverCompletedAnswer(
+      [firstProgress, lastProgress],
+      true,
+    );
+
+    expect(isProgressMessage(recovered[0])).toBe(true);
+    expect(isProgressMessage(recovered[1])).toBe(false);
+    expect(
+      (recovered[1] as IAgentScopeRuntimeMessage & {
+        metadata: Record<string, unknown>;
+      }).metadata,
+    ).toMatchObject({ phase: "final", terminal: true });
+  });
+
+  it("does not recover progress while a response is still running", () => {
+    const progress = {
+      ...message("progress", ConversationMessageType.MESSAGE, [
+        {
+          type: ConversationContentType.TEXT,
+          text: "Still running.",
+          status: ConversationRunStatus.COMPLETED,
+        },
+      ]),
+      metadata: { phase: "progress", terminal: false },
+    } as IAgentScopeRuntimeMessage;
+
+    expect(recoverCompletedAnswer([progress], false)).toEqual([progress]);
   });
 });

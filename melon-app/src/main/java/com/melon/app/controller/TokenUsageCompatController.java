@@ -1,5 +1,6 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.service.TokenUsageService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,9 +15,16 @@ import reactor.core.scheduler.Schedulers;
 public class TokenUsageCompatController {
 
     private final TokenUsageService tokenUsageService;
+    private final RuntimeExecutors executors;
 
     public TokenUsageCompatController(TokenUsageService tokenUsageService) {
+        this(tokenUsageService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public TokenUsageCompatController(TokenUsageService tokenUsageService, RuntimeExecutors executors) {
         this.tokenUsageService = tokenUsageService;
+        this.executors = executors;
     }
 
     @GetMapping
@@ -25,7 +33,7 @@ public class TokenUsageCompatController {
                                                 @RequestParam(value = "provider", required = false) String provider,
                                                 @RequestParam(value = "model", required = false) String model) {
         return Mono.fromCallable(() -> ResponseEntity.ok((Object) tokenUsageService.getSummary(startDate, endDate, provider, model)))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(webBlockingScheduler());
     }
 
     @GetMapping("/details")
@@ -34,6 +42,10 @@ public class TokenUsageCompatController {
                                                 @RequestParam(value = "provider", required = false) String provider,
                                                 @RequestParam(value = "model", required = false) String model) {
         return Mono.fromCallable(() -> ResponseEntity.ok((Object) tokenUsageService.getDetails(startDate, endDate, provider, model)))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(webBlockingScheduler());
+    }
+
+    private reactor.core.scheduler.Scheduler webBlockingScheduler() {
+        return executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler();
     }
 }

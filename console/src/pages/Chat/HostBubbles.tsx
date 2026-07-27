@@ -59,6 +59,7 @@ import ConversationProcess, {
   hasVisibleAnswerContent,
   isPersistentToolResultMessage,
   pairToolMessages,
+  recoverCompletedAnswer,
 } from "../../components/ConversationProcess";
 import styles from "./HostBubbles.module.less";
 
@@ -86,15 +87,21 @@ function HostDefaultResponseCard({
 }: HostDefaultResponseCardProps) {
   const avatar = useChatAnywhereOptions((options) => options?.welcome?.avatar);
   const nick = useChatAnywhereOptions((options) => options?.welcome?.nick);
+  const isGenerating = AgentScopeRuntimeResponseBuilder.maybeGenerating(data);
+  const isCompleted =
+    data.status === ConversationRunStatus.COMPLETED && !data.error;
   const messages = useMemo(
-    () => pairToolMessages(data.output ?? []),
-    [data.output],
+    () =>
+      recoverCompletedAnswer(
+        pairToolMessages(data.output ?? []),
+        isCompleted,
+      ),
+    [data.output, isCompleted],
   );
   const segments = useMemo(
     () => buildConversationRenderSegments(messages),
     [messages],
   );
-  const isGenerating = AgentScopeRuntimeResponseBuilder.maybeGenerating(data);
   const assistantReplyCompleted =
     isGenerating &&
     (((data as IAgentScopeRuntimeResponse & { assistant_status?: string })

@@ -37,6 +37,17 @@ services:
       MELON_MCP_SANDBOX_RUNTIME: ${MELON_SANDBOX_RUNTIME:-}
       MELON_MCP_IMPORT_ROOTS: /mcp-imports
       MELON_MCP_PATH_MAPPINGS: ${MELON_MCP_PATH_MAPPINGS:-}
+      # 远程(HTTP/SSE)MCP 与 OAuth 出站 SSRF 策略:link-local(含 169.254.169.254 元数据)、
+      # any-local、多播始终拦截;loopback 与私网默认拒绝,仅公网放行。如需连本机或内网自建 MCP,
+      # 用逗号分隔主机名精确放行(推荐),或按需打开对应开关。应用层校验不等于网络隔离,
+      # 严格环境按 docs/DEPLOYMENT.md「远程 MCP 出站与网络层 egress」叠加网络层出站限制。
+      MELON_MCP_EGRESS_ALLOW_LOOPBACK: ${MELON_MCP_EGRESS_ALLOW_LOOPBACK:-false}
+      MELON_MCP_EGRESS_ALLOW_PRIVATE: ${MELON_MCP_EGRESS_ALLOW_PRIVATE:-false}
+      MELON_MCP_EGRESS_ALLOWLIST: ${MELON_MCP_EGRESS_ALLOWLIST:-}
+      # WebFlux 阻塞边界的有界线程池，避免 SQLite/文件 IO 回到 Netty event loop。
+      MELON_WEB_BLOCKING_CORE_THREADS: ${MELON_WEB_BLOCKING_CORE_THREADS:-16}
+      MELON_WEB_BLOCKING_MAX_THREADS: ${MELON_WEB_BLOCKING_MAX_THREADS:-16}
+      MELON_WEB_BLOCKING_QUEUE_CAPACITY: ${MELON_WEB_BLOCKING_QUEUE_CAPACITY:-256}
       MELON_ALLOWED_ORIGINS: http://localhost:${MELON_CONSOLE_PORT:-5173},http://127.0.0.1:${MELON_CONSOLE_PORT:-5173}
       MELON_BOOTSTRAP_TOKEN: ${MELON_BOOTSTRAP_TOKEN:-}
       MELON_GENERATE_BOOTSTRAP_TOKEN: ${MELON_GENERATE_BOOTSTRAP_TOKEN:-false}
@@ -82,4 +93,3 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
-

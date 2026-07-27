@@ -1,5 +1,6 @@
 package com.melon.app.auth;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.core.config.ConfigManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +34,7 @@ public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
     private final AuthService authService;
+    private final RuntimeExecutors executors;
     private final String bootstrapToken;
     private final Path generatedBootstrapTokenFile;
 
@@ -41,8 +43,10 @@ public class AuthController {
                           @Value("${melon.enterprise.auth.bootstrap-token:}") String bootstrapToken,
                           @Value("${melon.enterprise.auth.generate-bootstrap-token:false}")
                           boolean generateBootstrapToken,
-                          ConfigManager configManager) {
+                          ConfigManager configManager,
+                          RuntimeExecutors executors) {
         this.authService = authService;
+        this.executors = executors;
         String configured = bootstrapToken == null ? "" : bootstrapToken.trim();
         if (configured.isBlank() && generateBootstrapToken && !authService.hasUsers()) {
             this.generatedBootstrapTokenFile = configManager.resolveHomeDir().resolve("bootstrap.token");
@@ -55,11 +59,21 @@ public class AuthController {
     }
 
     AuthController(AuthService authService) {
-        this(authService, "");
+        this(authService, "", null);
+    }
+
+    AuthController(AuthService authService, String bootstrapToken,
+                   boolean generateBootstrapToken, ConfigManager configManager) {
+        this(authService, bootstrapToken, generateBootstrapToken, configManager, null);
     }
 
     AuthController(AuthService authService, String bootstrapToken) {
+        this(authService, bootstrapToken, null);
+    }
+
+    private AuthController(AuthService authService, String bootstrapToken, RuntimeExecutors executors) {
         this.authService = authService;
+        this.executors = executors;
         this.bootstrapToken = bootstrapToken == null ? "" : bootstrapToken.trim();
         this.generatedBootstrapTokenFile = null;
     }
@@ -173,7 +187,8 @@ public class AuthController {
     }
 
     private <T> Mono<T> blocking(java.util.concurrent.Callable<T> callable) {
-        return Mono.fromCallable(callable).subscribeOn(Schedulers.boundedElastic());
+        return Mono.defer(() -> Mono.fromCallable(callable))
+                .subscribeOn(executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler());
     }
 
     private String bearerToken(String authorization) {

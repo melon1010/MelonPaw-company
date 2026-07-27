@@ -1,5 +1,6 @@
 package com.melon.app.controller;
 
+import com.melon.app.config.RuntimeExecutors;
 import com.melon.app.service.EnterpriseAuditService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,9 +17,16 @@ import reactor.core.scheduler.Schedulers;
 public class EnterpriseAuditController {
 
     private final EnterpriseAuditService auditService;
+    private final RuntimeExecutors executors;
 
     public EnterpriseAuditController(EnterpriseAuditService auditService) {
+        this(auditService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public EnterpriseAuditController(EnterpriseAuditService auditService, RuntimeExecutors executors) {
         this.auditService = auditService;
+        this.executors = executors;
     }
 
     @GetMapping
@@ -32,13 +40,17 @@ public class EnterpriseAuditController {
             @RequestParam(defaultValue = "0") int offset) {
         return Mono.<ResponseEntity<?>>fromCallable(() -> ResponseEntity.ok(
                         auditService.query(actorUserId, action, targetType, result, limit, offset)))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(webBlockingScheduler());
     }
 
     @GetMapping("/verify")
     @PreAuthorize("hasAuthority('audit:read')")
     public Mono<ResponseEntity<?>> verify() {
         return Mono.<ResponseEntity<?>>fromCallable(() -> ResponseEntity.ok(auditService.verifyChain()))
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(webBlockingScheduler());
+    }
+
+    private reactor.core.scheduler.Scheduler webBlockingScheduler() {
+        return executors == null ? Schedulers.boundedElastic() : executors.webBlockingScheduler();
     }
 }

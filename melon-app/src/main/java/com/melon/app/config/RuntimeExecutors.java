@@ -16,6 +16,8 @@ import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import reactor.core.scheduler.Scheduler;
+import reactor.core.scheduler.Schedulers;
 
 /** Owns the bounded executors used by application infrastructure. */
 @Component
@@ -23,6 +25,8 @@ import java.util.concurrent.TimeUnit;
 public class RuntimeExecutors {
 
     private final ExecutorService channel;
+    private final ExecutorService webBlocking;
+    private final Scheduler webBlockingScheduler;
     private final ExecutorService history;
     private final ExecutorService skillInstall;
     private final ExecutorService channelLongPoll;
@@ -34,6 +38,8 @@ public class RuntimeExecutors {
 
     public RuntimeExecutors(RuntimeConcurrencyProperties properties) {
         channel = bounded("melon-channel", properties.getChannel(), new ThreadPoolExecutor.AbortPolicy());
+        webBlocking = bounded("melon-web-blocking", properties.getWebBlocking(), new ThreadPoolExecutor.AbortPolicy());
+        webBlockingScheduler = Schedulers.fromExecutorService(webBlocking);
         history = bounded("melon-history", 1, 1, properties.getHistoryQueueCapacity(),
                 new RunCallerOnSaturationPolicy());
         skillInstall = bounded("melon-skill-install", properties.getSkillInstall(), new ThreadPoolExecutor.AbortPolicy());
@@ -47,6 +53,16 @@ public class RuntimeExecutors {
 
     public ExecutorService channel() {
         return channel;
+    }
+
+    /** Scheduler used by WebFlux boundaries around blocking application services. */
+    public Scheduler webBlockingScheduler() {
+        return webBlockingScheduler;
+    }
+
+    /** Executor used by Spring WebFlux to invoke blocking application controllers. */
+    public ExecutorService webBlockingExecutor() {
+        return webBlocking;
     }
 
     public ExecutorService history() {
@@ -79,8 +95,11 @@ public class RuntimeExecutors {
 
     @PreDestroy
     public void shutdown() {
+        // Schedulers.fromExecutorService owns no separate threads. Disposing it first would call
+        // shutdownNow() on the shared executor and interrupt in-flight database or file writes.
         for (ExecutorService executor : List.of(
-                channel, history, skillInstall, channelLongPoll, channelScheduler, mcpLifecycle, cron, heartbeat)) {
+                channel, webBlocking, history, skillInstall, channelLongPoll, channelScheduler,
+                mcpLifecycle, cron, heartbeat)) {
             ExecutorUtils.shutdownGracefully(executor, shutdownTimeout);
         }
     }
