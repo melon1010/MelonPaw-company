@@ -26,3 +26,5 @@ MelonPaw-Company 包含 Agent 工具执行、文件访问、Shell 调用、浏�
 - API Key、模型密钥、渠道 token 和备份包不要提交到仓库。
 - 工作区路径、文件访问、Shell 执行必须开启审批和隔离策略。
 - 第三方插件、技能包和备份包只从可信来源导入。
+- 远程 MCP/OAuth 出站有应用层 SSRF 校验（默认拒绝 loopback/私网，元数据地址始终拦截），但应用层
+  校验不等于网络隔离；严格环境应按 `docs/DEPLOYMENT.md` 的说明叠加网络层出站限制。
