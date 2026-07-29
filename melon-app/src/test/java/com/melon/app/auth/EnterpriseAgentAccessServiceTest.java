@@ -41,11 +41,14 @@ class EnterpriseAgentAccessServiceTest {
         EnterprisePrincipal admin = auth.bootstrap("admin", "Administrator", "StrongPassword123");
         EnterprisePrincipal member = auth.createUser(
                 "member", "Member", "MemberPassword123", true, Set.of("USER"));
+        EnterprisePrincipal manager = auth.createUser(
+                "manager", "Manager", "ManagerPassword123", true, Set.of("USER"));
         EnterprisePrincipal viewer = auth.createUser(
                 "viewer", "Viewer", "ViewerPassword123", true, Set.of("USER"));
         EnterpriseIdentityStore.ProjectSpaceRecord project = store.createProject(
                 "project-one", "Project One", "", admin.id());
         store.putProjectMember(project.id(), member.id(), "MEMBER");
+        store.putProjectMember(project.id(), manager.id(), "MANAGER");
         store.putProjectMember(project.id(), viewer.id(), "VIEWER");
         store.bindProjectAgent("project-agent", project.id());
 
@@ -61,6 +64,7 @@ class EnterpriseAgentAccessServiceTest {
         assertEquals("project-agent", access.resolveExecution(member, "project-agent"));
         assertTrue(access.accessibleAgentIds(member).contains("project-agent"));
         assertFalse(access.canManageConfiguration(member, "project-agent"));
+        assertTrue(access.canManageConfiguration(manager, "project-agent"));
         assertTrue(access.canManageConfiguration(admin, "project-agent"));
         assertThrows(SecurityException.class,
                 () -> access.resolveExecution(viewer, "project-agent"));

@@ -5,12 +5,16 @@ import type {
   CreateAgentRequest,
   AgentProfileRef,
   ReorderAgentsResponse,
+  AgentCapabilities,
 } from "../types/agents";
 
 // Multi-agent management API
 export const agentsApi = {
   // List all agents
   listAgents: () => request<AgentListResponse>("/agents"),
+
+  getAgentCapabilities: () =>
+    request<AgentCapabilities>("/agents/capabilities"),
 
   // Get agent details
   getAgent: (agentId: string) =>

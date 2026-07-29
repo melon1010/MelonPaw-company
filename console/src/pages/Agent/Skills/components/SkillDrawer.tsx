@@ -61,6 +61,7 @@ export interface SkillDrawerFormValues {
 
 interface SkillDrawerProps {
   open: boolean;
+  readOnly?: boolean;
   editingSkill: SkillSpec | null;
   form: FormInstance<SkillDrawerFormValues>;
   availableTags?: string[];
@@ -71,6 +72,7 @@ interface SkillDrawerProps {
 
 export function SkillDrawer({
   open,
+  readOnly = false,
   editingSkill,
   form,
   availableTags = [],
@@ -151,6 +153,7 @@ export function SkillDrawer({
   }, [editingSkill, form, t]);
 
   const handleSubmit = async (values: SkillDrawerFormValues) => {
+    if (readOnly) return;
     let parsedConfig: Record<string, unknown> | undefined;
     const trimmed = configText.trim();
     if (!trimmed) {
@@ -229,7 +232,11 @@ export function SkillDrawer({
     }
   };
 
-  const drawerFooter = !editingSkill ? (
+  const drawerFooter = readOnly ? (
+    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <Button onClick={onClose}>{t("common.close")}</Button>
+    </div>
+  ) : !editingSkill ? (
     <div
       style={{
         display: "flex",
@@ -291,11 +298,14 @@ export function SkillDrawer({
             label="Name"
             rules={[{ required: true, message: t("skills.pleaseInputName") }]}
           >
-            <Input placeholder={t("skills.skillNamePlaceholder")} />
+            <Input
+              placeholder={t("skills.skillNamePlaceholder")}
+              disabled={readOnly}
+            />
           </Form.Item>
         ) : (
           <Form.Item name="name" label="Name">
-            <Input />
+            <Input disabled={readOnly} />
           </Form.Item>
         )}
 
@@ -308,7 +318,7 @@ export function SkillDrawer({
             content={contentValue}
             showMarkdown={showMarkdown}
             onShowMarkdownChange={setShowMarkdown}
-            editable={true}
+            editable={!readOnly}
             onContentChange={handleContentChange}
             textareaProps={{
               ...(!editingSkill && {
@@ -320,7 +330,11 @@ export function SkillDrawer({
         </Form.Item>
 
         <Form.Item name="channels" label={t("skills.channels")}>
-          <Select mode="multiple" options={CHANNEL_OPTIONS} />
+          <Select
+            mode="multiple"
+            options={CHANNEL_OPTIONS}
+            disabled={readOnly}
+          />
         </Form.Item>
 
         <Form.Item
@@ -343,6 +357,7 @@ export function SkillDrawer({
         >
           <Select
             mode="tags"
+            disabled={readOnly}
             options={availableTags.map((tag) => ({
               label: tag,
               value: tag,
@@ -359,6 +374,7 @@ export function SkillDrawer({
         >
           <Input.TextArea
             rows={4}
+            disabled={readOnly}
             value={configText}
             onChange={(e) => {
               setConfigText(e.target.value);

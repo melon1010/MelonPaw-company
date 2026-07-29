@@ -294,7 +294,9 @@ public class SecurityConfig {
 
     boolean isSharedAgentReadPath(HttpMethod method, String path) {
         return (HttpMethod.GET.equals(method)
-                && (path.startsWith("/api/skills") || path.startsWith("/api/mcp")))
+                && (path.startsWith("/api/skills")
+                    || path.startsWith("/api/mcp")
+                    || path.equals("/api/agents/capabilities")))
                 || (HttpMethod.POST.equals(method)
                     && (path.equals("/api/skills/refresh")
                         || path.equals("/api/skills/pool/refresh")));

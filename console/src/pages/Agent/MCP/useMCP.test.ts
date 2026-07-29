@@ -9,16 +9,19 @@ const hoisted = vi.hoisted(() => {
   };
   const apiMocks = {
     listMCPClients: vi.fn(),
-    getMCPCapabilities: vi.fn(),
     createMCPClient: vi.fn(),
     updateMCPClient: vi.fn(),
     toggleMCPClient: vi.fn(),
     deleteMCPClient: vi.fn(),
   };
+  const configurationAccess = {
+    canManageConfiguration: true,
+    isPersonalScope: false,
+  };
   // A stable translation function so useCallback dependencies don't change on
   // every render and trigger an infinite loadClients loop via useEffect.
   const stableT = (k: string) => k;
-  return { messageMock, apiMocks, stableT };
+  return { messageMock, apiMocks, configurationAccess, stableT };
 });
 
 vi.mock("../../../api", () => ({
@@ -28,6 +31,10 @@ vi.mock("../../../api", () => ({
 
 vi.mock("../../../stores/agentStore", () => ({
   useAgentStore: () => ({ selectedAgent: "agent-1", agents: [] }),
+}));
+
+vi.mock("../../../hooks/useAgentConfigurationAccess", () => ({
+  useAgentConfigurationAccess: () => hoisted.configurationAccess,
 }));
 
 vi.mock("../../../hooks/useAppMessage", () => ({
@@ -40,7 +47,7 @@ vi.mock("react-i18next", () => ({
 
 import { useMCP } from "./useMCP";
 
-const { messageMock, apiMocks } = hoisted;
+const { messageMock, apiMocks, configurationAccess } = hoisted;
 
 function makeClient(overrides: Partial<MCPClientInfo> = {}): MCPClientInfo {
   return {
@@ -58,7 +65,6 @@ describe("useMCP", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiMocks.listMCPClients.mockReset();
-    apiMocks.getMCPCapabilities.mockReset();
     apiMocks.createMCPClient.mockReset();
     apiMocks.updateMCPClient.mockReset();
     apiMocks.toggleMCPClient.mockReset();
@@ -67,7 +73,7 @@ describe("useMCP", () => {
     messageMock.error.mockReset();
 
     apiMocks.listMCPClients.mockResolvedValue([]);
-    apiMocks.getMCPCapabilities.mockResolvedValue({ can_manage: true });
+    configurationAccess.canManageConfiguration = true;
   });
 
   it("mounts and calls listMCPClients, sets clients, loading true->false", async () => {
@@ -85,7 +91,7 @@ describe("useMCP", () => {
   });
 
   it("fails closed when the selected Agent cannot be managed", async () => {
-    apiMocks.getMCPCapabilities.mockResolvedValue({ can_manage: false });
+    configurationAccess.canManageConfiguration = false;
 
     const { result } = renderHook(() => useMCP());
 

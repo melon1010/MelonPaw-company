@@ -157,6 +157,30 @@ class SecurityConfigTest {
     }
 
     @Test
+    void agentConfigurationCapabilitiesKeepTheSelectedProjectScope() {
+        EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
+        EnterprisePrincipal principal = principal(Set.of(PERSONAL_SKILLS));
+        when(accessService.resolveExecution(principal, "project-agent"))
+                .thenReturn("project-agent");
+        WebFilter filter = new SecurityConfig().agentScopeFilter(accessService);
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/agents/capabilities")
+                        .header("X-Agent-Id", "project-agent")
+                        .build());
+
+        filter.filter(exchange, filteredExchange -> {
+                    assertEquals("project-agent",
+                            filteredExchange.getRequest().getHeaders().getFirst("X-Agent-Id"));
+                    return Mono.empty();
+                })
+                .contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication(principal)))
+                .block();
+
+        verify(accessService).resolveExecution(principal, "project-agent");
+        verify(accessService, never()).resolve(principal, "project-agent");
+    }
+
+    @Test
     void activeProjectAgentResourceMutationReturnsConflict() {
         EnterpriseAgentAccessService accessService = mock(EnterpriseAgentAccessService.class);
         EnterprisePrincipal principal = principal(Set.of(PERSONAL_MCP));

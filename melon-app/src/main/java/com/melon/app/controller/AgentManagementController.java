@@ -83,6 +83,18 @@ public class AgentManagementController {
         )));
     }
 
+    /** Returns configuration mutation capability for the selected Agent scope. */
+    @GetMapping("/capabilities")
+    public Mono<ResponseEntity<?>> capabilities(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        return blocking(() -> {
+            String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+            return ResponseEntity.ok(Map.of(
+                    "can_manage", agentAccessService.canManageConfiguration(principal, resolvedAgentId)));
+        });
+    }
+
     @GetMapping("/{id}")
     public Mono<ResponseEntity<?>> get(
             @PathVariable String id,

@@ -75,11 +75,6 @@ export interface MCPClientInfo {
   access_summary: MCPAccessSummary;
 }
 
-export interface MCPCapabilities {
-  /** Whether the current user may create or mutate MCP configuration. */
-  can_manage: boolean;
-}
-
 export interface MCPOAuthConfigureRequest {
   grant_type: "client_credentials";
   token_url: string;

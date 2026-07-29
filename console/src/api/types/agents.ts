@@ -17,6 +17,11 @@ export interface AgentListResponse {
   agents: AgentSummary[];
 }
 
+export interface AgentCapabilities {
+  /** Whether the current user may mutate the selected Agent configuration. */
+  can_manage: boolean;
+}
+
 export interface ReorderAgentsResponse {
   success: boolean;
   agent_ids: string[];

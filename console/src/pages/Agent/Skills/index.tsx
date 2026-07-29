@@ -26,6 +26,8 @@ function SkillsPage() {
   const { user } = useAuth();
   const canManageAgents = hasPermission(user, "agents:manage");
   const {
+    canManage,
+    isPersonalScope,
     skills,
     enabledSkills,
     visibleEnabledSkills,
@@ -77,14 +79,12 @@ function SkillsPage() {
     selectAll,
     clearSelection,
     toggleBatchMode,
-    toggleEnabled,
-    refreshSkills,
     hardRefresh,
     cancelImport,
   } = useSkillsPage();
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const marketView = canManageAgents && searchParams.get("view") === "market";
+  const marketView = canManage && searchParams.get("view") === "market";
 
   const openMarket = useCallback(() => {
     setSearchParams((prev) => {
@@ -108,24 +108,24 @@ function SkillsPage() {
       <SkillListItem
         key={skill.name}
         skill={skill}
-        batchModeEnabled={batchModeEnabled}
+        canManage={canManage}
+        batchModeEnabled={canManage && batchModeEnabled}
         isSelected={selectedSkills.has(skill.name)}
         onSelect={() => toggleSelect(skill.name)}
         onClick={() => handleEdit(skill)}
         onToggleEnabled={async () => {
-          await toggleEnabled(skill);
-          await refreshSkills();
+          await handleToggleEnabled(skill);
         }}
         onDelete={() => handleDelete(skill)}
       />
     ),
     [
       batchModeEnabled,
+      canManage,
       selectedSkills,
       toggleSelect,
       handleEdit,
-      toggleEnabled,
-      refreshSkills,
+      handleToggleEnabled,
       handleDelete,
     ],
   );
@@ -157,6 +157,7 @@ function SkillsPage() {
         current={t("nav.skills")}
         extra={
           <HeaderActions
+            canManage={canManage}
             batchModeEnabled={batchModeEnabled}
             selectedSkills={selectedSkills}
             loading={loading}
@@ -177,19 +178,21 @@ function SkillsPage() {
             onCreate={handleCreate}
             onBrowseMarket={openMarket}
             onFileChange={handleFileChange}
-            personalMode={!canManageAgents}
+            personalMode={isPersonalScope && !canManageAgents}
           />
         }
       />
 
-      <ImportHubModal
-        open={importModalOpen}
-        importing={importing}
-        onCancel={closeImportModal}
-        onConfirm={handleConfirmImport}
-        cancelImport={cancelImport}
-        hint={t("skillPool.externalHubHint")}
-      />
+      {canManage && (
+        <ImportHubModal
+          open={importModalOpen}
+          importing={importing}
+          onCancel={closeImportModal}
+          onConfirm={handleConfirmImport}
+          cancelImport={cancelImport}
+          hint={t("skillPool.externalHubHint")}
+        />
+      )}
 
       <div className={styles.content}>
         {!loading && skills.length > 0 && (
@@ -218,22 +221,26 @@ function SkillsPage() {
             <h2 className={styles.emptyStateTitle}>
               {t("skills.emptyStateTitle")}
             </h2>
-            <p className={styles.emptyStateText}>
-              {t("skills.emptyStateText")}
-            </p>
-            <div className={styles.emptyStateActions}>
-              <Button type="default" onClick={() => setPoolModal("download")}>
-                {t("skills.emptyStateDownload")}
-              </Button>
-              <Button
-                type="primary"
-                className={styles.primaryActionButton}
-                onClick={handleCreate}
-                icon={<PlusOutlined />}
-              >
-                {t("skills.emptyStateCreate")}
-              </Button>
-            </div>
+            {canManage && (
+              <p className={styles.emptyStateText}>
+                {t("skills.emptyStateText")}
+              </p>
+            )}
+            {canManage && (
+              <div className={styles.emptyStateActions}>
+                <Button type="default" onClick={() => setPoolModal("download")}>
+                  {t("skills.emptyStateDownload")}
+                </Button>
+                <Button
+                  type="primary"
+                  className={styles.primaryActionButton}
+                  onClick={handleCreate}
+                  icon={<PlusOutlined />}
+                >
+                  {t("skills.emptyStateCreate")}
+                </Button>
+              </div>
+            )}
           </div>
         ) : filteredSkills.length === 0 ? (
           <div className={styles.noSearchResults}>
@@ -261,8 +268,9 @@ function SkillsPage() {
                       <SkillCard
                         key={skill.name}
                         skill={skill}
+                        canManage={canManage}
                         selected={
-                          batchModeEnabled
+                          canManage && batchModeEnabled
                             ? selectedSkills.has(skill.name)
                             : undefined
                         }
@@ -320,15 +328,17 @@ function SkillsPage() {
                         <span className={styles.disabledSkillGridName}>
                           {skill.name}
                         </span>
-                        <span
-                          className={styles.disabledSkillGridAction}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleEnabled(skill, e);
-                          }}
-                        >
-                          {t("common.enable")}
-                        </span>
+                        {canManage && (
+                          <span
+                            className={styles.disabledSkillGridAction}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleEnabled(skill, e);
+                            }}
+                          >
+                            {t("common.enable")}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -343,19 +353,22 @@ function SkillsPage() {
         )}
       </div>
 
-      <PoolTransferModal
-        mode={poolModal}
-        skills={skills}
-        poolSkills={poolSkills}
-        onCancel={closePoolModal}
-        onUpload={handleUploadToPool}
-        onDownload={handleDownloadFromPool}
-      />
+      {canManage && (
+        <PoolTransferModal
+          mode={poolModal}
+          skills={skills}
+          poolSkills={poolSkills}
+          onCancel={closePoolModal}
+          onUpload={handleUploadToPool}
+          onDownload={handleDownloadFromPool}
+        />
+      )}
 
-      {conflictRenameModal}
+      {canManage ? conflictRenameModal : null}
 
       <SkillDrawer
         open={drawerOpen}
+        readOnly={!canManage}
         editingSkill={editingSkill}
         form={form}
         availableTags={allTags}

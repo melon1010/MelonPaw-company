@@ -19,6 +19,7 @@ import {
 import { useSkills } from "./useSkills";
 import { useSkillFilter } from "./useSkillFilter";
 import { groupSkillsByEnabled } from "./skillGroups";
+import { useAgentConfigurationAccess } from "../../../hooks/useAgentConfigurationAccess";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,8 @@ export function useSkillsPage() {
   const { t } = useTranslation();
   const { message } = useAppMessage();
   const { selectedAgent } = useAgentStore();
+  const { canManageConfiguration: canManage, isPersonalScope } =
+    useAgentConfigurationAccess();
 
   const {
     skills,
@@ -103,13 +106,23 @@ export function useSkillsPage() {
   // ── Effects ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    if (!canManage) return;
     if (poolModal === "upload" || poolModal === "download") {
       void api
         .listSkillPoolSkills()
         .then(setPoolSkills)
         .catch(() => undefined);
     }
-  }, [poolModal]);
+  }, [canManage, poolModal]);
+
+  useEffect(() => {
+    if (canManage) return;
+    setImportModalOpen(false);
+    setPoolModal(null);
+    setBatchModeEnabled(false);
+    setSelectedSkills(new Set());
+    if (!editingSkill) setDrawerOpen(false);
+  }, [canManage, editingSkill]);
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -135,6 +148,7 @@ export function useSkillsPage() {
   };
 
   const toggleSelect = (name: string) => {
+    if (!canManage) return;
     setSelectedSkills((prev) => {
       const next = new Set(prev);
       if (next.has(name)) next.delete(name);
@@ -145,10 +159,13 @@ export function useSkillsPage() {
 
   const clearSelection = () => setSelectedSkills(new Set());
 
-  const selectAll = () =>
+  const selectAll = () => {
+    if (!canManage) return;
     setSelectedSkills(new Set(filteredSkills.map((s) => s.name)));
+  };
 
   const toggleBatchMode = () => {
+    if (!canManage) return;
     if (batchModeEnabled) {
       clearSelection();
       setBatchModeEnabled(false);
@@ -159,11 +176,17 @@ export function useSkillsPage() {
 
   const closePoolModal = () => setPoolModal(null);
 
-  const handleUploadClick = () => fileInputRef.current?.click();
+  const handleUploadClick = () => {
+    if (canManage) fileInputRef.current?.click();
+  };
 
   // ── File upload ─────────────────────────────────────────────────────────
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canManage) {
+      e.target.value = "";
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
@@ -205,6 +228,7 @@ export function useSkillsPage() {
   // ── Create / Edit / Delete ──────────────────────────────────────────────
 
   const handleCreate = () => {
+    if (!canManage) return;
     setEditingSkill(null);
     form.resetFields();
     form.setFieldsValue({ enabled: false, channels: ["all"], tags: [] });
@@ -217,6 +241,7 @@ export function useSkillsPage() {
   };
 
   const handleConfirmImport = async (url: string, targetName?: string) => {
+    if (!canManage) return;
     const result = await importFromHub(url, targetName);
     if (result.success) {
       closeImportModal();
@@ -254,14 +279,19 @@ export function useSkillsPage() {
     setDrawerOpen(true);
   };
 
-  const handleToggleEnabled = async (skill: SkillSpec, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggleEnabled = async (
+    skill: SkillSpec,
+    e?: React.MouseEvent,
+  ) => {
+    e?.stopPropagation();
+    if (!canManage) return;
     await toggleEnabled(skill);
     await refreshSkills();
   };
 
   const handleDelete = async (skill: SkillSpec, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (!canManage) return;
     await deleteSkill(skill);
   };
 
@@ -273,6 +303,7 @@ export function useSkillsPage() {
   // ── Drawer submit ───────────────────────────────────────────────────────
 
   const handleSubmit = async (values: SkillSpec) => {
+    if (!canManage) return;
     if (editingSkill) {
       const sourceName = editingSkill.name;
       const targetName = values.name;
@@ -384,6 +415,7 @@ export function useSkillsPage() {
   // ── Pool transfer ───────────────────────────────────────────────────────
 
   const handleUploadToPool = async (workspaceSkillNames: string[]) => {
+    if (!canManage) return;
     if (workspaceSkillNames.length === 0) return;
     try {
       const conflictingNames: string[] = [];
@@ -437,6 +469,7 @@ export function useSkillsPage() {
   };
 
   const handleDownloadFromPool = async (poolSkillNames: string[]) => {
+    if (!canManage) return;
     if (poolSkillNames.length === 0) return;
     try {
       const conflicts: DownloadConflict[] = [];
@@ -557,6 +590,7 @@ export function useSkillsPage() {
   // ── Batch enable / disable ───────────────────────────────────────────────
 
   const handleBatchEnable = async () => {
+    if (!canManage) return;
     const names = Array.from(selectedSkills);
     if (names.length === 0) return;
     try {
@@ -597,6 +631,7 @@ export function useSkillsPage() {
   };
 
   const handleBatchDisable = async () => {
+    if (!canManage) return;
     const names = Array.from(selectedSkills);
     if (names.length === 0) return;
     try {
@@ -627,6 +662,7 @@ export function useSkillsPage() {
   // ── Batch delete ────────────────────────────────────────────────────────
 
   const handleBatchDelete = async () => {
+    if (!canManage) return;
     const names = Array.from(selectedSkills);
     if (names.length === 0) return;
     const confirmed = await new Promise<boolean>((resolve) => {
@@ -673,6 +709,8 @@ export function useSkillsPage() {
   };
 
   return {
+    canManage,
+    isPersonalScope,
     skills,
     enabledSkills,
     visibleEnabledSkills,
@@ -724,7 +762,6 @@ export function useSkillsPage() {
     clearSelection,
     selectAll,
     toggleBatchMode,
-    toggleEnabled,
     refreshSkills,
     hardRefresh,
     cancelImport,

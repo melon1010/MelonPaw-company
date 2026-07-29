@@ -11,6 +11,7 @@ dayjs.extend(relativeTime);
 
 interface SkillListItemProps {
   skill: SkillSpec;
+  canManage?: boolean;
   batchModeEnabled: boolean;
   isSelected: boolean;
   onSelect: () => void;
@@ -21,6 +22,7 @@ interface SkillListItemProps {
 
 export function SkillListItem({
   skill,
+  canManage = true,
   batchModeEnabled,
   isSelected,
   onSelect,
@@ -40,11 +42,11 @@ export function SkillListItem({
         isSelected ? styles.selectedListItem : ""
       }`}
       onClick={() => {
-        if (batchModeEnabled) onSelect();
+        if (canManage && batchModeEnabled) onSelect();
         else onClick();
       }}
     >
-      {batchModeEnabled && (
+      {canManage && batchModeEnabled && (
         <Checkbox
           checked={isSelected}
           onClick={(e) => {
@@ -82,25 +84,27 @@ export function SkillListItem({
           )}
         </div>
       </div>
-      <div className={styles.listItemRight}>
-        <span onClick={(e) => e.stopPropagation()}>
-          <Switch
-            checked={skill.enabled}
+      {canManage && (
+        <div className={styles.listItemRight}>
+          <span onClick={(e) => e.stopPropagation()}>
+            <Switch
+              checked={skill.enabled}
+              disabled={batchModeEnabled}
+              onChange={onToggleEnabled}
+            />
+          </span>
+          <Button
+            danger
             disabled={batchModeEnabled}
-            onChange={onToggleEnabled}
-          />
-        </span>
-        <Button
-          danger
-          disabled={batchModeEnabled}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-        >
-          {t("common.delete")}
-        </Button>
-      </div>
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            {t("common.delete")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

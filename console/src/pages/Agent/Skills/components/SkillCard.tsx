@@ -20,6 +20,7 @@ import styles from "../index.module.less";
 
 interface SkillCardProps {
   skill: SkillSpec;
+  canManage?: boolean;
   selected?: boolean;
   onSelect?: (e: React.MouseEvent) => void;
   onClick: () => void;
@@ -139,6 +140,7 @@ export const getSkillVisual = (name: string, emoji?: string) => {
 
 export const SkillCard = React.memo(function SkillCard({
   skill,
+  canManage = true,
   selected,
   onSelect,
   onClick,
@@ -254,7 +256,7 @@ export const SkillCard = React.memo(function SkillCard({
       {/* Tags row */}
       <div className={styles.metaInfoRow}>
         <span className={styles.metaInfoLabel}>{t("skills.tags")}</span>
-        {!!skill.tags?.length ? (
+        {skill.tags?.length ? (
           <div className={styles.tagChips}>
             {skill.tags.map((tag) => (
               <span key={tag} className={styles.tagChip}>
@@ -273,7 +275,7 @@ export const SkillCard = React.memo(function SkillCard({
       </div>
 
       {/* Footer - only show on hover or batch mode, always on mobile */}
-      {(isHover || batchMode || isMobile) && (
+      {canManage && (isHover || batchMode || isMobile) && (
         <div className={styles.cardFooter}>
           <Button
             type="default"

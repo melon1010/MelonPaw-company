@@ -12,6 +12,7 @@ import { AddSkillDropdown } from "./AddSkillDropdown";
 import styles from "../index.module.less";
 
 interface HeaderActionsProps {
+  canManage: boolean;
   batchModeEnabled: boolean;
   selectedSkills: Set<string>;
   loading: boolean;
@@ -36,6 +37,7 @@ interface HeaderActionsProps {
 }
 
 export function HeaderActions({
+  canManage,
   batchModeEnabled,
   selectedSkills,
   loading,
@@ -59,6 +61,21 @@ export function HeaderActions({
   personalMode = false,
 }: HeaderActionsProps) {
   const { t } = useTranslation();
+
+  if (!canManage) {
+    return (
+      <div className={styles.headerRight}>
+        <Tooltip title={t("skills.refreshHint")}>
+          <Button
+            type="default"
+            icon={<ReloadOutlined spin={loading} />}
+            onClick={onHardRefresh}
+            disabled={loading}
+          />
+        </Tooltip>
+      </div>
+    );
+  }
 
   if (personalMode) {
     return (
