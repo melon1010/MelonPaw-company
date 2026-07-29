@@ -36,6 +36,35 @@ function deferred<T>() {
 }
 
 describe("MCPClientCard", () => {
+  it("does not render management controls without capability", async () => {
+    const client = {
+      key: "docs",
+      name: "Docs MCP",
+      description: "Documentation server",
+      command: "npx",
+      enabled: true,
+      connected: true,
+      transport: "stdio",
+    } as MCPClientInfo;
+
+    renderWithProviders(
+      <MCPClientCard
+        client={client}
+        onToggle={vi.fn()}
+        onDelete={vi.fn()}
+        onUpdate={vi.fn()}
+        onUpdatePolicy={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "mcp.tools" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "common.disable" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "common.delete" })).toBeNull();
+
+    fireEvent.click(screen.getByText("Docs MCP"));
+    expect(screen.queryByRole("button", { name: "common.edit" })).toBeNull();
+  });
+
   it("shows connection validation progress and prevents duplicate saves", async () => {
     const pendingSave = deferred<boolean>();
     const onUpdate = vi.fn(() => pendingSave.promise);
@@ -52,6 +81,7 @@ describe("MCPClientCard", () => {
     renderWithProviders(
       <MCPClientCard
         client={client}
+        canManage
         onToggle={vi.fn()}
         onDelete={vi.fn()}
         onUpdate={onUpdate}

@@ -1,5 +1,17 @@
+import { ApiRequestError } from "../api/request";
+
 export function parseErrorDetail(error: unknown): Record<string, any> | null {
   if (!(error instanceof Error)) return null;
+
+  if (error instanceof ApiRequestError) {
+    const payload = error.payload;
+    if (payload && typeof payload === "object") {
+      const body = payload as Record<string, any>;
+      return body.detail ?? body;
+    }
+    return null;
+  }
+
   const msg = error.message;
   // Try " - " separator first (from request.ts formatted errors)
   const idx = msg.indexOf(" - ");

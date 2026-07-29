@@ -1,7 +1,7 @@
 import { Card, Button, Modal, Tooltip, Input } from "@agentscope-ai/design";
 import type { MCPAccessPolicy, MCPClientInfo } from "../../../../api/types";
 import { useTranslation } from "react-i18next";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   EyeOutlined,
   EyeInvisibleOutlined,
@@ -31,6 +31,7 @@ interface MCPClientUpdate {
 
 interface MCPClientCardProps {
   client: MCPClientInfo;
+  canManage?: boolean;
   onToggle: (client: MCPClientInfo, e: React.MouseEvent) => void;
   onDelete: (client: MCPClientInfo, e: React.MouseEvent) => void;
   onUpdate: (key: string, updates: MCPClientUpdate) => Promise<boolean>;
@@ -40,6 +41,7 @@ interface MCPClientCardProps {
 
 export const MCPClientCard = React.memo(function MCPClientCard({
   client,
+  canManage = false,
   onToggle,
   onDelete,
   onUpdate,
@@ -65,6 +67,14 @@ export const MCPClientCard = React.memo(function MCPClientCard({
   const [oauthTokenEndpoint, setOauthTokenEndpoint] = useState(
     client.oauth_status?.token_url || "",
   );
+
+  useEffect(() => {
+    if (canManage) return;
+    setDeleteModalOpen(false);
+    setAccessModalOpen(false);
+    setOauthModalOpen(false);
+    setIsEditing(false);
+  }, [canManage]);
 
   // Determine if MCP client is remote or local based on command
   const isRemote =
@@ -98,6 +108,7 @@ export const MCPClientCard = React.memo(function MCPClientCard({
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canManage) return;
     setDeleteModalOpen(true);
   };
 
@@ -203,90 +214,96 @@ export const MCPClientCard = React.memo(function MCPClientCard({
           </Tooltip>
         ) : null}
 
-        <div className={styles.cardFooter}>
-          <Button
-            className={styles.toolsButton}
-            onClick={(e) => {
-              e.stopPropagation();
-              setAccessModalOpen(true);
-            }}
-            icon={<ToolOutlined />}
-          >
-            {t("mcp.tools")}
-          </Button>
-          <div
-            className={`${styles.cardSecondaryActions} ${
-              isRemote
-                ? styles.cardSecondaryActionsThree
-                : styles.cardSecondaryActionsTwo
-            }`}
-          >
-            {isRemote && (
+        {canManage && (
+          <div className={styles.cardFooter}>
+            <Button
+              className={styles.toolsButton}
+              onClick={(e) => {
+                e.stopPropagation();
+                setAccessModalOpen(true);
+              }}
+              icon={<ToolOutlined />}
+            >
+              {t("mcp.tools")}
+            </Button>
+            <div
+              className={`${styles.cardSecondaryActions} ${
+                isRemote
+                  ? styles.cardSecondaryActionsThree
+                  : styles.cardSecondaryActionsTwo
+              }`}
+            >
+              {isRemote && (
+                <Button
+                  className={styles.toggleButton}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOauthModalOpen(true);
+                  }}
+                  data-status={
+                    isOauthAuthorized
+                      ? "authorized"
+                      : isOauthExpired
+                      ? "expired"
+                      : "idle"
+                  }
+                >
+                  <span className={styles.buttonContent}>
+                    {isOauthAuthorized ? (
+                      <ShieldCheck size={13} />
+                    ) : isOauthExpired ? (
+                      <ShieldAlert size={13} />
+                    ) : (
+                      <KeyRound size={13} />
+                    )}
+                    {isOauthAuthorized
+                      ? t("mcp.oauth.authorized")
+                      : isOauthExpired
+                      ? t("mcp.oauth.expired")
+                      : t("mcp.oauth.authorize")}
+                  </span>
+                </Button>
+              )}
               <Button
                 className={styles.toggleButton}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setOauthModalOpen(true);
+                  handleToggleClick(e);
                 }}
-                data-status={
-                  isOauthAuthorized
-                    ? "authorized"
-                    : isOauthExpired
-                    ? "expired"
-                    : "idle"
+                icon={
+                  client.enabled ? <EyeInvisibleOutlined /> : <EyeOutlined />
                 }
               >
-                <span className={styles.buttonContent}>
-                  {isOauthAuthorized ? (
-                    <ShieldCheck size={13} />
-                  ) : isOauthExpired ? (
-                    <ShieldAlert size={13} />
-                  ) : (
-                    <KeyRound size={13} />
-                  )}
-                  {isOauthAuthorized
-                    ? t("mcp.oauth.authorized")
-                    : isOauthExpired
-                    ? t("mcp.oauth.expired")
-                    : t("mcp.oauth.authorize")}
-                </span>
+                {client.enabled ? t("common.disable") : t("common.enable")}
               </Button>
-            )}
-            <Button
-              className={styles.toggleButton}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggleClick(e);
-              }}
-              icon={client.enabled ? <EyeInvisibleOutlined /> : <EyeOutlined />}
-            >
-              {client.enabled ? t("common.disable") : t("common.enable")}
-            </Button>
-            <Button
-              className={styles.deleteButton}
-              danger
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteClick(e);
-              }}
-            >
-              {t("common.delete")}
-            </Button>
+              <Button
+                className={styles.deleteButton}
+                danger
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteClick(e);
+                }}
+              >
+                {t("common.delete")}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </Card>
 
-      <Modal
-        title={t("common.confirm")}
-        open={deleteModalOpen}
-        onOk={confirmDelete}
-        onCancel={() => setDeleteModalOpen(false)}
-        okText={t("common.confirm")}
-        cancelText={t("common.cancel")}
-        okButtonProps={{ danger: true }}
-      >
-        <p>{t("mcp.deleteConfirm")}</p>
-      </Modal>
+      {canManage && (
+        <Modal
+          title={t("common.confirm")}
+          open={deleteModalOpen}
+          onOk={confirmDelete}
+          onCancel={() => setDeleteModalOpen(false)}
+          okText={t("common.confirm")}
+          cancelText={t("common.cancel")}
+          okButtonProps={{ danger: true }}
+        >
+          <p>{t("mcp.deleteConfirm")}</p>
+        </Modal>
+      )}
 
       <Modal
         title={`${client.name} - Configuration`}
@@ -300,27 +317,25 @@ export const MCPClientCard = React.memo(function MCPClientCard({
             <Button onClick={closeJsonModal} disabled={savingConfig}>
               {t("common.cancel")}
             </Button>
-            {isEditing ? (
+            {isEditing && canManage ? (
               <Button
                 type="primary"
                 loading={savingConfig}
                 onClick={handleSaveJson}
               >
-                {savingConfig
-                  ? t("mcp.savingAndValidating")
-                  : t("common.save")}
+                {savingConfig ? t("mcp.savingAndValidating") : t("common.save")}
               </Button>
-            ) : (
+            ) : canManage ? (
               <Button type="primary" onClick={() => setIsEditing(true)}>
                 {t("common.edit")}
               </Button>
-            )}
+            ) : null}
           </div>
         }
         width={700}
       >
         <div className={styles.maskedFieldHint}>{t("mcp.maskedFieldHint")}</div>
-        {isEditing ? (
+        {isEditing && canManage ? (
           <Input.TextArea
             value={editedJson}
             onChange={(e) => setEditedJson(e.target.value)}
@@ -333,54 +348,58 @@ export const MCPClientCard = React.memo(function MCPClientCard({
         )}
       </Modal>
 
-      <MCPAccessModal
-        client={client}
-        open={accessModalOpen}
-        onClose={() => setAccessModalOpen(false)}
-        onSave={(policy) => onUpdatePolicy(client.key, policy)}
-      />
+      {canManage && (
+        <MCPAccessModal
+          client={client}
+          open={accessModalOpen}
+          onClose={() => setAccessModalOpen(false)}
+          onSave={(policy) => onUpdatePolicy(client.key, policy)}
+        />
+      )}
 
       {/* Dedicated OAuth modal — opened only via the Authorize button */}
-      <Modal
-        title={
-          <div className={styles.modalTitleRow}>
-            {isOauthAuthorized ? (
-              <ShieldCheck size={16} className={styles.statusIconSuccess} />
-            ) : isOauthExpired ? (
-              <ShieldAlert size={16} className={styles.statusIconWarning} />
-            ) : (
-              <ShieldX size={16} className={styles.statusIconMuted} />
-            )}
-            {`${client.name} — ${t("mcp.oauth.manage")}`}
-          </div>
-        }
-        open={oauthModalOpen}
-        onCancel={() => setOauthModalOpen(false)}
-        footer={
-          <div className={styles.modalFooter}>
-            <Button onClick={() => setOauthModalOpen(false)}>
-              {t("common.close")}
-            </Button>
-          </div>
-        }
-        width={560}
-      >
-        <MCPOAuthSection
-          clientKey={client.key}
-          currentOAuthStatus={oauthStatus}
-          clientId={oauthClientId}
-          clientSecret={oauthClientSecret}
-          scope={oauthScope}
-          tokenEndpoint={oauthTokenEndpoint}
-          onClientIdChange={setOauthClientId}
-          onClientSecretChange={setOauthClientSecret}
-          onScopeChange={setOauthScope}
-          onTokenEndpointChange={setOauthTokenEndpoint}
-          onAuthChanged={() => {
-            onRefresh?.();
-          }}
-        />
-      </Modal>
+      {canManage && (
+        <Modal
+          title={
+            <div className={styles.modalTitleRow}>
+              {isOauthAuthorized ? (
+                <ShieldCheck size={16} className={styles.statusIconSuccess} />
+              ) : isOauthExpired ? (
+                <ShieldAlert size={16} className={styles.statusIconWarning} />
+              ) : (
+                <ShieldX size={16} className={styles.statusIconMuted} />
+              )}
+              {`${client.name} — ${t("mcp.oauth.manage")}`}
+            </div>
+          }
+          open={oauthModalOpen}
+          onCancel={() => setOauthModalOpen(false)}
+          footer={
+            <div className={styles.modalFooter}>
+              <Button onClick={() => setOauthModalOpen(false)}>
+                {t("common.close")}
+              </Button>
+            </div>
+          }
+          width={560}
+        >
+          <MCPOAuthSection
+            clientKey={client.key}
+            currentOAuthStatus={oauthStatus}
+            clientId={oauthClientId}
+            clientSecret={oauthClientSecret}
+            scope={oauthScope}
+            tokenEndpoint={oauthTokenEndpoint}
+            onClientIdChange={setOauthClientId}
+            onClientSecretChange={setOauthClientSecret}
+            onScopeChange={setOauthScope}
+            onTokenEndpointChange={setOauthTokenEndpoint}
+            onAuthChanged={() => {
+              onRefresh?.();
+            }}
+          />
+        </Modal>
+      )}
     </>
   );
 });

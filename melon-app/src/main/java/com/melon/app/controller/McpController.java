@@ -87,6 +87,19 @@ public class McpController {
         });
     }
 
+    /**
+     * Read-only capability discovery used by the console to avoid rendering
+     * configuration controls that the current user cannot use.
+     */
+    @GetMapping("/capabilities")
+    public Mono<ResponseEntity<?>> capabilities(
+            @RequestHeader(value = "X-Agent-Id", required = false) String agentId,
+            @AuthenticationPrincipal EnterprisePrincipal principal) {
+        String resolvedAgentId = agentAccessService.resolveExecution(principal, agentId);
+        return blocking(() -> ResponseEntity.ok(Map.of(
+                "can_manage", agentAccessService.canManageConfiguration(principal, resolvedAgentId))));
+    }
+
     @GetMapping({"/{clientKey}", "/client"})
     public Mono<ResponseEntity<?>> getClient(
             @RequestHeader(value = "X-Agent-Id", required = false) String agentId,

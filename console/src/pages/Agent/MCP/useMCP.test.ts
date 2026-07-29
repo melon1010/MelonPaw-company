@@ -9,6 +9,7 @@ const hoisted = vi.hoisted(() => {
   };
   const apiMocks = {
     listMCPClients: vi.fn(),
+    getMCPCapabilities: vi.fn(),
     createMCPClient: vi.fn(),
     updateMCPClient: vi.fn(),
     toggleMCPClient: vi.fn(),
@@ -26,7 +27,7 @@ vi.mock("../../../api", () => ({
 }));
 
 vi.mock("../../../stores/agentStore", () => ({
-  useAgentStore: () => ({ selectedAgent: "agent-1" }),
+  useAgentStore: () => ({ selectedAgent: "agent-1", agents: [] }),
 }));
 
 vi.mock("../../../hooks/useAppMessage", () => ({
@@ -57,6 +58,7 @@ describe("useMCP", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiMocks.listMCPClients.mockReset();
+    apiMocks.getMCPCapabilities.mockReset();
     apiMocks.createMCPClient.mockReset();
     apiMocks.updateMCPClient.mockReset();
     apiMocks.toggleMCPClient.mockReset();
@@ -65,6 +67,7 @@ describe("useMCP", () => {
     messageMock.error.mockReset();
 
     apiMocks.listMCPClients.mockResolvedValue([]);
+    apiMocks.getMCPCapabilities.mockResolvedValue({ can_manage: true });
   });
 
   it("mounts and calls listMCPClients, sets clients, loading true->false", async () => {
@@ -78,6 +81,18 @@ describe("useMCP", () => {
     });
     expect(result.current.loading).toBe(false);
     expect(apiMocks.listMCPClients).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(result.current.canManage).toBe(true));
+  });
+
+  it("fails closed when the selected Agent cannot be managed", async () => {
+    apiMocks.getMCPCapabilities.mockResolvedValue({ can_manage: false });
+
+    const { result } = renderHook(() => useMCP());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.canManage).toBe(false);
   });
 
   it("message.error('mcp.loadError') when loadClients fails", async () => {

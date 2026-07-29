@@ -74,20 +74,10 @@ export const workspaceApi = {
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(getApiUrl("/workspace/upload"), {
+    return request<{ success: boolean; message: string }>("/workspace/upload", {
       method: "POST",
-      headers: buildAuthHeaders(),
       body: formData,
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Upload failed: ${response.status} ${response.statusText} - ${errorText}`,
-      );
-    }
-
-    return await response.json();
   },
 
   listDailyMemory: () =>

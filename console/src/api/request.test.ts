@@ -88,6 +88,17 @@ describe("request", () => {
     expect(headers.get("Content-Type")).toBe("multipart/form-data");
   });
 
+  it("does not set Content-Type for FormData uploads", async () => {
+    mockFetch(200, { status: "ok" });
+    const formData = new FormData();
+    formData.append("file", new Blob(["content"]), "skill.zip");
+
+    await request("/skills/upload", { method: "POST", body: formData });
+
+    const headers: Headers = (fetch as any).mock.calls[0][1].headers;
+    expect(headers.has("Content-Type")).toBe(false);
+  });
+
   it("sends the language selected in the console", async () => {
     localStorage.setItem("language", "pt-BR");
     mockFetch(200, { data: "ok" });
@@ -145,6 +156,27 @@ describe("request", () => {
     } as unknown as Response);
 
     await expect(request("/models")).rejects.toThrow("server exploded");
+  });
+
+  it("keeps forbidden errors friendly while preserving structured details", async () => {
+    localStorage.setItem("language", "zh");
+    mockFetch(403, {
+      code: "forbidden",
+      detail: "Project manager permission is required",
+      request_id: "request-123",
+    });
+
+    const failure = request("/mcp");
+    await expect(failure).rejects.toMatchObject({
+      name: "ApiRequestError",
+      status: 403,
+      code: "forbidden",
+      message: "当前账号没有此操作权限",
+      payload: {
+        detail: "Project manager permission is required",
+        request_id: "request-123",
+      },
+    });
   });
 
   it("injects Authorization header when token is present", async () => {

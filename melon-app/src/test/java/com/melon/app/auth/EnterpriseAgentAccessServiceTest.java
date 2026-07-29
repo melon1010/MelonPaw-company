@@ -60,6 +60,8 @@ class EnterpriseAgentAccessServiceTest {
 
         assertEquals("project-agent", access.resolveExecution(member, "project-agent"));
         assertTrue(access.accessibleAgentIds(member).contains("project-agent"));
+        assertFalse(access.canManageConfiguration(member, "project-agent"));
+        assertTrue(access.canManageConfiguration(admin, "project-agent"));
         assertThrows(SecurityException.class,
                 () -> access.resolveExecution(viewer, "project-agent"));
     }

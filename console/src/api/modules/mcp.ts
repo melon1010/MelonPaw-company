@@ -1,6 +1,7 @@
 import { request } from "../request";
 import type {
   MCPClientInfo,
+  MCPCapabilities,
   MCPClientCreateRequest,
   MCPClientUpdateRequest,
   MCPToolInfo,
@@ -19,6 +20,9 @@ export const mcpApi = {
    * List all MCP clients
    */
   listMCPClients: () => request<MCPClientInfo[]>("/mcp"),
+
+  /** Return mutation capabilities for the currently selected Agent scope. */
+  getMCPCapabilities: () => request<MCPCapabilities>("/mcp/capabilities"),
 
   /**
    * Get details of a specific MCP client
@@ -116,8 +120,7 @@ export const mcpApi = {
    * Revoke / clear OAuth tokens for an MCP client.
    */
   revokeOAuth: (clientKey: string) =>
-    request<{ message: string }>(
-      clientEndpoint("/oauth", clientKey),
-      { method: "DELETE" },
-    ),
+    request<{ message: string }>(clientEndpoint("/oauth", clientKey), {
+      method: "DELETE",
+    }),
 };

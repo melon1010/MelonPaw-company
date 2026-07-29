@@ -1,6 +1,7 @@
 package com.melon.app.mcp;
 
 import com.melon.app.config.McpExecutionProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -30,6 +31,7 @@ public class McpStdioSessionPool {
     private final Condition capacityChanged = lock.newCondition();
     private final Map<SessionKey, Entry> entries = new HashMap<>();
 
+    @Autowired
     public McpStdioSessionPool(McpExecutionProperties properties) {
         this(properties.getMaxActiveStdioSessions(),
                 properties.getMaxActiveStdioSessionsPerWorkspace(),

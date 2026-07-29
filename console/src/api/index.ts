@@ -1,6 +1,6 @@
 export * from "./types";
 
-export { request } from "./request";
+export { request, ApiRequestError } from "./request";
 
 export { getApiUrl, getApiToken } from "./config";
 
@@ -118,7 +118,10 @@ export { companyApi };
 export { taskApi };
 export { quotaApi };
 export { auditApi };
-export type { AuditChainVerification, ManagementAuditEvent } from "./modules/audit";
+export type {
+  AuditChainVerification,
+  ManagementAuditEvent,
+} from "./modules/audit";
 export type {
   QuotaCatalogue,
   QuotaPolicy,

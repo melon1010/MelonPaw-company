@@ -1,6 +1,5 @@
 import { request } from "../request";
 import { getApiUrl, getApiToken } from "../config";
-import { buildAuthHeaders } from "../authHeaders";
 import type {
   ChatSpec,
   ChatHistory,
@@ -23,20 +22,10 @@ export const chatApi = {
   uploadFile: async (file: File): Promise<ChatUploadResponse> => {
     const formData = new FormData();
     formData.append("file", file);
-    const response = await fetch(getApiUrl("/console/upload"), {
+    return request<ChatUploadResponse>("/console/upload", {
       method: "POST",
-      headers: buildAuthHeaders(),
       body: formData,
     });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(
-        `Upload failed: ${response.status} ${response.statusText}${
-          text ? ` - ${text}` : ""
-        }`,
-      );
-    }
-    return response.json();
   },
 
   filePreviewUrl: (filename: string): string => {

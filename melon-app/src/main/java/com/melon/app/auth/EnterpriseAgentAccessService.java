@@ -162,6 +162,25 @@ public class EnterpriseAgentAccessService {
         return resolve(principal, requested);
     }
 
+    /**
+     * Returns whether the caller may mutate the selected Agent configuration.
+     *
+     * This is intentionally the non-throwing counterpart of
+     * {@link #resolveConfiguration(EnterprisePrincipal, String)} for UI
+     * capability discovery. Mutation endpoints must still call the throwing
+     * resolver so that hiding a button can never become an authorization
+     * boundary.
+     */
+    public boolean canManageConfiguration(EnterprisePrincipal principal, String requestedAgentId) {
+        if (principal == null) return false;
+        try {
+            resolveConfiguration(principal, requestedAgentId);
+            return true;
+        } catch (SecurityException | IllegalArgumentException ignored) {
+            return false;
+        }
+    }
+
     /** Acquires a task-exclusion lease when the target is a project Agent. */
     public boolean beginConfigurationMutation(String agentId) {
         String requested = normalize(agentId);

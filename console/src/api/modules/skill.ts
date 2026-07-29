@@ -1,6 +1,4 @@
 import { request } from "../request";
-import { getApiUrl } from "../config";
-import { buildAuthHeaders } from "../authHeaders";
 import type {
   BuiltinImportSpec,
   BuiltinUpdateNotice,
@@ -91,27 +89,10 @@ async function _uploadZip(
     params.set("rename_map", JSON.stringify(options.rename_map));
   }
   const qs = params.toString();
-  const url = getApiUrl(`${endpoint}${qs ? `?${qs}` : ""}`);
-
-  const headers = buildAuthHeaders();
-
-  const response = await fetch(url, {
+  return request<Record<string, unknown>>(`${endpoint}${qs ? `?${qs}` : ""}`, {
     method: "POST",
-    headers,
     body: formData,
   });
-
-  if (!response.ok) {
-    const text = await response.text();
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      // Format like request.ts so parseErrorDetail() can extract structured fields
-      throw new Error(`${response.status} ${response.statusText} - ${text}`);
-    }
-    throw new Error(text || `Request failed: ${response.status}`);
-  }
-
-  return await response.json();
 }
 
 export const skillApi = {
